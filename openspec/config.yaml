@@ -1,0 +1,55 @@
+schema: spec-driven
+
+context: |
+	Project: Sharp GUI
+	Domain: 单图生成并预览 3D Gaussian Splatting 模型（基于 Apple ml-sharp）
+
+	Core Stack:
+	- Frontend: React 19 + TypeScript 5.9 + Vite 7
+	- State: Zustand
+	- i18n: i18next + react-i18next
+	- 3D: Three.js + @sparkjsdev/spark
+	- Backend: Python 3.10+ + Flask
+
+	Architecture Notes:
+	- frontend/src 为主前端实现；templates/index.html 为 legacy 单文件前端，除非明确要求不要改。
+	- ml-sharp/ 为上游子项目，禁止直接修改。
+	- static/lib 为 legacy 预打包库，除非明确要求不要改。
+
+	Engineering Conventions:
+	- 前端导入使用 @/ 别名，避免 ../../../ 相对路径。
+	- TypeScript 纯类型导入使用 import type。
+	- React 组件使用函数组件 + 命名导出，避免 export default。
+	- 用户可见文案必须同步维护 frontend/src/i18n/en.json 与 frontend/src/i18n/zh.json。
+	- 样式使用 CSS Modules + CSS Variables，禁止 CSS-in-JS / Tailwind / Sass。
+	- HTTP 客户端使用项目 fetch 封装（frontend/src/api/client.ts），禁止 axios。
+
+	OpenSpec Intent:
+	- proposal 重点讲清 why/what/impact，不展开实现细节。
+	- design 聚焦关键技术决策、替代方案、风险与迁移步骤。
+	- specs 以可测试行为为准，任务可直接映射到实现与验收。
+
+rules:
+	proposal:
+		- 必须包含明确的范围边界（包含与不包含），避免任务蔓延。
+		- 必须列出 Capabilities，并使用 kebab-case 能力名。
+		- 不写底层实现细节（算法、代码结构、参数调优细节放到 design）。
+		- Impact 中必须点名受影响目录或模块（例如 frontend/src/hooks、frontend/src/store、app.py）。
+
+	design:
+		- 必须包含 Goals 与 Non-Goals 两部分。
+		- 每个关键决策都要写 Why 与备选方案（alternatives considered）。
+		- 风险必须给出可执行的缓解策略，格式为 [风险] -> 缓解。
+		- 若涉及迁移，必须给出可回退方案与验证点。
+
+	specs:
+		- requirement 语句使用 SHALL 或 MUST，避免 should/may。
+		- 每个 Requirement 至少一个 Scenario，且场景使用 WHEN/THEN。
+		- 只描述行为契约，不写实现细节，不引入与能力无关的约束。
+		- 若能力涉及用户可见文本，规格中需显式要求中英文本同步维护。
+
+	tasks:
+		- 必须按依赖顺序分组，先基础迁移与校验，再功能集成，再回归验收。
+		- 每个任务应可在一次工作会话内完成，描述可验证。
+		- 任务中必须包含验证类任务（lint/build/关键路径回归）。
+		- 若涉及 i18n、类型或 API 变更，任务必须包含对应同步项。

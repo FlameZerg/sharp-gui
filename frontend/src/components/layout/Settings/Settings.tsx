@@ -14,7 +14,38 @@ const FolderIcon = () => (
 
 export const Settings: React.FC = () => {
     const { t } = useTranslation();
-    const { settingsModalOpen, setSettingsModalOpen, setLoading, serverModelFormat, setServerModelFormat, setLocalModelFormat, effectiveModelFormat, isLocalAccess, isLodEnabled, toggleLod, isHighFidelity, toggleHighFidelity, currentModelId, currentModelUrl, currentModelFormat: storeModelFormat, setCurrentModel } = useAppStore();
+    const {
+        settingsModalOpen,
+        setSettingsModalOpen,
+        setLoading,
+        serverModelFormat,
+        setServerModelFormat,
+        setLocalModelFormat,
+        effectiveModelFormat,
+        isLocalAccess,
+        quickPresetMode,
+        setQuickPresetMode,
+        applyQuickPreset,
+        isLodEnabled,
+        toggleLod,
+        lodPreset,
+        setLodPreset,
+        lodCompareMode,
+        setLodCompareMode,
+        canCompareLod,
+        radModeEnabled,
+        setRadModeEnabled,
+        radPagedEnabled,
+        setRadPagedEnabled,
+        xrUpdateMode,
+        setXrUpdateMode,
+        isHighFidelity,
+        toggleHighFidelity,
+        currentModelId,
+        currentModelUrl,
+        currentModelFormat: storeModelFormat,
+        setCurrentModel,
+    } = useAppStore();
     const [workspaceFolder, setWorkspaceFolder] = useState('');
     const [modelFormat, setModelFormat] = useState<ModelFormat>('spz');
     const [isSaving, setIsSaving] = useState(false);
@@ -23,13 +54,38 @@ export const Settings: React.FC = () => {
     // Track if workspace_folder changed (needs restart)
     const [originalWorkspace, setOriginalWorkspace] = useState('');
 
+    const reloadCurrentModel = () => {
+        if (currentModelId && currentModelUrl) {
+            const fmt = storeModelFormat;
+            setCurrentModel(null, null);
+            setTimeout(() => setCurrentModel(currentModelId, currentModelUrl, fmt), 50);
+        }
+    };
+
+    const applyManualChange = (action: () => void) => {
+        if (quickPresetMode !== 'manual') {
+            setQuickPresetMode('manual');
+        }
+        action();
+    };
+
+    const handleQuickPresetChange = (mode: 'performance' | 'balanced' | 'detail' | 'manual') => {
+        if (mode === 'manual') {
+            setQuickPresetMode('manual');
+            return;
+        }
+
+        applyQuickPreset(mode);
+        reloadCurrentModel();
+    };
+
     // Load settings when modal opens
     useEffect(() => {
         if (settingsModalOpen) {
             setModelFormat(effectiveModelFormat());
             loadSettings();
         }
-    }, [settingsModalOpen]);
+    }, [settingsModalOpen, effectiveModelFormat]);
 
     const loadSettings = async () => {
         try {
@@ -185,89 +241,282 @@ export const Settings: React.FC = () => {
                     </div>
                 )}
 
-                {/* LOD (Level-of-Detail) Toggle */}
+                {/* Quick Preset */}
                 <div className={styles.group}>
                     <label className={styles.label}>
-                        {t('lodLabel')}
+                        {t('quickPresetLabel')}
                     </label>
                     <div className={styles.segmentedControl}>
                         <button
-                            className={`${styles.segmentBtn} ${!isLodEnabled ? styles.segmentActive : ''}`}
-                            onClick={() => {
-                                if (isLodEnabled) {
-                                    toggleLod();
-                                    if (currentModelId && currentModelUrl) {
-                                        const fmt = storeModelFormat;
-                                        setCurrentModel(null, null);
-                                        setTimeout(() => setCurrentModel(currentModelId, currentModelUrl, fmt), 50);
-                                    }
-                                }
-                            }}
+                            className={`${styles.segmentBtn} ${quickPresetMode === 'performance' ? styles.segmentActive : ''}`}
+                            onClick={() => handleQuickPresetChange('performance')}
                         >
-                            {t('lodOff')}
+                            {t('lodPresetPerformance')}
                         </button>
                         <button
-                            className={`${styles.segmentBtn} ${isLodEnabled ? styles.segmentActive : ''}`}
-                            onClick={() => {
-                                if (!isLodEnabled) {
-                                    toggleLod();
-                                    if (currentModelId && currentModelUrl) {
-                                        const fmt = storeModelFormat;
-                                        setCurrentModel(null, null);
-                                        setTimeout(() => setCurrentModel(currentModelId, currentModelUrl, fmt), 50);
-                                    }
-                                }
-                            }}
+                            className={`${styles.segmentBtn} ${quickPresetMode === 'balanced' ? styles.segmentActive : ''}`}
+                            onClick={() => handleQuickPresetChange('balanced')}
                         >
-                            {t('lodOn')}
+                            {t('lodPresetBalanced')}
+                        </button>
+                        <button
+                            className={`${styles.segmentBtn} ${quickPresetMode === 'detail' ? styles.segmentActive : ''}`}
+                            onClick={() => handleQuickPresetChange('detail')}
+                        >
+                            {t('lodPresetDetail')}
+                        </button>
+                        <button
+                            className={`${styles.segmentBtn} ${quickPresetMode === 'manual' ? styles.segmentActive : ''}`}
+                            onClick={() => handleQuickPresetChange('manual')}
+                        >
+                            {t('quickPresetManual')}
                         </button>
                     </div>
                     <p className={styles.hint}>
-                        {t('lodHint')}
+                        {t('quickPresetHint')}
                     </p>
                 </div>
 
-                {/* High Fidelity (最高保真度) Toggle */}
-                <div className={styles.group}>
-                    <label className={styles.label}>
-                        {t('highFidelityLabel')}
-                    </label>
-                    <div className={styles.segmentedControl}>
-                        <button
-                            className={`${styles.segmentBtn} ${!isHighFidelity ? styles.segmentActive : ''}`}
-                            onClick={() => {
-                                if (isHighFidelity) {
-                                    toggleHighFidelity();
-                                    if (currentModelId && currentModelUrl) {
-                                        const fmt = storeModelFormat;
-                                        setCurrentModel(null, null);
-                                        setTimeout(() => setCurrentModel(currentModelId, currentModelUrl, fmt), 50);
-                                    }
-                                }
-                            }}
-                        >
-                            {t('hfOff')}
-                        </button>
-                        <button
-                            className={`${styles.segmentBtn} ${isHighFidelity ? styles.segmentActive : ''}`}
-                            onClick={() => {
-                                if (!isHighFidelity) {
-                                    toggleHighFidelity();
-                                    if (currentModelId && currentModelUrl) {
-                                        const fmt = storeModelFormat;
-                                        setCurrentModel(null, null);
-                                        setTimeout(() => setCurrentModel(currentModelId, currentModelUrl, fmt), 50);
-                                    }
-                                }
-                            }}
-                        >
-                            {t('hfOn')}
-                        </button>
+                {quickPresetMode === 'manual' ? (
+                    <>
+                        <div className={styles.group}>
+                            <label className={styles.label}>{t('advancedSettingsLabel')}</label>
+                            <p className={styles.hint}>{t('advancedSettingsHint')}</p>
+                        </div>
+
+                        {/* LOD (Level-of-Detail) Toggle */}
+                        <div className={styles.group}>
+                            <label className={styles.label}>
+                                {t('lodLabel')}
+                            </label>
+                            <div className={styles.segmentedControl}>
+                                <button
+                                    className={`${styles.segmentBtn} ${!isLodEnabled ? styles.segmentActive : ''}`}
+                                    onClick={() => {
+                                        if (isLodEnabled) {
+                                            applyManualChange(() => toggleLod());
+                                        }
+                                    }}
+                                >
+                                    {t('lodOff')}
+                                </button>
+                                <button
+                                    className={`${styles.segmentBtn} ${isLodEnabled ? styles.segmentActive : ''}`}
+                                    onClick={() => {
+                                        if (!isLodEnabled) {
+                                            applyManualChange(() => toggleLod());
+                                        }
+                                    }}
+                                >
+                                    {t('lodOn')}
+                                </button>
+                            </div>
+                            <p className={styles.hint}>
+                                {t('lodHint')}
+                            </p>
+                        </div>
+
+                        {/* LOD Presets */}
+                        <div className={styles.group}>
+                            <label className={styles.label}>
+                                {t('lodPresetLabel')}
+                            </label>
+                            <div className={styles.segmentedControl}>
+                                <button
+                                    className={`${styles.segmentBtn} ${lodPreset === 'performance' ? styles.segmentActive : ''}`}
+                                    onClick={() => applyManualChange(() => setLodPreset('performance'))}
+                                >
+                                    {t('lodPresetPerformance')}
+                                </button>
+                                <button
+                                    className={`${styles.segmentBtn} ${lodPreset === 'balanced' ? styles.segmentActive : ''}`}
+                                    onClick={() => applyManualChange(() => setLodPreset('balanced'))}
+                                >
+                                    {t('lodPresetBalanced')}
+                                </button>
+                                <button
+                                    className={`${styles.segmentBtn} ${lodPreset === 'detail' ? styles.segmentActive : ''}`}
+                                    onClick={() => applyManualChange(() => setLodPreset('detail'))}
+                                >
+                                    {t('lodPresetDetail')}
+                                </button>
+                            </div>
+                            <p className={styles.hint}>
+                                {t('lodPresetHint')}
+                            </p>
+                        </div>
+
+                        {/* LoD vs non-LoD Comparison */}
+                        <div className={styles.group}>
+                            <label className={styles.label}>
+                                {t('lodCompareLabel')}
+                            </label>
+                            <div className={styles.segmentedControl}>
+                                <button
+                                    className={`${styles.segmentBtn} ${lodCompareMode === 'lod' ? styles.segmentActive : ''}`}
+                                    onClick={() => applyManualChange(() => setLodCompareMode('lod'))}
+                                >
+                                    {t('lodCompareLod')}
+                                </button>
+                                <button
+                                    className={`${styles.segmentBtn} ${lodCompareMode === 'non-lod' ? styles.segmentActive : ''} ${(!canCompareLod || !isLodEnabled) ? styles.segmentDisabled : ''}`}
+                                    disabled={!canCompareLod || !isLodEnabled}
+                                    onClick={() => applyManualChange(() => setLodCompareMode('non-lod'))}
+                                >
+                                    {t('lodCompareNonLod')}
+                                </button>
+                            </div>
+                            <p className={styles.hint}>
+                                {!canCompareLod || !isLodEnabled
+                                    ? t('lodCompareUnavailableHint')
+                                    : t('lodCompareHint')}
+                            </p>
+                        </div>
+
+                        {/* RAD Streaming Mode */}
+                        <div className={styles.group}>
+                            <label className={styles.label}>
+                                {t('radModeLabel')}
+                            </label>
+                            <div className={styles.segmentedControl}>
+                                <button
+                                    className={`${styles.segmentBtn} ${!radModeEnabled ? styles.segmentActive : ''}`}
+                                    onClick={() => {
+                                        if (radModeEnabled) {
+                                            applyManualChange(() => {
+                                                setRadModeEnabled(false);
+                                                reloadCurrentModel();
+                                            });
+                                        }
+                                    }}
+                                >
+                                    {t('radModeOff')}
+                                </button>
+                                <button
+                                    className={`${styles.segmentBtn} ${radModeEnabled ? styles.segmentActive : ''}`}
+                                    onClick={() => {
+                                        if (!radModeEnabled) {
+                                            applyManualChange(() => {
+                                                setRadModeEnabled(true);
+                                                reloadCurrentModel();
+                                            });
+                                        }
+                                    }}
+                                >
+                                    {t('radModeOn')}
+                                </button>
+                            </div>
+                            <p className={styles.hint}>
+                                {t('radModeHint')}
+                            </p>
+                        </div>
+
+                        <div className={styles.group}>
+                            <label className={styles.label}>
+                                {t('radPagedLabel')}
+                            </label>
+                            <div className={styles.segmentedControl}>
+                                <button
+                                    className={`${styles.segmentBtn} ${!radPagedEnabled ? styles.segmentActive : ''} ${!radModeEnabled ? styles.segmentDisabled : ''}`}
+                                    disabled={!radModeEnabled}
+                                    onClick={() => {
+                                        if (radPagedEnabled) {
+                                            applyManualChange(() => {
+                                                setRadPagedEnabled(false);
+                                                reloadCurrentModel();
+                                            });
+                                        }
+                                    }}
+                                >
+                                    {t('radPagedOff')}
+                                </button>
+                                <button
+                                    className={`${styles.segmentBtn} ${radPagedEnabled ? styles.segmentActive : ''} ${!radModeEnabled ? styles.segmentDisabled : ''}`}
+                                    disabled={!radModeEnabled}
+                                    onClick={() => {
+                                        if (!radPagedEnabled) {
+                                            applyManualChange(() => {
+                                                setRadPagedEnabled(true);
+                                                reloadCurrentModel();
+                                            });
+                                        }
+                                    }}
+                                >
+                                    {t('radPagedOn')}
+                                </button>
+                            </div>
+                            <p className={styles.hint}>
+                                {t('radPagedHint')}
+                            </p>
+                        </div>
+
+                        {/* XR Spark Update Strategy */}
+                        <div className={styles.group}>
+                            <label className={styles.label}>
+                                {t('xrUpdateLabel')}
+                            </label>
+                            <div className={styles.segmentedControl}>
+                                <button
+                                    className={`${styles.segmentBtn} ${xrUpdateMode === 'auto' ? styles.segmentActive : ''}`}
+                                    onClick={() => applyManualChange(() => setXrUpdateMode('auto'))}
+                                >
+                                    {t('xrUpdateAuto')}
+                                </button>
+                                <button
+                                    className={`${styles.segmentBtn} ${xrUpdateMode === 'manual' ? styles.segmentActive : ''}`}
+                                    onClick={() => applyManualChange(() => setXrUpdateMode('manual'))}
+                                >
+                                    {t('xrUpdateManual')}
+                                </button>
+                            </div>
+                            <p className={styles.hint}>
+                                {t('xrUpdateHint')}
+                            </p>
+                        </div>
+
+                        {/* High Fidelity Toggle */}
+                        <div className={styles.group}>
+                            <label className={styles.label}>
+                                {t('highFidelityLabel')}
+                            </label>
+                            <div className={styles.segmentedControl}>
+                                <button
+                                    className={`${styles.segmentBtn} ${!isHighFidelity ? styles.segmentActive : ''}`}
+                                    onClick={() => {
+                                        if (isHighFidelity) {
+                                            applyManualChange(() => {
+                                                toggleHighFidelity();
+                                                reloadCurrentModel();
+                                            });
+                                        }
+                                    }}
+                                >
+                                    {t('hfOff')}
+                                </button>
+                                <button
+                                    className={`${styles.segmentBtn} ${isHighFidelity ? styles.segmentActive : ''}`}
+                                    onClick={() => {
+                                        if (!isHighFidelity) {
+                                            applyManualChange(() => {
+                                                toggleHighFidelity();
+                                                reloadCurrentModel();
+                                            });
+                                        }
+                                    }}
+                                >
+                                    {t('hfOn')}
+                                </button>
+                            </div>
+                            <p className={styles.hint}>
+                                {t('hfHint')}
+                            </p>
+                        </div>
+                    </>
+                ) : (
+                    <div className={styles.group}>
+                        <p className={styles.hint}>{t('advancedSettingsAutoHint')}</p>
                     </div>
-                    <p className={styles.hint}>
-                        {t('hfHint')}
-                    </p>
-                </div>
+                )}
 
                 {/* Model Format Preference */}
                 <div className={styles.group}>

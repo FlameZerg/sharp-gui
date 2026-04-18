@@ -97,7 +97,7 @@ function App() {
     }
   }, [setCurrentModel, sidebarOpen, toggleSidebar, effectiveModelFormat])
 
-  // Handle model file drop (.ply / .splat) for direct preview
+  // Handle model file drop (.ply / .splat / .spz / .rad) for direct preview
   const handleModelDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
@@ -109,15 +109,17 @@ function App() {
     const name = file.name.toLowerCase()
     
     // Check for supported model formats and extract format
-    let format: 'ply' | 'splat' | 'spz' | null = null
+    let format: 'ply' | 'splat' | 'spz' | 'rad' | null = null
     if (name.endsWith('.ply')) {
       format = 'ply'
     } else if (name.endsWith('.splat')) {
       format = 'splat'
     } else if (name.endsWith('.spz')) {
       format = 'spz'
+    } else if (name.endsWith('.rad')) {
+      format = 'rad'
     } else {
-      alert('Unsupported format. Please drop .ply, .splat or .spz files.')
+      alert(t('unsupportedFormat'))
       return
     }
     
@@ -126,7 +128,7 @@ function App() {
     // Create Blob URL and set as current model with format hint
     const blobUrl = URL.createObjectURL(file)
     setCurrentModel(file.name, blobUrl, format)
-  }, [setCurrentModel])
+  }, [setCurrentModel, t])
 
   const handleMainDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()

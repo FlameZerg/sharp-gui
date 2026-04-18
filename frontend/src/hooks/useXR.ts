@@ -73,7 +73,6 @@ export const useXR = ({ viewerRef }: UseXRProps): UseXRReturn => {
     maxPixelRadius: number;
     autoUpdate: boolean;
     preUpdate: boolean;
-    stochastic?: boolean;
   } | null>(null);
 
   // ── Check XR support on mount ───────────────────────────────────────
@@ -191,13 +190,11 @@ export const useXR = ({ viewerRef }: UseXRProps): UseXRReturn => {
       }
 
       const sessionType = mode === 'ar' ? 'immersive-ar' : 'immersive-vr';
+      const xrUpdateMode = useAppStore.getState().xrUpdateMode;
+      const useManualSparkUpdate = xrUpdateMode === 'manual';
       console.log(`[XR] Entering ${mode.toUpperCase()} session...`);
 
       renderer.xr.enabled = true;
-
-      // ── Spark 2.0: stochastic mode is deprecated, sorted alpha-blend
-      // pipeline now works correctly in XR sessions. We only need to
-      // save & apply XR-optimised Spark parameters for performance.
 
       // ── Save & apply XR-optimised Spark parameters ──────────────────
       savedSparkParamsRef.current = {
@@ -208,18 +205,11 @@ export const useXR = ({ viewerRef }: UseXRProps): UseXRReturn => {
         maxPixelRadius: ctx.sparkRenderer.maxPixelRadius,
         autoUpdate: ctx.sparkRenderer.autoUpdate,
         preUpdate: ctx.sparkRenderer.preUpdate,
-        stochastic: (ctx.sparkRenderer as unknown as { defaultView?: { stochastic?: boolean } })
-          .defaultView?.stochastic,
       };
 
-      // Keep XR on stable sorted path and disable Spark autoUpdate.
-      // Spark internally falls back to setTimeout while XR is presenting;
-      // we'll drive update manually in the XR frame loop instead.
-      (ctx.sparkRenderer as unknown as { defaultView?: { stochastic?: boolean } })
-        .defaultView && ((ctx.sparkRenderer as unknown as { defaultView: { stochastic: boolean } })
-          .defaultView.stochastic = false);
-      ctx.sparkRenderer.autoUpdate = false;
-      ctx.sparkRenderer.preUpdate = true;
+      // Default path uses Spark's built-in XR lifecycle; manual mode is kept as a rollback switch.
+      ctx.sparkRenderer.autoUpdate = !useManualSparkUpdate;
+      ctx.sparkRenderer.preUpdate = useManualSparkUpdate;
 
       if (mode === 'ar') {
         // AR follows the same stability profile as VR.
@@ -239,7 +229,7 @@ export const useXR = ({ viewerRef }: UseXRProps): UseXRReturn => {
         ctx.sparkRenderer.maxPixelRadius = 256;
         // On real headsets WebXR manages framebuffer resolution so DPR=1 is native.
         // On desktop WebXR emulators DPR=1 looks blurry, so cap at 2 to keep
-        // dev preview sharp without over-rendering on actual hardware.
+        // local emulator output sharp without over-rendering on actual hardware.
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       }
 
@@ -411,19 +401,21 @@ export const useXR = ({ viewerRef }: UseXRProps): UseXRReturn => {
 
         processControllerInput(session, rig);
 
-        const xrCamera = renderer.xr.getCamera();
-        if (!sparkUpdateInFlightRef.current) {
-          sparkUpdateInFlightRef.current = true;
-          void ctx.sparkRenderer
-            .update({ scene, camera: xrCamera })
-            .catch((error) => {
-              if (isXrDebugLogEnabled()) {
-                console.warn('[XR] spark update failed', error);
-              }
-            })
-            .finally(() => {
-              sparkUpdateInFlightRef.current = false;
-            });
+        if (useManualSparkUpdate) {
+          const xrCamera = renderer.xr.getCamera();
+          if (!sparkUpdateInFlightRef.current) {
+            sparkUpdateInFlightRef.current = true;
+            void ctx.sparkRenderer
+              .update({ scene, camera: xrCamera })
+              .catch((error) => {
+                if (isXrDebugLogEnabled()) {
+                  console.warn('[XR] spark update failed', error);
+                }
+              })
+              .finally(() => {
+                sparkUpdateInFlightRef.current = false;
+              });
+          }
         }
 
         renderer.render(scene, camera);
@@ -476,8 +468,6 @@ export const useXR = ({ viewerRef }: UseXRProps): UseXRReturn => {
           }
         }
 
-        // ── Restore Spark sorted alpha-blend mode ────────────────
-
         // Restore pre-XR Spark quality parameters
         if (savedSparkParamsRef.current) {
           ctx.sparkRenderer.maxStdDev = savedSparkParamsRef.current.maxStdDev;
@@ -487,12 +477,6 @@ export const useXR = ({ viewerRef }: UseXRProps): UseXRReturn => {
           ctx.sparkRenderer.maxPixelRadius = savedSparkParamsRef.current.maxPixelRadius;
           ctx.sparkRenderer.autoUpdate = savedSparkParamsRef.current.autoUpdate;
           ctx.sparkRenderer.preUpdate = savedSparkParamsRef.current.preUpdate;
-          if (savedSparkParamsRef.current.stochastic !== undefined) {
-            const spark = ctx.sparkRenderer as unknown as { defaultView?: { stochastic?: boolean } };
-            if (spark.defaultView) {
-              spark.defaultView.stochastic = savedSparkParamsRef.current.stochastic;
-            }
-          }
           savedSparkParamsRef.current = null;
         }
 

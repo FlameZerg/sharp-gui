@@ -3,6 +3,14 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { SparkRenderer, SplatMesh, SplatFileType } from '@sparkjsdev/spark';
 import { useAppStore } from '@/store/useAppStore';
+import {
+  applyLodPresetToMesh,
+  applyLodPresetToRenderer,
+  deriveRadUrl,
+  getLodPresetConfig,
+  getSplatFileTypeFromFormat,
+  hasLodComparisonData,
+} from '@/constants/spark';
 import { DEFAULT_CAMERA_CONFIG } from '@/utils/camera';
 import { useKeyboard } from './useKeyboard';
 import { useGyroscope } from './useGyroscope';
@@ -11,6 +19,13 @@ import { useXR } from './useXR';
 
 // Inject focus-ring CSS animation once
 let focusRingStyleInjected = false;
+const missingRadCache = new Set<string>();
+
+function isNotFoundError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return /\b404\b/i.test(error.message) || /\bnot found\b/i.test(error.message);
+}
+
 function injectFocusRingStyle() {
   if (focusRingStyleInjected) return;
   focusRingStyleInjected = true;
@@ -70,8 +85,29 @@ export const useViewer = (containerRef: React.RefObject<HTMLDivElement | null>) 
     setLoading,
     setLoadingProgress,
     isLimitsOn,
+    setCanCompareLod,
+    setUsedRadLastLoad,
   } = useAppStore();
   const [isViewerReady, setIsViewerReady] = useState(false);
+
+  const applyCurrentLodSettings = useCallback(() => {
+    const ctx = viewerRef.current;
+    if (!ctx) return;
+
+    const state = useAppStore.getState();
+    const preset = getLodPresetConfig(state.lodPreset);
+
+    ctx.sparkRenderer.enableLod = state.isLodEnabled;
+    ctx.sparkRenderer.enableLodFetching = state.isLodEnabled;
+    applyLodPresetToRenderer(ctx.sparkRenderer, preset);
+
+    if (ctx.splatMesh) {
+      applyLodPresetToMesh(ctx.splatMesh, preset);
+      ctx.splatMesh.enableLod = state.isLodEnabled && state.lodCompareMode === 'lod';
+    }
+
+    ctx.sparkRenderer.setDirty();
+  }, []);
 
   // ── Reset Camera (defined early so child hooks can reference it) ────
   const resetCamera = useCallback(() => {
@@ -81,28 +117,40 @@ export const useViewer = (containerRef: React.RefObject<HTMLDivElement | null>) 
     const c = ctx.controls;
 
     const targetPos = new THREE.Vector3(...DEFAULT_CAMERA_CONFIG.initialPosition);
-    let targetLookAt = new THREE.Vector3(0, 0, 0);
+    const targetLookAt = new THREE.Vector3(0, 0, 0);
     const targetUp = new THREE.Vector3(...DEFAULT_CAMERA_CONFIG.cameraUp);
 
     // Dynamic intersection point algorithm: Calculate where the front face of the bounding box starts
     // and push the focus point inward proportionally (a quadratic curve modeled from sample data)
     let dynamicOffset = DEFAULT_CAMERA_CONFIG.orbitTargetOffset || 1.5;
 
-    if (ctx.splatMesh && typeof ctx.splatMesh.getBoundingBox === 'function') {
-      if (!ctx.renderer.xr.isPresenting) {
-        ctx.splatMesh.updateMatrixWorld(true);
-        const bbox = ctx.splatMesh.getBoundingBox().clone();
-        bbox.applyMatrix4(ctx.splatMesh.matrixWorld);
+    if (
+      ctx.splatMesh &&
+      typeof ctx.splatMesh.getBoundingBox === 'function' &&
+      !ctx.renderer.xr.isPresenting
+    ) {
+      const canUseBoundingBoxSource = Boolean(
+        ctx.splatMesh.packedSplats || ctx.splatMesh.extSplats,
+      );
 
-        if (!bbox.isEmpty()) {
-          // Camera is positioned at targetPos 
-          // Since camera initially looks down -Z, the frontest point of the model is max.z
-          const frontZ = bbox.max.z;
-          // DF (Distance to Front): Distance from camera to the frontest visible surface
-          const distToFront = Math.max(0.1, targetPos.z - frontZ);
+      if (canUseBoundingBoxSource) {
+        try {
+          ctx.splatMesh.updateMatrixWorld(true);
+          const bbox = ctx.splatMesh.getBoundingBox().clone();
+          bbox.applyMatrix4(ctx.splatMesh.matrixWorld);
 
-          // Best-fit curve from user samples: Offset = DF + 0.08 * DF^2
-          dynamicOffset = distToFront + 0.08 * Math.pow(distToFront, 2);
+          if (!bbox.isEmpty()) {
+            // Camera is positioned at targetPos
+            // Since camera initially looks down -Z, the frontest point of the model is max.z
+            const frontZ = bbox.max.z;
+            // DF (Distance to Front): Distance from camera to the frontest visible surface
+            const distToFront = Math.max(0.1, targetPos.z - frontZ);
+
+            // Best-fit curve from user samples: Offset = DF + 0.08 * DF^2
+            dynamicOffset = distToFront + 0.08 * Math.pow(distToFront, 2);
+          }
+        } catch (error) {
+          console.warn('[Viewer] Bounding box unavailable, using default reset offset:', error);
         }
       }
     }
@@ -154,6 +202,7 @@ export const useViewer = (containerRef: React.RefObject<HTMLDivElement | null>) 
 
       const state = useAppStore.getState();
       const isHighFidelity = state.isHighFidelity;
+      const preset = getLodPresetConfig(state.lodPreset);
 
       try {
         // Scene
@@ -197,14 +246,14 @@ export const useViewer = (containerRef: React.RefObject<HTMLDivElement | null>) 
         const sparkRenderer = new SparkRenderer({
           renderer,
           ...(isHighFidelity ? { blurAmount: 0, preBlurAmount: 0 } : {}),
-          // LOD: auto-adapt per platform (Quest 500K / iOS 1.5M / Desktop 2.5M)
-          // lodSplatScale multiplies the platform default — leave at 1.0 for balance
-          lodSplatScale: 1.0,
-          // Foveation: emphasise splats in front of viewer, reduce detail behind
-          behindFoveate: 0.1,
-          coneFov0: 60,
-          coneFov: 120,
-          coneFoveate: 0.5,
+          enableLod: state.isLodEnabled,
+          enableLodFetching: state.isLodEnabled,
+          lodSplatScale: preset.lodSplatScale,
+          lodRenderScale: preset.lodRenderScale,
+          behindFoveate: preset.behindFoveate,
+          coneFov0: preset.coneFov0,
+          coneFov: preset.coneFov,
+          coneFoveate: preset.coneFoveate,
         });
         scene.add(sparkRenderer);
 
@@ -317,12 +366,30 @@ export const useViewer = (containerRef: React.RefObject<HTMLDivElement | null>) 
     }
     );
 
+    const getLodSignature = () => {
+      const state = useAppStore.getState();
+      return [
+        state.isLodEnabled,
+        state.lodPreset,
+        state.lodCompareMode,
+      ].join('|');
+    };
+
+    let lodSignature = getLodSignature();
+    const unsubscribeLod = useAppStore.subscribe(() => {
+      const nextSignature = getLodSignature();
+      if (nextSignature === lodSignature) return;
+      lodSignature = nextSignature;
+      applyCurrentLodSettings();
+    });
+
     // Initial viewer setup
     initViewer();
 
     return () => {
       isDisposed = true;
       unsubscribeHF();
+      unsubscribeLod();
       resizeObserver.disconnect();
 
       const ctx = viewerRef.current;
@@ -340,13 +407,19 @@ export const useViewer = (containerRef: React.RefObject<HTMLDivElement | null>) 
       }
       viewerRef.current = null;
       setIsViewerReady(false);
+      setCanCompareLod(false);
+      setUsedRadLastLoad(false);
     };
-  }, []);
+  }, [containerRef, applyCurrentLodSettings, setCanCompareLod, setUsedRadLastLoad]);
 
   // ── Load Model ──────────────────────────────────────────────────────
   useEffect(() => {
     const ctx = viewerRef.current;
-    if (!ctx || !currentModelUrl) return;
+    if (!ctx || !currentModelUrl) {
+      setCanCompareLod(false);
+      setUsedRadLastLoad(false);
+      return;
+    }
 
     let cancelled = false;
 
@@ -362,22 +435,79 @@ export const useViewer = (containerRef: React.RefObject<HTMLDivElement | null>) 
           ctx.splatMesh = null;
         }
 
-        // Determine file type for blob URLs that lack extensions
-        let fileType: SplatFileType | undefined;
-        if (currentModelFormat === 'ply') fileType = SplatFileType.PLY;
-        else if (currentModelFormat === 'splat') fileType = SplatFileType.SPLAT;
-        else if (currentModelFormat === 'spz') fileType = SplatFileType.SPZ;
+        const state = useAppStore.getState();
+        const preset = getLodPresetConfig(state.lodPreset);
+        const fallbackFileType = getSplatFileTypeFromFormat(currentModelFormat);
 
-        // Spark 2.0: SplatMesh handles loading directly
-        const isLodEnabled = useAppStore.getState().isLodEnabled;
-        const splatMesh = new SplatMesh({
-          url: currentModelUrl,
+        const createSplatMesh = async ({
+          url,
           fileType,
-          // Spark 2.0 LOD: builds LoD tree in background WebWorker (1-3s per 1M splats)
-          // Automatically renders downsampled versions within platform budget
-          ...(isLodEnabled ? { lod: true } : {}),
-        });
-        await splatMesh.initialized;
+          paged,
+        }: {
+          url: string;
+          fileType?: SplatFileType;
+          paged?: boolean;
+        }) => {
+          // Prefer public 2.0 options and keep LoD toggles runtime-switchable.
+          const mesh = new SplatMesh({
+            url,
+            fileType,
+            ...(state.isLodEnabled ? { lod: true, nonLod: true } : {}),
+            enableLod: state.isLodEnabled && state.lodCompareMode === 'lod',
+            lodScale: preset.lodSplatScale,
+            behindFoveate: preset.behindFoveate,
+            coneFov0: preset.coneFov0,
+            coneFov: preset.coneFov,
+            coneFoveate: preset.coneFoveate,
+            ...(paged !== undefined ? { paged } : {}),
+          });
+          try {
+            await mesh.initialized;
+            return mesh;
+          } catch (error) {
+            // Failed RAD/streaming initialization may keep internal fetchers alive if not disposed.
+            mesh.dispose();
+            throw error;
+          }
+        };
+
+        const looksLikeRad =
+          currentModelFormat === 'rad' || /\.rad(?:\?|$)/i.test(currentModelUrl);
+        const radCandidateUrl = state.radModeEnabled
+          ? (looksLikeRad ? currentModelUrl : deriveRadUrl(currentModelUrl))
+          : null;
+        const shouldTryRad = Boolean(
+          state.radModeEnabled &&
+          radCandidateUrl &&
+          !missingRadCache.has(radCandidateUrl),
+        );
+
+        let loadedWithRad = false;
+        let splatMesh: SplatMesh | null = null;
+
+        if (shouldTryRad && radCandidateUrl) {
+          try {
+            splatMesh = await createSplatMesh({
+              url: radCandidateUrl,
+              fileType: SplatFileType.RAD,
+              paged: state.radPagedEnabled,
+            });
+            loadedWithRad = true;
+          } catch (error) {
+            if (!looksLikeRad && isNotFoundError(error)) {
+              missingRadCache.add(radCandidateUrl);
+            }
+            console.warn('[Viewer] RAD load failed, fallback to default format:', error);
+            if (looksLikeRad) throw error;
+          }
+        }
+
+        if (!splatMesh) {
+          splatMesh = await createSplatMesh({
+            url: currentModelUrl,
+            fileType: fallbackFileType,
+          });
+        }
 
         if (cancelled) {
           splatMesh.dispose();
@@ -391,8 +521,10 @@ export const useViewer = (containerRef: React.RefObject<HTMLDivElement | null>) 
         ctx.scene.add(splatMesh);
         ctx.splatMesh = splatMesh;
 
-        // Spark 2.0 dynamic focal viewport completely initialized.
-
+        const hasComparison = state.isLodEnabled && hasLodComparisonData(splatMesh);
+        setCanCompareLod(hasComparison);
+        setUsedRadLastLoad(loadedWithRad);
+        applyCurrentLodSettings();
 
         setLoading(false);
 
@@ -402,6 +534,8 @@ export const useViewer = (containerRef: React.RefObject<HTMLDivElement | null>) 
       } catch (error) {
         if (!cancelled) {
           console.error('[Viewer] Error loading model:', error);
+          setCanCompareLod(false);
+          setUsedRadLastLoad(false);
           setLoading(false);
         }
       }
@@ -410,7 +544,17 @@ export const useViewer = (containerRef: React.RefObject<HTMLDivElement | null>) 
     load();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentModelUrl, currentModelFormat, isViewerReady]); // Added isViewerReady to dependencies to ensure model loads after viewer re-init
+  }, [
+    currentModelUrl,
+    currentModelFormat,
+    isViewerReady,
+    applyCurrentLodSettings,
+    setCanCompareLod,
+    setLoading,
+    setLoadingProgress,
+    setUsedRadLastLoad,
+    resetCamera,
+  ]); // Added isViewerReady to dependencies to ensure model loads after viewer re-init
 
   // ── Apply Angle / Distance Limits ───────────────────────────────────
   const applyLimits = useCallback(() => {

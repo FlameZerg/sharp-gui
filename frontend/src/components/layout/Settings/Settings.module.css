@@ -30,10 +30,21 @@
     border-radius: var(--radius-2xl); /* Match sidebar */
     padding: 24px;
     width: 90%;
-    max-width: 400px;
+    max-width: 560px;
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15), 0 8px 32px rgba(31, 38, 135, 0.07);
     transform: scale(0.9);
     transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+}
+
+@media (max-width: 768px) {
+    .panel {
+        width: calc(100% - 20px);
+        max-height: calc(100vh - 20px);
+        padding: 16px;
+    }
 }
 
 @media (prefers-color-scheme: dark) {
@@ -231,6 +242,15 @@
 
 .segmentBtn:hover {
     color: var(--text-primary);
+}
+
+.segmentBtn:disabled {
+    cursor: not-allowed;
+}
+
+.segmentBtn.segmentDisabled {
+    opacity: 0.45;
+    color: var(--text-muted);
 }
 
 .segmentBtn.segmentActive {
