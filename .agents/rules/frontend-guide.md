@@ -48,7 +48,12 @@ export default function MyButton() { ... }     // 禁止 default export
 export const MyButton: React.FC = () => { ... } // 新代码不用 React.FC
 ```
 
-> **⚠️ 历史遗留**：`ViewerCanvas`、`Settings`、`ControlsBar`、`ParticleBackground`、`TaskQueue` 等组件使用了 `React.FC`；`ControlsBar/`、`Help/`、`ViewerCanvas/` 缺少 `index.ts`。`useVR.ts` 已重构为 `useXR.ts`（统一 VR + AR）。现有代码不强制修改。
+> **⚠️ 历史遗留（2026-04）**：以下情况在现有代码中存在，不要求一次性重构，但新代码必须遵循本规范。
+>
+> 1. `React.FC` 仍在部分组件中使用：`ViewerCanvas`、`Settings`、`ControlsBar`、`ParticleBackground`、`TaskQueue`、`Help`、`GyroIndicator`、`VirtualJoystick`、`SpeedTooltip`。
+> 2. `App.tsx` 仍为 `export default`（应用入口历史遗留）。
+> 3. 部分组件目录缺少 `index.ts`：`layout/ControlsBar/`、`layout/Help/`、`viewer/ViewerCanvas/`、`viewer/GyroIndicator/`、`viewer/VirtualJoystick/`。
+> 4. `useVR.ts` 已重构为 `useXR.ts`（统一 VR + AR）。
 
 ### Props 定义
 
@@ -76,7 +81,7 @@ const classes = [
 | `components/common/` | 通用 UI 组件，不含业务逻辑 | Button, Modal, Loading, Icons |
 | `components/gallery/` | 图库相关组件 | GalleryItem, GalleryList |
 | `components/layout/` | 页面布局与导航组件 | Sidebar, ControlsBar, Settings, Help |
-| `components/viewer/` | 3D 查看器相关组件 | ViewerCanvas, GyroIndicator, VirtualJoystick |
+| `components/viewer/` | 3D 查看器相关组件 | ViewerCanvas, GyroIndicator, VirtualJoystick, SpeedTooltip |
 
 ---
 
