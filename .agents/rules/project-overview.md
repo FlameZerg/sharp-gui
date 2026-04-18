@@ -99,9 +99,9 @@ sharp-gui/
 |------|------|------|
 | react / react-dom | ^19.2.0 | UI 框架 |
 | zustand | ^5.0.10 | 状态管理 |
-| three | ^0.182.0 | 3D 渲染引擎 |
+| three | ^0.180.0 | 3D 渲染引擎 |
 | @mkkellogg/gaussian-splats-3d | - | 已移除，替换为 Spark |
-| @sparkjsdev/spark | ^0.1.10 | WASM 加速高斯溅射渲染器 |
+| @sparkjsdev/spark | ^2.0.0 | WASM 加速高斯溅射渲染器（稳定版） |
 | i18next | ^25.8.0 | 国际化核心 |
 | react-i18next | ^16.5.3 | React 绑定 |
 | typescript | ~5.9.3 | 类型系统 |
@@ -135,9 +135,9 @@ sharp-gui/
 
 ## 3D 渲染引擎迁移说明
 
-项目 3D 渲染层已从 `@mkkellogg/gaussian-splats-3d`（已停止维护）迁移至 `@sparkjsdev/spark` v0.1.10：
+项目 3D 渲染层已从 `@mkkellogg/gaussian-splats-3d`（已停止维护）迁移至 `@sparkjsdev/spark` 2.0 稳定版：
 
-- **React 前端**（`frontend/`）：使用 Spark（SplatMesh + SparkRenderer + SplatLoader + WASM Raycaster）
+- **React 前端**（`frontend/`）：使用 Spark（SplatMesh + SparkRenderer + LoD + RAD 可选流式加载）
 - **Legacy 前端**（`templates/` + `static/lib/`）：仍使用预打包的 GaussianSplats3D，不修改
 - **导出分享**（`share_template.html`）：仍使用 static/lib 中的预打包版本
 

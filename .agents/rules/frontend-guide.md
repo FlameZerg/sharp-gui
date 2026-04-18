@@ -307,41 +307,46 @@ Vite 配置了 `manualChunks` 代码分割：
 
 ### Spark（替代 Gaussian Splats 3D）
 
-项目已从 `@mkkellogg/gaussian-splats-3d`（已停止维护）迁移至 `@sparkjsdev/spark` v0.1.10：
+项目已从 `@mkkellogg/gaussian-splats-3d`（已停止维护）迁移至 `@sparkjsdev/spark` 2.0 稳定版：
 
 | 特性 | 说明 |
 |------|------|
 | **SplatMesh** | 继承 `THREE.Object3D`，可直接 `scene.add(splatMesh)` |
 | **SparkRenderer** | 继承 `THREE.Mesh`，作为渲染管线的一部分加入场景 |
-| **SplatLoader** | 异步加载 `.ply` / `.splat` 文件，支持 `onProgress` 回调 |
+| **RAD + paged** | 支持 `.rad` 头文件 + `.radc` 分块流式加载 |
 | **WASM Raycaster** | 内置 WASM 加速射线检测，用于点击聚焦（`splatMesh.raycast()`） |
 
 ### 关键代码模式
 
 ```typescript
 // 初始化 Spark 渲染器
-const sparkRenderer = new SparkRenderer(renderer);
-const splatMesh = new SplatMesh();
-scene.add(splatMesh);
+const sparkRenderer = new SparkRenderer({ renderer });
 scene.add(sparkRenderer); // 必须加入场景
 
-// 加载模型
-const loader = new SplatLoader(renderer);
-const data = await loader.loadAsync([url], (progress) => { ... });
-splatMesh.disposeSplats();
-splatMesh.addSplats(data);
+// 加载模型（LoD + nonLoD 对比能力）
+const splatMesh = new SplatMesh({
+  url,
+  fileType: SplatFileType.SPZ,
+  lod: true,
+  nonLod: true,
+});
+await splatMesh.initialized;
+scene.add(splatMesh);
+
+// 即时切换 LoD 对比源
+splatMesh.enableLod = true;
+splatMesh.lodScale = 1.0;
 
 // 点击聚焦（WASM Raycaster）
 const raycaster = new THREE.Raycaster();
-const intersects: THREE.Intersection[] = [];
-splatMesh.raycast(raycaster, intersects);
+const intersects = raycaster.intersectObject(splatMesh);
 ```
 
 ### 注意事项
 
 - **模型朝向**：加载后需设置 `splatMesh.rotation.x = Math.PI` 纠正模型上下颠倒
 - **缩放**：通过 `splatMesh.scale.setScalar(modelScale)` 控制（默认 2.0）
-- **清理**：切换模型时先 `splatMesh.disposeSplats()`，组件销毁时 `sparkRenderer.dispose()` + `splatMesh.dispose()`
+- **清理**：切换模型或组件销毁时调用 `splatMesh.dispose()`，并销毁 `sparkRenderer`
 - **listenToKeyEvents**：不可调用 `OrbitControls.listenToKeyEvents()`（Spark 注册的全局 listener 与之冲突）
 
 ---
