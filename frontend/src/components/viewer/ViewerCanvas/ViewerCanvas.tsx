@@ -4,6 +4,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { ControlsBar } from '@/components/layout/ControlsBar/ControlsBar';
 import { Help } from '@/components/layout/Help/Help';
 import { GyroIndicator } from '@/components/viewer/GyroIndicator/GyroIndicator';
+import { QuickControls } from '@/components/viewer/QuickControls';
 import { VirtualJoystick } from '@/components/viewer/VirtualJoystick/VirtualJoystick';
 import { SpeedTooltip } from '@/components/viewer/SpeedTooltip';
 import styles from './ViewerCanvas.module.css';
@@ -41,6 +42,7 @@ const ViewerInstance: React.FC = () => {
                 handlers={viewerHook.joystick.handlers}
             />
             <SpeedTooltip mode={viewerHook.speedMode} />
+            <QuickControls isInXr={viewerHook.xr.isInXR} />
             <Help />
         </>
     );

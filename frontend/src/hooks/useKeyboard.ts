@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import * as THREE from 'three';
+import { useAppStore } from '@/store';
 import { DEFAULT_CAMERA_CONFIG } from '@/utils/camera';
 
 export type SpeedMode = 'fast' | 'precision' | null;
@@ -16,7 +17,21 @@ interface KeyState {
   [key: string]: boolean;
 }
 
-export const useKeyboard = (viewerRef: React.MutableRefObject<any>, resetCameraFn?: () => void) => {
+interface KeyboardViewerControls {
+  target?: THREE.Vector3;
+  update?: () => void;
+  zoomSpeed: number;
+}
+
+interface KeyboardViewerRuntime {
+  camera?: THREE.Camera;
+  controls?: KeyboardViewerControls;
+}
+
+export const useKeyboard = (
+  viewerRef: React.MutableRefObject<KeyboardViewerRuntime | null>,
+  resetCameraFn?: () => void,
+) => {
   const keyState = useRef<KeyState>({
     w: false, a: false, s: false, d: false, q: false, e: false,
     shift: false, ctrl: false
@@ -172,13 +187,19 @@ export const useKeyboard = (viewerRef: React.MutableRefObject<any>, resetCameraF
        const controls = viewer.controls;
        if (!controls) return;
 
+       const reverseZoom = useAppStore.getState().viewerInteractionApplied.reversePointerDirection
+         ? -1
+         : 1;
+
+       let baseZoomSpeed = DEFAULT_CAMERA_CONFIG.zoomSpeed;
+
        if (shift) {
-         controls.zoomSpeed = DEFAULT_CAMERA_CONFIG.acceleratedZoomSpeed;
+         baseZoomSpeed = DEFAULT_CAMERA_CONFIG.acceleratedZoomSpeed;
        } else if (ctrl) {
-         controls.zoomSpeed = DEFAULT_CAMERA_CONFIG.precisionZoomSpeed;
-       } else {
-         controls.zoomSpeed = DEFAULT_CAMERA_CONFIG.zoomSpeed;
+         baseZoomSpeed = DEFAULT_CAMERA_CONFIG.precisionZoomSpeed;
        }
+
+       controls.zoomSpeed = baseZoomSpeed * reverseZoom;
     };
 
     window.addEventListener('keydown', handleKeyDown);

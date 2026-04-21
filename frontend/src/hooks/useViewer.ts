@@ -21,6 +21,10 @@ import { useXR } from './useXR';
 let focusRingStyleInjected = false;
 const missingRadCache = new Set<string>();
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
 function isNotFoundError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   return /\b404\b/i.test(error.message) || /\bnot found\b/i.test(error.message);
@@ -96,17 +100,62 @@ export const useViewer = (containerRef: React.RefObject<HTMLDivElement | null>) 
 
     const state = useAppStore.getState();
     const preset = getLodPresetConfig(state.lodPreset);
+    const quality = state.viewerQualityApplied;
+    const lodEnabled = state.isLodEnabled && quality.lodEnabled;
+    const effectivePreset = {
+      ...preset,
+      lodSplatScale: clamp(quality.lodScale, 0.2, 3.0),
+      coneFoveate: clamp(quality.coneFoveate, 0, 1),
+      behindFoveate: clamp(quality.behindFoveate, 0, 1),
+    };
 
-    ctx.sparkRenderer.enableLod = state.isLodEnabled;
-    ctx.sparkRenderer.enableLodFetching = state.isLodEnabled;
-    applyLodPresetToRenderer(ctx.sparkRenderer, preset);
+    ctx.sparkRenderer.enableLod = lodEnabled;
+    ctx.sparkRenderer.enableLodFetching = lodEnabled;
+    applyLodPresetToRenderer(ctx.sparkRenderer, effectivePreset);
 
     if (ctx.splatMesh) {
-      applyLodPresetToMesh(ctx.splatMesh, preset);
-      ctx.splatMesh.enableLod = state.isLodEnabled && state.lodCompareMode === 'lod';
+      applyLodPresetToMesh(ctx.splatMesh, effectivePreset);
+      ctx.splatMesh.enableLod = lodEnabled && state.lodCompareMode === 'lod';
     }
 
     ctx.sparkRenderer.setDirty();
+  }, []);
+
+  const applyCurrentTransformSettings = useCallback(() => {
+    const ctx = viewerRef.current;
+    if (!ctx?.splatMesh) return;
+    if (ctx.renderer.xr.isPresenting) return;
+
+    const transform = useAppStore.getState().viewerTransformApplied;
+    ctx.splatMesh.position.set(
+      transform.positionX,
+      transform.positionY,
+      transform.positionZ,
+    );
+    ctx.splatMesh.rotation.set(
+      transform.rotationX,
+      transform.rotationY,
+      transform.rotationZ,
+    );
+    ctx.splatMesh.scale.setScalar(Math.max(0.05, transform.scale));
+    ctx.sparkRenderer.setDirty();
+  }, []);
+
+  const applyCurrentInteractionSettings = useCallback(() => {
+    const ctx = viewerRef.current;
+    if (!ctx) return;
+
+    const interaction = useAppStore.getState().viewerInteractionApplied;
+    const reverseDirection = interaction.reversePointerDirection ? -1 : 1;
+    const reverseSlide = interaction.reversePointerSlide ? -1 : 1;
+    const currentZoomMagnitude = Math.max(
+      0.01,
+      Math.abs(ctx.controls.zoomSpeed || DEFAULT_CAMERA_CONFIG.zoomSpeed),
+    );
+
+    ctx.controls.rotateSpeed = Math.abs(DEFAULT_CAMERA_CONFIG.rotateSpeed) * reverseDirection;
+    ctx.controls.panSpeed = Math.abs(DEFAULT_CAMERA_CONFIG.panSpeed) * reverseSlide;
+    ctx.controls.zoomSpeed = currentZoomMagnitude * reverseDirection;
   }, []);
 
   // ── Reset Camera (defined early so child hooks can reference it) ────
@@ -203,6 +252,14 @@ export const useViewer = (containerRef: React.RefObject<HTMLDivElement | null>) 
       const state = useAppStore.getState();
       const isHighFidelity = state.isHighFidelity;
       const preset = getLodPresetConfig(state.lodPreset);
+      const quality = state.viewerQualityApplied;
+      const lodEnabled = state.isLodEnabled && quality.lodEnabled;
+      const effectivePreset = {
+        ...preset,
+        lodSplatScale: clamp(quality.lodScale, 0.2, 3.0),
+        coneFoveate: clamp(quality.coneFoveate, 0, 1),
+        behindFoveate: clamp(quality.behindFoveate, 0, 1),
+      };
 
       try {
         // Scene
@@ -246,14 +303,14 @@ export const useViewer = (containerRef: React.RefObject<HTMLDivElement | null>) 
         const sparkRenderer = new SparkRenderer({
           renderer,
           ...(isHighFidelity ? { blurAmount: 0, preBlurAmount: 0 } : {}),
-          enableLod: state.isLodEnabled,
-          enableLodFetching: state.isLodEnabled,
-          lodSplatScale: preset.lodSplatScale,
-          lodRenderScale: preset.lodRenderScale,
-          behindFoveate: preset.behindFoveate,
-          coneFov0: preset.coneFov0,
-          coneFov: preset.coneFov,
-          coneFoveate: preset.coneFoveate,
+          enableLod: lodEnabled,
+          enableLodFetching: lodEnabled,
+          lodSplatScale: effectivePreset.lodSplatScale,
+          lodRenderScale: effectivePreset.lodRenderScale,
+          behindFoveate: effectivePreset.behindFoveate,
+          coneFov0: effectivePreset.coneFov0,
+          coneFov: effectivePreset.coneFov,
+          coneFoveate: effectivePreset.coneFoveate,
         });
         scene.add(sparkRenderer);
 
@@ -316,6 +373,7 @@ export const useViewer = (containerRef: React.RefObject<HTMLDivElement | null>) 
         renderer.domElement.addEventListener('pointerup', onPointerUp);
 
         viewerRef.current = { camera, controls, renderer, scene, sparkRenderer, splatMesh: null };
+        applyCurrentInteractionSettings();
         setIsViewerReady(true);
       } catch (error) {
         console.error('[Viewer] Failed to initialize:', error);
@@ -372,15 +430,57 @@ export const useViewer = (containerRef: React.RefObject<HTMLDivElement | null>) 
         state.isLodEnabled,
         state.lodPreset,
         state.lodCompareMode,
+        state.viewerQualityApplied.lodEnabled,
+        state.viewerQualityApplied.lodScale,
+        state.viewerQualityApplied.coneFoveate,
+        state.viewerQualityApplied.behindFoveate,
+      ].join('|');
+    };
+
+    const getTransformSignature = () => {
+      const state = useAppStore.getState();
+      return [
+        state.viewerTransformApplied.positionX,
+        state.viewerTransformApplied.positionY,
+        state.viewerTransformApplied.positionZ,
+        state.viewerTransformApplied.rotationX,
+        state.viewerTransformApplied.rotationY,
+        state.viewerTransformApplied.rotationZ,
+        state.viewerTransformApplied.scale,
+      ].join('|');
+    };
+
+    const getInteractionSignature = () => {
+      const state = useAppStore.getState();
+      return [
+        state.viewerInteractionApplied.reversePointerDirection,
+        state.viewerInteractionApplied.reversePointerSlide,
       ].join('|');
     };
 
     let lodSignature = getLodSignature();
+    let transformSignature = getTransformSignature();
+    let interactionSignature = getInteractionSignature();
+
     const unsubscribeLod = useAppStore.subscribe(() => {
       const nextSignature = getLodSignature();
       if (nextSignature === lodSignature) return;
       lodSignature = nextSignature;
       applyCurrentLodSettings();
+    });
+
+    const unsubscribeTransform = useAppStore.subscribe(() => {
+      const nextSignature = getTransformSignature();
+      if (nextSignature === transformSignature) return;
+      transformSignature = nextSignature;
+      applyCurrentTransformSettings();
+    });
+
+    const unsubscribeInteraction = useAppStore.subscribe(() => {
+      const nextSignature = getInteractionSignature();
+      if (nextSignature === interactionSignature) return;
+      interactionSignature = nextSignature;
+      applyCurrentInteractionSettings();
     });
 
     // Initial viewer setup
@@ -390,6 +490,8 @@ export const useViewer = (containerRef: React.RefObject<HTMLDivElement | null>) 
       isDisposed = true;
       unsubscribeHF();
       unsubscribeLod();
+      unsubscribeTransform();
+      unsubscribeInteraction();
       resizeObserver.disconnect();
 
       const ctx = viewerRef.current;
@@ -410,7 +512,14 @@ export const useViewer = (containerRef: React.RefObject<HTMLDivElement | null>) 
       setCanCompareLod(false);
       setUsedRadLastLoad(false);
     };
-  }, [containerRef, applyCurrentLodSettings, setCanCompareLod, setUsedRadLastLoad]);
+  }, [
+    containerRef,
+    applyCurrentInteractionSettings,
+    applyCurrentLodSettings,
+    applyCurrentTransformSettings,
+    setCanCompareLod,
+    setUsedRadLastLoad,
+  ]);
 
   // ── Load Model ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -437,6 +546,14 @@ export const useViewer = (containerRef: React.RefObject<HTMLDivElement | null>) 
 
         const state = useAppStore.getState();
         const preset = getLodPresetConfig(state.lodPreset);
+        const quality = state.viewerQualityApplied;
+        const lodEnabled = state.isLodEnabled && quality.lodEnabled;
+        const effectivePreset = {
+          ...preset,
+          lodSplatScale: clamp(quality.lodScale, 0.2, 3.0),
+          coneFoveate: clamp(quality.coneFoveate, 0, 1),
+          behindFoveate: clamp(quality.behindFoveate, 0, 1),
+        };
         const fallbackFileType = getSplatFileTypeFromFormat(currentModelFormat);
 
         const createSplatMesh = async ({
@@ -452,13 +569,13 @@ export const useViewer = (containerRef: React.RefObject<HTMLDivElement | null>) 
           const mesh = new SplatMesh({
             url,
             fileType,
-            ...(state.isLodEnabled ? { lod: true, nonLod: true } : {}),
-            enableLod: state.isLodEnabled && state.lodCompareMode === 'lod',
-            lodScale: preset.lodSplatScale,
-            behindFoveate: preset.behindFoveate,
-            coneFov0: preset.coneFov0,
-            coneFov: preset.coneFov,
-            coneFoveate: preset.coneFoveate,
+            ...(lodEnabled ? { lod: true, nonLod: true } : {}),
+            enableLod: lodEnabled && state.lodCompareMode === 'lod',
+            lodScale: effectivePreset.lodSplatScale,
+            behindFoveate: effectivePreset.behindFoveate,
+            coneFov0: effectivePreset.coneFov0,
+            coneFov: effectivePreset.coneFov,
+            coneFoveate: effectivePreset.coneFoveate,
             ...(paged !== undefined ? { paged } : {}),
           });
           try {
@@ -514,14 +631,11 @@ export const useViewer = (containerRef: React.RefObject<HTMLDivElement | null>) 
           return;
         }
 
-        splatMesh.scale.setScalar(DEFAULT_CAMERA_CONFIG.modelScale);
-        // Gaussian Splats are trained in OpenCV/COLMAP convention (Y-down, Z-forward).
-        // Three.js uses Y-up, Z-toward-viewer. Rotating 180° around X corrects both axes.
-        splatMesh.rotation.x = Math.PI;
         ctx.scene.add(splatMesh);
         ctx.splatMesh = splatMesh;
+        applyCurrentTransformSettings();
 
-        const hasComparison = state.isLodEnabled && hasLodComparisonData(splatMesh);
+        const hasComparison = lodEnabled && hasLodComparisonData(splatMesh);
         setCanCompareLod(hasComparison);
         setUsedRadLastLoad(loadedWithRad);
         applyCurrentLodSettings();
@@ -549,6 +663,7 @@ export const useViewer = (containerRef: React.RefObject<HTMLDivElement | null>) 
     currentModelFormat,
     isViewerReady,
     applyCurrentLodSettings,
+    applyCurrentTransformSettings,
     setCanCompareLod,
     setLoading,
     setLoadingProgress,

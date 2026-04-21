@@ -1,5 +1,15 @@
 import { create } from 'zustand';
-import type { GalleryItem, Task, ModelFormat } from '@/types';
+import { getLodPresetConfig } from '@/constants/spark';
+import type {
+  GalleryItem,
+  ModelFormat,
+  Task,
+  ViewerInteractionState,
+  ViewerOrientationPreset,
+  ViewerQualityState,
+  ViewerQuickControlsOverride,
+  ViewerTransformState,
+} from '@/types';
 import type {
   LodCompareMode,
   LodPresetKey,
@@ -18,6 +28,164 @@ const LOCAL_LOD_COMPARE_KEY = 'sharp-lod-compare-mode';
 const LOCAL_RAD_MODE_KEY = 'sharp-rad-mode-enabled';
 const LOCAL_RAD_PAGED_KEY = 'sharp-rad-paged-enabled';
 const LOCAL_XR_UPDATE_MODE_KEY = 'sharp-xr-update-mode';
+const LOCAL_QUICK_OVERRIDES_KEY = 'sharp-viewer-quick-overrides-v1';
+
+const QUALITY_LIMITS = {
+  lodScale: { min: 0.2, max: 3.0 },
+  coneFoveate: { min: 0, max: 1 },
+  behindFoveate: { min: 0, max: 1 },
+};
+
+const DEFAULT_VIEWER_TRANSFORM: ViewerTransformState = {
+  positionX: 0,
+  positionY: 0,
+  positionZ: 0,
+  rotationX: Math.PI,
+  rotationY: 0,
+  rotationZ: 0,
+  scale: 2,
+};
+
+const DEFAULT_VIEWER_INTERACTION: ViewerInteractionState = {
+  reversePointerDirection: false,
+  reversePointerSlide: false,
+};
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function safeNumber(value: unknown, fallback: number): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  return fallback;
+}
+
+function normalizeRadians(value: number): number {
+  let angle = value;
+  while (angle > Math.PI) angle -= 2 * Math.PI;
+  while (angle < -Math.PI) angle += 2 * Math.PI;
+  return angle;
+}
+
+function getViewerQualityFromPreset(
+  preset: LodPresetKey,
+  lodEnabled: boolean,
+): ViewerQualityState {
+  const presetConfig = getLodPresetConfig(preset);
+  return {
+    lodEnabled,
+    lodScale: presetConfig.lodSplatScale,
+    coneFoveate: presetConfig.coneFoveate,
+    behindFoveate: presetConfig.behindFoveate,
+  };
+}
+
+function sanitizeViewerTransform(
+  value?: Partial<ViewerTransformState>,
+): ViewerTransformState {
+  return {
+    positionX: safeNumber(value?.positionX, DEFAULT_VIEWER_TRANSFORM.positionX),
+    positionY: safeNumber(value?.positionY, DEFAULT_VIEWER_TRANSFORM.positionY),
+    positionZ: safeNumber(value?.positionZ, DEFAULT_VIEWER_TRANSFORM.positionZ),
+    rotationX: normalizeRadians(safeNumber(value?.rotationX, DEFAULT_VIEWER_TRANSFORM.rotationX)),
+    rotationY: normalizeRadians(safeNumber(value?.rotationY, DEFAULT_VIEWER_TRANSFORM.rotationY)),
+    rotationZ: normalizeRadians(safeNumber(value?.rotationZ, DEFAULT_VIEWER_TRANSFORM.rotationZ)),
+    scale: clampNumber(safeNumber(value?.scale, DEFAULT_VIEWER_TRANSFORM.scale), 0.05, 20),
+  };
+}
+
+function sanitizeViewerInteraction(
+  value?: Partial<ViewerInteractionState>,
+): ViewerInteractionState {
+  return {
+    reversePointerDirection: Boolean(value?.reversePointerDirection),
+    reversePointerSlide: Boolean(value?.reversePointerSlide),
+  };
+}
+
+function sanitizeViewerQuality(
+  value: Partial<ViewerQualityState> | undefined,
+  fallback: ViewerQualityState,
+): ViewerQualityState {
+  return {
+    lodEnabled: typeof value?.lodEnabled === 'boolean' ? value.lodEnabled : fallback.lodEnabled,
+    lodScale: clampNumber(
+      safeNumber(value?.lodScale, fallback.lodScale),
+      QUALITY_LIMITS.lodScale.min,
+      QUALITY_LIMITS.lodScale.max,
+    ),
+    coneFoveate: clampNumber(
+      safeNumber(value?.coneFoveate, fallback.coneFoveate),
+      QUALITY_LIMITS.coneFoveate.min,
+      QUALITY_LIMITS.coneFoveate.max,
+    ),
+    behindFoveate: clampNumber(
+      safeNumber(value?.behindFoveate, fallback.behindFoveate),
+      QUALITY_LIMITS.behindFoveate.min,
+      QUALITY_LIMITS.behindFoveate.max,
+    ),
+  };
+}
+
+function getDefaultViewerOverride(
+  quality: ViewerQualityState,
+): ViewerQuickControlsOverride {
+  return {
+    transform: { ...DEFAULT_VIEWER_TRANSFORM },
+    interaction: { ...DEFAULT_VIEWER_INTERACTION },
+    quality: { ...quality },
+  };
+}
+
+function sanitizeViewerOverride(
+  value: unknown,
+  fallbackQuality: ViewerQualityState,
+): ViewerQuickControlsOverride {
+  if (!value || typeof value !== 'object') {
+    return getDefaultViewerOverride(fallbackQuality);
+  }
+
+  const candidate = value as Partial<ViewerQuickControlsOverride>;
+  return {
+    transform: sanitizeViewerTransform(candidate.transform),
+    interaction: sanitizeViewerInteraction(candidate.interaction),
+    quality: sanitizeViewerQuality(candidate.quality, fallbackQuality),
+  };
+}
+
+function getLocalQuickOverrides(
+  fallbackQuality: ViewerQualityState,
+): Record<string, ViewerQuickControlsOverride> {
+  try {
+    const raw = localStorage.getItem(LOCAL_QUICK_OVERRIDES_KEY);
+    if (!raw) return {};
+
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object') return {};
+
+    const result: Record<string, ViewerQuickControlsOverride> = {};
+    for (const [modelId, overrideValue] of Object.entries(
+      parsed as Record<string, unknown>,
+    )) {
+      if (!modelId) continue;
+      result[modelId] = sanitizeViewerOverride(overrideValue, fallbackQuality);
+    }
+
+    return result;
+  } catch {
+    return {};
+  }
+}
+
+function persistQuickOverrides(
+  overrides: Record<string, ViewerQuickControlsOverride>,
+): void {
+  try {
+    localStorage.setItem(LOCAL_QUICK_OVERRIDES_KEY, JSON.stringify(overrides));
+  } catch {
+    // ignore storage errors
+  }
+}
 
 function getLocalFormatOverride(): ModelFormat | null {
   try {
@@ -161,6 +329,11 @@ function getInitialViewerPresetState(): { quickPresetMode: QuickPresetMode } & Q
 }
 
 const initialViewerPresetState = getInitialViewerPresetState();
+const initialViewerQualityState = getViewerQualityFromPreset(
+  initialViewerPresetState.lodPreset,
+  initialViewerPresetState.isLodEnabled,
+);
+const initialModelViewerOverrides = getLocalQuickOverrides(initialViewerQualityState);
 
 interface AppState {
   // UI State
@@ -208,6 +381,14 @@ interface AppState {
   usedRadLastLoad: boolean;
   xrUpdateMode: XrUpdateMode;
   isHighFidelity: boolean;
+  quickControlsOpen: boolean;
+  viewerTransformDraft: ViewerTransformState;
+  viewerTransformApplied: ViewerTransformState;
+  viewerInteractionDraft: ViewerInteractionState;
+  viewerInteractionApplied: ViewerInteractionState;
+  viewerQualityDraft: ViewerQualityState;
+  viewerQualityApplied: ViewerQualityState;
+  modelViewerOverrides: Record<string, ViewerQuickControlsOverride>;
 
   // Settings
   isLocalAccess: boolean;
@@ -246,6 +427,7 @@ interface AppState {
   setQuickPresetMode: (mode: QuickPresetMode) => void;
   applyQuickPreset: (mode: LodPresetKey) => void;
   toggleLod: () => void;
+  setLodEnabled: (enabled: boolean) => void;
   setLodPreset: (preset: LodPresetKey) => void;
   setLodCompareMode: (mode: LodCompareMode) => void;
   setCanCompareLod: (canCompare: boolean) => void;
@@ -254,6 +436,19 @@ interface AppState {
   setUsedRadLastLoad: (used: boolean) => void;
   setXrUpdateMode: (mode: XrUpdateMode) => void;
   toggleHighFidelity: () => void;
+
+  setQuickControlsOpen: (open: boolean) => void;
+  toggleQuickControls: () => void;
+  setViewerTransformDraft: (patch: Partial<ViewerTransformState>) => void;
+  applyViewerTransformDraft: () => void;
+  setViewerInteractionDraft: (patch: Partial<ViewerInteractionState>) => void;
+  applyViewerInteractionDraft: () => void;
+  setViewerQualityDraft: (patch: Partial<ViewerQualityState>) => void;
+  applyViewerQualityDraft: () => void;
+  applyOrientationPreset: (preset: ViewerOrientationPreset) => void;
+  restoreViewerQuickControlsForModel: (modelId: string | null) => void;
+  saveViewerQuickControlsForCurrentModel: () => void;
+  resetViewerQuickControlsForCurrentModel: () => void;
 
   setLocalAccess: (isLocal: boolean) => void;
 }
@@ -299,6 +494,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   usedRadLastLoad: false,
   xrUpdateMode: initialViewerPresetState.xrUpdateMode,
   isHighFidelity: initialViewerPresetState.isHighFidelity,
+  quickControlsOpen: false,
+  viewerTransformDraft: { ...DEFAULT_VIEWER_TRANSFORM },
+  viewerTransformApplied: { ...DEFAULT_VIEWER_TRANSFORM },
+  viewerInteractionDraft: { ...DEFAULT_VIEWER_INTERACTION },
+  viewerInteractionApplied: { ...DEFAULT_VIEWER_INTERACTION },
+  viewerQualityDraft: { ...initialViewerQualityState },
+  viewerQualityApplied: { ...initialViewerQualityState },
+  modelViewerOverrides: initialModelViewerOverrides,
 
   isLocalAccess: false,
 
@@ -331,7 +534,27 @@ export const useAppStore = create<AppState>((set, get) => ({
   setBootError: (error) => set({ bootError: error }),
 
   setGalleryItems: (items) => set({ galleryItems: items }),
-  setCurrentModel: (id, url, format = null) => set({ currentModelId: id, currentModelUrl: url, currentModelFormat: format }),
+  setCurrentModel: (id, url, format = null) => set((state) => {
+    const fallbackQuality = getViewerQualityFromPreset(state.lodPreset, state.isLodEnabled);
+    const fallbackOverride = getDefaultViewerOverride(fallbackQuality);
+    const override = id ? state.modelViewerOverrides[id] : undefined;
+    const resolved = override
+      ? sanitizeViewerOverride(override, fallbackQuality)
+      : fallbackOverride;
+
+    return {
+      currentModelId: id,
+      currentModelUrl: url,
+      currentModelFormat: format,
+      viewerTransformDraft: resolved.transform,
+      viewerTransformApplied: resolved.transform,
+      viewerInteractionDraft: resolved.interaction,
+      viewerInteractionApplied: resolved.interaction,
+      viewerQualityDraft: resolved.quality,
+      viewerQualityApplied: resolved.quality,
+      isLodEnabled: resolved.quality.lodEnabled,
+    };
+  }),
   setPreviewImage: (item) => set({ previewImage: item }),
 
   setServerModelFormat: (format) => set({ serverModelFormat: format }),
@@ -363,6 +586,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   applyQuickPreset: (mode) => {
     const next = getQuickPresetState(mode);
+    const nextQuality = getViewerQualityFromPreset(mode, next.isLodEnabled);
 
     try { localStorage.setItem(LOCAL_QUICK_PRESET_KEY, mode); } catch { /* ignore */ }
     try { localStorage.setItem(LOCAL_LOD_KEY, String(next.isLodEnabled)); } catch { /* ignore */ }
@@ -382,16 +606,52 @@ export const useAppStore = create<AppState>((set, get) => ({
       radPagedEnabled: next.radPagedEnabled,
       xrUpdateMode: next.xrUpdateMode,
       isHighFidelity: next.isHighFidelity,
+      viewerQualityDraft: nextQuality,
+      viewerQualityApplied: nextQuality,
     });
   },
   toggleLod: () => {
     const next = !get().isLodEnabled;
     try { localStorage.setItem(LOCAL_LOD_KEY, String(next)); } catch { /* ignore */ }
-    set({ isLodEnabled: next });
+    set((state) => ({
+      isLodEnabled: next,
+      viewerQualityDraft: {
+        ...state.viewerQualityDraft,
+        lodEnabled: next,
+      },
+      viewerQualityApplied: {
+        ...state.viewerQualityApplied,
+        lodEnabled: next,
+      },
+    }));
+  },
+  setLodEnabled: (enabled) => {
+    try { localStorage.setItem(LOCAL_LOD_KEY, String(enabled)); } catch { /* ignore */ }
+    set((state) => ({
+      isLodEnabled: enabled,
+      viewerQualityDraft: {
+        ...state.viewerQualityDraft,
+        lodEnabled: enabled,
+      },
+      viewerQualityApplied: {
+        ...state.viewerQualityApplied,
+        lodEnabled: enabled,
+      },
+    }));
   },
   setLodPreset: (preset) => {
     try { localStorage.setItem(LOCAL_LOD_PRESET_KEY, preset); } catch { /* ignore */ }
-    set({ lodPreset: preset });
+    set((state) => {
+      const nextQuality = getViewerQualityFromPreset(
+        preset,
+        state.viewerQualityApplied.lodEnabled,
+      );
+      return {
+        lodPreset: preset,
+        viewerQualityDraft: nextQuality,
+        viewerQualityApplied: nextQuality,
+      };
+    });
   },
   setLodCompareMode: (mode) => {
     const canCompareLod = get().canCompareLod;
@@ -426,6 +686,221 @@ export const useAppStore = create<AppState>((set, get) => ({
     try { localStorage.setItem(LOCAL_HF_KEY, String(next)); } catch { /* ignore */ }
     set({ isHighFidelity: next });
   },
+
+  setQuickControlsOpen: (open) => set({ quickControlsOpen: open }),
+  toggleQuickControls: () => set((state) => ({ quickControlsOpen: !state.quickControlsOpen })),
+  setViewerTransformDraft: (patch) => set((state) => ({
+    viewerTransformDraft: sanitizeViewerTransform({
+      ...state.viewerTransformDraft,
+      ...patch,
+    }),
+  })),
+  applyViewerTransformDraft: () => set((state) => {
+    const transform = sanitizeViewerTransform(state.viewerTransformDraft);
+    const nextState = {
+      viewerTransformDraft: transform,
+      viewerTransformApplied: transform,
+    };
+
+    if (!state.currentModelId) {
+      return nextState;
+    }
+
+    const nextOverrides = {
+      ...state.modelViewerOverrides,
+      [state.currentModelId]: {
+        transform,
+        interaction: state.viewerInteractionApplied,
+        quality: state.viewerQualityApplied,
+      },
+    };
+    persistQuickOverrides(nextOverrides);
+
+    return {
+      ...nextState,
+      modelViewerOverrides: nextOverrides,
+    };
+  }),
+  setViewerInteractionDraft: (patch) => set((state) => ({
+    viewerInteractionDraft: sanitizeViewerInteraction({
+      ...state.viewerInteractionDraft,
+      ...patch,
+    }),
+  })),
+  applyViewerInteractionDraft: () => set((state) => {
+    const interaction = sanitizeViewerInteraction(state.viewerInteractionDraft);
+    const nextState = {
+      viewerInteractionDraft: interaction,
+      viewerInteractionApplied: interaction,
+    };
+
+    if (!state.currentModelId) {
+      return nextState;
+    }
+
+    const nextOverrides = {
+      ...state.modelViewerOverrides,
+      [state.currentModelId]: {
+        transform: state.viewerTransformApplied,
+        interaction,
+        quality: state.viewerQualityApplied,
+      },
+    };
+    persistQuickOverrides(nextOverrides);
+
+    return {
+      ...nextState,
+      modelViewerOverrides: nextOverrides,
+    };
+  }),
+  setViewerQualityDraft: (patch) => set((state) => ({
+    viewerQualityDraft: sanitizeViewerQuality(
+      {
+        ...state.viewerQualityDraft,
+        ...patch,
+      },
+      state.viewerQualityDraft,
+    ),
+  })),
+  applyViewerQualityDraft: () => set((state) => {
+    const quality = sanitizeViewerQuality(
+      state.viewerQualityDraft,
+      state.viewerQualityApplied,
+    );
+    try { localStorage.setItem(LOCAL_LOD_KEY, String(quality.lodEnabled)); } catch { /* ignore */ }
+
+    const nextState = {
+      isLodEnabled: quality.lodEnabled,
+      viewerQualityDraft: quality,
+      viewerQualityApplied: quality,
+    };
+
+    if (!state.currentModelId) {
+      return nextState;
+    }
+
+    const nextOverrides = {
+      ...state.modelViewerOverrides,
+      [state.currentModelId]: {
+        transform: state.viewerTransformApplied,
+        interaction: state.viewerInteractionApplied,
+        quality,
+      },
+    };
+    persistQuickOverrides(nextOverrides);
+
+    return {
+      ...nextState,
+      modelViewerOverrides: nextOverrides,
+    };
+  }),
+  applyOrientationPreset: (preset) => set((state) => {
+    const nextTransform = { ...state.viewerTransformDraft };
+
+    if (preset === 'default' || preset === 'openCv') {
+      nextTransform.rotationX = Math.PI;
+      nextTransform.rotationY = 0;
+      nextTransform.rotationZ = 0;
+    } else if (preset === 'openGl') {
+      nextTransform.rotationX = 0;
+      nextTransform.rotationY = 0;
+      nextTransform.rotationZ = 0;
+    } else if (preset === 'zUp') {
+      nextTransform.rotationX = -Math.PI / 2;
+      nextTransform.rotationY = 0;
+      nextTransform.rotationZ = 0;
+    } else if (preset === 'flipUpsideDown') {
+      nextTransform.rotationZ = normalizeRadians(nextTransform.rotationZ + Math.PI);
+    }
+
+    const transform = sanitizeViewerTransform(nextTransform);
+    const nextState = {
+      viewerTransformDraft: transform,
+      viewerTransformApplied: transform,
+    };
+
+    if (!state.currentModelId) {
+      return nextState;
+    }
+
+    const nextOverrides = {
+      ...state.modelViewerOverrides,
+      [state.currentModelId]: {
+        transform,
+        interaction: state.viewerInteractionApplied,
+        quality: state.viewerQualityApplied,
+      },
+    };
+    persistQuickOverrides(nextOverrides);
+
+    return {
+      ...nextState,
+      modelViewerOverrides: nextOverrides,
+    };
+  }),
+  restoreViewerQuickControlsForModel: (modelId) => set((state) => {
+    const fallbackQuality = getViewerQualityFromPreset(state.lodPreset, state.isLodEnabled);
+    const fallbackOverride = getDefaultViewerOverride(fallbackQuality);
+    const override = modelId ? state.modelViewerOverrides[modelId] : undefined;
+    const resolved = override
+      ? sanitizeViewerOverride(override, fallbackQuality)
+      : fallbackOverride;
+
+    return {
+      viewerTransformDraft: resolved.transform,
+      viewerTransformApplied: resolved.transform,
+      viewerInteractionDraft: resolved.interaction,
+      viewerInteractionApplied: resolved.interaction,
+      viewerQualityDraft: resolved.quality,
+      viewerQualityApplied: resolved.quality,
+      isLodEnabled: resolved.quality.lodEnabled,
+    };
+  }),
+  saveViewerQuickControlsForCurrentModel: () => set((state) => {
+    if (!state.currentModelId) {
+      return {};
+    }
+
+    const nextOverrides = {
+      ...state.modelViewerOverrides,
+      [state.currentModelId]: {
+        transform: sanitizeViewerTransform(state.viewerTransformApplied),
+        interaction: sanitizeViewerInteraction(state.viewerInteractionApplied),
+        quality: sanitizeViewerQuality(
+          state.viewerQualityApplied,
+          state.viewerQualityApplied,
+        ),
+      },
+    };
+    persistQuickOverrides(nextOverrides);
+
+    return {
+      modelViewerOverrides: nextOverrides,
+    };
+  }),
+  resetViewerQuickControlsForCurrentModel: () => set((state) => {
+    const fallbackQuality = getViewerQualityFromPreset(state.lodPreset, state.isLodEnabled);
+    const fallbackOverride = getDefaultViewerOverride(fallbackQuality);
+
+    const nextOverrides = { ...state.modelViewerOverrides };
+    if (state.currentModelId && state.currentModelId in nextOverrides) {
+      delete nextOverrides[state.currentModelId];
+      persistQuickOverrides(nextOverrides);
+    }
+
+    try { localStorage.setItem(LOCAL_LOD_KEY, String(fallbackOverride.quality.lodEnabled)); } catch { /* ignore */ }
+
+    return {
+      isLodEnabled: fallbackOverride.quality.lodEnabled,
+      viewerTransformDraft: fallbackOverride.transform,
+      viewerTransformApplied: fallbackOverride.transform,
+      viewerInteractionDraft: fallbackOverride.interaction,
+      viewerInteractionApplied: fallbackOverride.interaction,
+      viewerQualityDraft: fallbackOverride.quality,
+      viewerQualityApplied: fallbackOverride.quality,
+      modelViewerOverrides: nextOverrides,
+    };
+  }),
 
   setLocalAccess: (isLocal) => set({ isLocalAccess: isLocal }),
 }));
