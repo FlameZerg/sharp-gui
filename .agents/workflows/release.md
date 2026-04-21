@@ -4,7 +4,7 @@
 
 项目通过 **Git tag 触发 GitHub Actions** 自动构建并发布到 GitHub Releases。
 
-> 📝 **Commit Message 和 Release Note 格式**请参考 Skill：[.agent/skills/commit-and-release/SKILL.md](../.agent/skills/commit-and-release/SKILL.md)，其中定义了 Conventional Commits 中文规范和中英双语 Release Note 模板。
+> 📝 **Commit Message 和 Release Note 格式**请参考 Skill：[.agents/skills/commit-and-release/SKILL.md](../skills/commit-and-release/SKILL.md)，其中定义了 Conventional Commits 中文规范和中英双语 Release Note 模板。
 
 ---
 

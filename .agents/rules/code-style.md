@@ -131,4 +131,4 @@ from sharp.utils import ...
 | TypeScript 注释 | 中文或英文均可，保持与周围代码一致 |
 | Commit message | 中文，遵循 Conventional Commits 规范 |
 
-> 📝 **Commit Message 格式详细规范**请参考 Skill：[.agent/skills/commit-and-release/SKILL.md](../.agent/skills/commit-and-release/SKILL.md)
+> 📝 **Commit Message 格式详细规范**请参考 Skill：[.agents/skills/commit-and-release/SKILL.md](../skills/commit-and-release/SKILL.md)

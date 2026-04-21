@@ -110,7 +110,6 @@ export const useViewer = (containerRef: React.RefObject<HTMLDivElement | null>) 
     };
 
     ctx.sparkRenderer.enableLod = lodEnabled;
-    ctx.sparkRenderer.enableLodFetching = lodEnabled;
     applyLodPresetToRenderer(ctx.sparkRenderer, effectivePreset);
 
     if (ctx.splatMesh) {
@@ -118,7 +117,7 @@ export const useViewer = (containerRef: React.RefObject<HTMLDivElement | null>) 
       ctx.splatMesh.enableLod = lodEnabled && state.lodCompareMode === 'lod';
     }
 
-    ctx.sparkRenderer.setDirty();
+    ctx.sparkRenderer.sortDirty = true;
   }, []);
 
   const applyCurrentTransformSettings = useCallback(() => {
@@ -138,7 +137,7 @@ export const useViewer = (containerRef: React.RefObject<HTMLDivElement | null>) 
       transform.rotationZ,
     );
     ctx.splatMesh.scale.setScalar(Math.max(0.05, transform.scale));
-    ctx.sparkRenderer.setDirty();
+    ctx.sparkRenderer.sortDirty = true;
   }, []);
 
   const applyCurrentInteractionSettings = useCallback(() => {
@@ -304,7 +303,6 @@ export const useViewer = (containerRef: React.RefObject<HTMLDivElement | null>) 
           renderer,
           ...(isHighFidelity ? { blurAmount: 0, preBlurAmount: 0 } : {}),
           enableLod: lodEnabled,
-          enableLodFetching: lodEnabled,
           lodSplatScale: effectivePreset.lodSplatScale,
           lodRenderScale: effectivePreset.lodRenderScale,
           behindFoveate: effectivePreset.behindFoveate,
