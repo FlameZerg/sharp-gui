@@ -1,5 +1,6 @@
 {
   "appTitle": "Sharp GUI",
+  "gallery": "模型列表",
   "generateNew": "生成新模型",
   "processingQueue": "处理队列",
 
@@ -101,6 +102,11 @@
   "viewOriginal": "查看原图",
   "download": "下载模型",
   "delete": "删除",
+  "galleryThumbLoading": "正在加载预览",
+  "galleryThumbUnavailable": "暂无预览图",
+  "galleryThumbFailed": "预览图加载失败",
+  "galleryThumbUnavailableShort": "暂无预览",
+  "galleryThumbFailedShort": "预览失败",
   "confirmDelete": "删除此项？",
   "confirmDeleteFull": "确定要删除此项吗？",
   "deleteFailed": "删除失败",

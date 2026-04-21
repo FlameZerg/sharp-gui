@@ -1,5 +1,6 @@
 {
   "appTitle": "Sharp GUI",
+  "gallery": "Gallery",
   "generateNew": "Generate New",
   "processingQueue": "Processing Queue",
 
@@ -101,6 +102,11 @@
   "viewOriginal": "View Original",
   "download": "Download Model",
   "delete": "Delete",
+  "galleryThumbLoading": "Loading preview",
+  "galleryThumbUnavailable": "Preview unavailable",
+  "galleryThumbFailed": "Preview failed",
+  "galleryThumbUnavailableShort": "No preview",
+  "galleryThumbFailedShort": "Preview error",
   "confirmDelete": "Delete this item?",
   "confirmDeleteFull": "Are you sure you want to delete this item?",
   "deleteFailed": "Delete failed",

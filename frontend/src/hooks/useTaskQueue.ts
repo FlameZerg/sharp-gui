@@ -1,16 +1,21 @@
-import { useEffect, useRef, useCallback } from 'react';
-import { useAppStore } from '@/store/useAppStore';
+import { useCallback, useEffect, useRef } from 'react';
+
+import { useShallow } from 'zustand/react/shallow';
+
 import { fetchTasks, fetchGallery } from '@/api';
+import { useAppStore } from '@/store/useAppStore';
 
 const POLLING_INTERVAL = 3000; // 3 seconds
 
 export const useTaskQueue = () => {
-    const { 
-        tasks, 
-        hasActiveTasks, 
-        setTasks, 
-        setGalleryItems 
-    } = useAppStore();
+    const tasks = useAppStore((state) => state.tasks);
+    const hasActiveTasks = useAppStore((state) => state.hasActiveTasks);
+    const { setTasks, setGalleryItems } = useAppStore(
+        useShallow((state) => ({
+            setTasks: state.setTasks,
+            setGalleryItems: state.setGalleryItems,
+        })),
+    );
     
     const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const hasActiveRef = useRef(hasActiveTasks);

@@ -1,21 +1,27 @@
+import { memo } from 'react';
+
 import { useTranslation } from 'react-i18next';
+
 import { EyeIcon, DownloadIcon, DeleteIcon } from '@/components/common/Icons';
-import { formatFileSize } from '@/utils';
-import { useAppStore } from '@/store/useAppStore';
-import type { GalleryItem as GalleryItemType } from '@/types';
+import { useGalleryThumbnail } from '@/hooks/useGalleryThumbnail';
+import { formatFileSize, getGalleryThumbnailSrc } from '@/utils';
+import type { GalleryItem as GalleryItemType, ModelFormat } from '@/types';
+
 import styles from './GalleryItem.module.css';
 
 interface GalleryItemProps {
   item: GalleryItemType;
+  preferredFormat: ModelFormat;
   isActive: boolean;
-  onSelect: () => void;
-  onPreview: () => void;
-  onDownload: () => void;
-  onDelete: () => void;
+  onSelect: (item: GalleryItemType) => void;
+  onPreview: (item: GalleryItemType) => void;
+  onDownload: (item: GalleryItemType) => void;
+  onDelete: (item: GalleryItemType) => void;
 }
 
-export function GalleryItem({
+export const GalleryItem = memo(function GalleryItem({
   item,
+  preferredFormat,
   isActive,
   onSelect,
   onPreview,
@@ -23,66 +29,129 @@ export function GalleryItem({
   onDelete,
 }: GalleryItemProps) {
   const { t } = useTranslation();
-  const { effectiveModelFormat } = useAppStore();
-  const fmt = effectiveModelFormat();
-  
-  // Pick size based on effective format
-  const displaySize = (fmt === 'spz' && item.spz_size) ? item.spz_size : item.size;
-  const formatLabel = (fmt === 'spz' && item.spz_url) ? 'SPZ' : 'PLY';
-  
-  const handleButtonClick = (e: React.MouseEvent, action: () => void) => {
-    e.stopPropagation();
-    action();
+
+  const thumbnailSrc = getGalleryThumbnailSrc(item);
+  const thumbnailState = useGalleryThumbnail(thumbnailSrc, Boolean(thumbnailSrc));
+  const displaySize = preferredFormat === 'spz' && item.spz_size ? item.spz_size : item.size;
+  const formatLabel = preferredFormat === 'spz' && item.spz_url ? 'SPZ' : 'PLY';
+  const thumbnailStatusText =
+    thumbnailState === 'loading'
+      ? t('galleryThumbLoading')
+      : thumbnailState === 'error'
+        ? t('galleryThumbFailed')
+        : thumbnailState === 'missing'
+          ? t('galleryThumbUnavailable')
+          : null;
+  const metaText = [
+    displaySize ? formatFileSize(displaySize) : t('ready'),
+    formatLabel,
+    thumbnailStatusText,
+  ].filter(Boolean).join(' · ');
+  const thumbnailFallbackLabel =
+    thumbnailState === 'error'
+      ? t('galleryThumbFailedShort')
+      : t('galleryThumbUnavailableShort');
+  const thumbnailAriaLabel =
+    thumbnailState === 'ready'
+      ? item.name
+      : `${item.name} · ${thumbnailStatusText ?? thumbnailFallbackLabel}`;
+
+  const handleButtonClick = (
+    event: React.MouseEvent<HTMLButtonElement>,
+    action: (galleryItem: GalleryItemType) => void,
+  ) => {
+    event.stopPropagation();
+    action(item);
+  };
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onSelect(item);
+    }
   };
 
   return (
-    <div 
-      className={`${styles.item} ${isActive ? styles.active : ''}`}
-      onClick={onSelect}
+    <div
+      className={[styles.item, isActive ? styles.active : ''].filter(Boolean).join(' ')}
+      onClick={() => onSelect(item)}
+      onKeyDown={handleKeyDown}
+      role="button"
+      tabIndex={0}
+      aria-current={isActive ? 'true' : undefined}
     >
-      <img 
-        src={item.thumb_url || item.image_url} 
-        alt={item.name}
-        className={styles.thumb}
-        loading="lazy"
-        onError={(e) => {
-          (e.target as HTMLImageElement).style.background = '#eee';
-        }}
-      />
-      
-      <div className={styles.info}>
-        <div className={styles.name}>{item.name}</div>
-        <div className={styles.meta}>
-          {displaySize ? `${formatFileSize(displaySize)} · ${formatLabel}` : t('ready')}
-        </div>
+      <div className={styles.thumbShell}>
+        {thumbnailSrc && thumbnailState !== 'error' && thumbnailState !== 'missing' ? (
+          <img
+            src={thumbnailSrc}
+            alt={item.name}
+            className={[
+              styles.thumbImage,
+              thumbnailState === 'ready' ? styles.thumbImageReady : '',
+            ].filter(Boolean).join(' ')}
+            loading="eager"
+            decoding="async"
+            draggable={false}
+          />
+        ) : null}
+
+        {thumbnailState === 'loading' ? (
+          <div
+            className={[styles.thumbPlaceholder, styles.thumbLoading].join(' ')}
+            aria-hidden="true"
+          />
+        ) : null}
+
+        {thumbnailState === 'missing' || thumbnailState === 'error' ? (
+          <div
+            className={[
+              styles.thumbFallback,
+              thumbnailState === 'error' ? styles.thumbError : styles.thumbMissing,
+            ].join(' ')}
+            role="img"
+            aria-label={thumbnailAriaLabel}
+            title={thumbnailStatusText ?? thumbnailFallbackLabel}
+          >
+            <span>{thumbnailFallbackLabel}</span>
+          </div>
+        ) : null}
       </div>
 
-      {/* Action buttons */}
-      {item.image_url && (
-        <button 
+      <div className={styles.info}>
+        <div className={styles.name}>{item.name}</div>
+        <div className={styles.meta}>{metaText}</div>
+      </div>
+
+      {item.image_url ? (
+        <button
           className={styles.actionBtn}
-          onClick={(e) => handleButtonClick(e, onPreview)}
+          onClick={(event) => handleButtonClick(event, onPreview)}
           title={t('viewOriginal')}
+          type="button"
         >
           <EyeIcon width={14} height={14} />
         </button>
-      )}
-      
-      <button 
+      ) : null}
+
+      <button
         className={styles.actionBtn}
-        onClick={(e) => handleButtonClick(e, onDownload)}
+        onClick={(event) => handleButtonClick(event, onDownload)}
         title={t('download')}
+        type="button"
       >
         <DownloadIcon width={14} height={14} />
       </button>
-      
-      <button 
-        className={`${styles.actionBtn} ${styles.deleteBtn}`}
-        onClick={(e) => handleButtonClick(e, onDelete)}
+
+      <button
+        className={[styles.actionBtn, styles.deleteBtn].join(' ')}
+        onClick={(event) => handleButtonClick(event, onDelete)}
         title={t('delete')}
+        type="button"
       >
         <DeleteIcon width={14} height={14} />
       </button>
     </div>
   );
-}
+});
+
+GalleryItem.displayName = 'GalleryItem';

@@ -1,5 +1,8 @@
 import { useRef, useState } from 'react';
+
 import { useTranslation } from 'react-i18next';
+import { useShallow } from 'zustand/react/shallow';
+
 import { useAppStore } from '@/store';
 import { toggleLanguage } from '@/i18n';
 import {
@@ -27,7 +30,15 @@ export function Sidebar({ onUpload, children }: SidebarProps) {
     toggleSidebar,
     toggleSidebarCollapsed,
     setSettingsModalOpen,
-  } = useAppStore();
+  } = useAppStore(
+    useShallow((state) => ({
+      sidebarOpen: state.sidebarOpen,
+      sidebarCollapsed: state.sidebarCollapsed,
+      toggleSidebar: state.toggleSidebar,
+      toggleSidebarCollapsed: state.toggleSidebarCollapsed,
+      setSettingsModalOpen: state.setSettingsModalOpen,
+    })),
+  );
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -137,7 +148,9 @@ export function Sidebar({ onUpload, children }: SidebarProps) {
         {/* Content (Queue + Gallery) */}
         <div className={styles.content}>
           <TaskQueue />
-          {children}
+          <div className={styles.galleryPane}>
+            {children}
+          </div>
         </div>
       </aside>
 

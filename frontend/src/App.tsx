@@ -1,40 +1,59 @@
-import { useEffect, useCallback } from 'react'
-import { useTranslation } from 'react-i18next'
-import { useAppStore } from '@/store'
-import { fetchGallery, fetchSettings, fetchTasks, generateFromImages } from '@/api'
-import { Sidebar, Settings } from '@/components/layout'
-import { GalleryList } from '@/components/gallery'
-import { Loading, ImageViewer } from '@/components/common'
-import { ParticleBackground } from '@/components/common/ParticleBackground'
-import { ViewerCanvas } from '@/components/viewer/ViewerCanvas/ViewerCanvas'
-import { Help } from '@/components/layout/Help/Help'
-import { useTaskQueue } from '@/hooks/useTaskQueue'
-import type { GalleryItem } from '@/types'
-import './App.css'
+import { useCallback, useEffect } from 'react';
+
+import { useTranslation } from 'react-i18next';
+import { useShallow } from 'zustand/react/shallow';
+
+import { fetchGallery, fetchSettings, fetchTasks, generateFromImages } from '@/api';
+import { GalleryList } from '@/components/gallery';
+import { ImageViewer, Loading } from '@/components/common';
+import { ParticleBackground } from '@/components/common/ParticleBackground';
+import { Settings, Sidebar } from '@/components/layout';
+import { Help } from '@/components/layout/Help/Help';
+import { useTaskQueue } from '@/hooks/useTaskQueue';
+import { useAppStore } from '@/store';
+import { ViewerCanvas } from '@/components/viewer/ViewerCanvas/ViewerCanvas';
+
+import './App.css';
 
 function App() {
-  const { t } = useTranslation()
+  const { t } = useTranslation();
   const { 
     isBooting, 
     bootError,
     isLoading,
     loadingText,
     loadingProgress,
-    galleryItems,
-    sidebarOpen,
     sidebarCollapsed,
     setBootComplete, 
     setBootError,
     setGalleryItems,
     setTasks,
     setLocalAccess,
-    setCurrentModel,
     setLoading,
     currentModelUrl,
     toggleSidebar,
     setServerModelFormat,
-    effectiveModelFormat,
-  } = useAppStore()
+    setCurrentModel,
+  } = useAppStore(
+    useShallow((state) => ({
+      isBooting: state.isBooting,
+      bootError: state.bootError,
+      isLoading: state.isLoading,
+      loadingText: state.loadingText,
+      loadingProgress: state.loadingProgress,
+      sidebarCollapsed: state.sidebarCollapsed,
+      setBootComplete: state.setBootComplete,
+      setBootError: state.setBootError,
+      setGalleryItems: state.setGalleryItems,
+      setTasks: state.setTasks,
+      setLocalAccess: state.setLocalAccess,
+      setLoading: state.setLoading,
+      currentModelUrl: state.currentModelUrl,
+      toggleSidebar: state.toggleSidebar,
+      setServerModelFormat: state.setServerModelFormat,
+      setCurrentModel: state.setCurrentModel,
+    })),
+  );
 
   // Initial data fetch
   useEffect(() => {
@@ -57,83 +76,67 @@ function App() {
 
         setBootComplete()
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error'
-        setBootError(message)
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        setBootError(message);
       }
     }
-    init()
-  }, [setBootComplete, setBootError, setGalleryItems, setTasks, setLocalAccess, setServerModelFormat])
+    init();
+  }, [setBootComplete, setBootError, setGalleryItems, setTasks, setLocalAccess, setServerModelFormat]);
 
   // Handle file upload
   const handleUpload = useCallback(async (files: FileList) => {
     try {
-      setLoading(true, t('uploadingFiles', { count: files.length }))
-      const result = await generateFromImages(files)
-      setLoading(false)
+      setLoading(true, t('uploadingFiles', { count: files.length }));
+      const result = await generateFromImages(files);
+      setLoading(false);
       
       if (result.success && result.tasks) {
-        setTasks(result.tasks, true)
+        setTasks(result.tasks, true);
       }
     } catch (error) {
-      setLoading(false)
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      alert(`${t('uploadFailed')}: ${message}`)
+      setLoading(false);
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      alert(`${t('uploadFailed')}: ${message}`);
     }
-  }, [t, setLoading, setTasks])
-
-  // Handle model selection — pick URL based on format preference
-  const handleSelectModel = useCallback((item: GalleryItem) => {
-    const format = effectiveModelFormat()
-    // Use SPZ URL if preferred and available, otherwise fall back to PLY
-    const useSpz = format === 'spz' && item.spz_url
-    const url = useSpz ? item.spz_url! : item.model_url
-    const formatHint = useSpz ? 'spz' as const : 'ply' as const
-    
-    setCurrentModel(item.id, url, formatHint)
-    
-    // On mobile, close sidebar after selection
-    if (window.innerWidth <= 768 && sidebarOpen) {
-      toggleSidebar()
-    }
-  }, [setCurrentModel, sidebarOpen, toggleSidebar, effectiveModelFormat])
+  }, [t, setLoading, setTasks]);
 
   // Handle model file drop (.ply / .splat / .spz / .rad) for direct preview
   const handleModelDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
+    e.preventDefault();
+    e.stopPropagation();
     
-    const files = e.dataTransfer?.files
-    if (!files || files.length === 0) return
+    const files = e.dataTransfer?.files;
+    if (!files || files.length === 0) return;
     
-    const file = files[0]
-    const name = file.name.toLowerCase()
+    const file = files[0];
+    const name = file.name.toLowerCase();
     
     // Check for supported model formats and extract format
-    let format: 'ply' | 'splat' | 'spz' | 'rad' | null = null
+    let format: 'ply' | 'splat' | 'spz' | 'rad' | null = null;
     if (name.endsWith('.ply')) {
-      format = 'ply'
+      format = 'ply';
     } else if (name.endsWith('.splat')) {
-      format = 'splat'
+      format = 'splat';
     } else if (name.endsWith('.spz')) {
-      format = 'spz'
+      format = 'spz';
     } else if (name.endsWith('.rad')) {
-      format = 'rad'
+      format = 'rad';
     } else {
-      alert(t('unsupportedFormat'))
-      return
+      alert(t('unsupportedFormat'));
+      return;
     }
     
-    console.log('📦 Loading dropped model:', file.name, 'format:', format)
+    console.log('📦 Loading dropped model:', file.name, 'format:', format);
     
     // Create Blob URL and set as current model with format hint
-    const blobUrl = URL.createObjectURL(file)
-    setCurrentModel(file.name, blobUrl, format)
-  }, [setCurrentModel, t])
+    const blobUrl = URL.createObjectURL(file);
+    setCurrentModel(file.name, blobUrl, format);
+  }, [setCurrentModel, t]);
 
   const handleMainDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-  }, [])
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
 
   // Task queue polling (must be called unconditionally before any early returns)
   useTaskQueue();
@@ -157,7 +160,7 @@ function App() {
           )}
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -171,10 +174,7 @@ function App() {
 
       {/* Sidebar */}
       <Sidebar onUpload={handleUpload}>
-        <GalleryList 
-          items={galleryItems} 
-          onSelectModel={handleSelectModel}
-        />
+        <GalleryList />
       </Sidebar>
       
       {/* Main content */}
@@ -237,7 +237,7 @@ function App() {
       {/* Lightbox / Image Viewer */}
       <ImageViewer />
     </div>
-  )
+  );
 }
 
-export default App
+export default App;

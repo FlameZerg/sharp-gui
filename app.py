@@ -13,6 +13,7 @@ import uuid
 import shutil
 import base64
 import gzip
+import datetime
 import numpy as np
 from io import BytesIO
 from flask import Flask, render_template, request, jsonify, send_from_directory, Response
@@ -31,6 +32,13 @@ REACT_BUILD_DIR = os.path.join(BASE_DIR, 'frontend', 'dist')
 
 # 默认文件夹
 DEFAULT_WORKSPACE_FOLDER = BASE_DIR  # 工作目录默认为应用根目录
+ALLOWED_IMAGE_EXTENSIONS = (
+    '.jpg', '.jpeg', '.png', '.webp',
+    '.JPG', '.JPEG', '.PNG', '.WEBP',
+)
+MAX_THUMBNAIL_REPAIRS_PER_REQUEST = 6
+THUMBNAIL_CACHE_SECONDS = 86400
+DEFAULT_FILE_CACHE_SECONDS = 3600
 
 
 def load_config():
@@ -104,6 +112,112 @@ def generate_thumbnail(input_path, filename):
     except Exception as e:
         print(f"⚠️ Thumbnail generation failed for {filename}: {e}")
         return None
+
+
+def get_relative_files_path(path):
+    """将绝对路径转换为 /files 可用的相对路径"""
+    return os.path.relpath(path, BASE_DIR).replace(os.sep, '/')
+
+
+def get_thumbnail_path(item_id):
+    """获取图库条目的缩略图路径"""
+    return os.path.join(THUMBNAIL_FOLDER, item_id + '.jpg')
+
+
+def find_original_image(item_id):
+    """根据条目 ID 查找原图文件名和路径"""
+    for ext in ALLOWED_IMAGE_EXTENSIONS:
+        filename = item_id + ext
+        img_path = os.path.join(INPUT_FOLDER, filename)
+        if os.path.exists(img_path):
+            return filename, img_path
+    return None, None
+
+
+def ensure_thumbnail_for_item(item_id, allow_generation=False):
+    """确保图库条目存在可用缩略图"""
+    thumb_path = get_thumbnail_path(item_id)
+    if os.path.exists(thumb_path):
+        return thumb_path
+
+    if not allow_generation:
+        return None
+
+    original_filename, original_path = find_original_image(item_id)
+    if not original_filename or not original_path:
+        return None
+
+    return generate_thumbnail(original_path, original_filename)
+
+
+def get_file_version(path):
+    """获取文件版本号（基于修改时间）"""
+    return int(os.path.getmtime(path) * 1000)
+
+
+def get_file_timestamp(path):
+    """获取 ISO 格式的文件修改时间"""
+    return datetime.datetime.fromtimestamp(
+        os.path.getmtime(path),
+        tz=datetime.timezone.utc,
+    ).isoformat()
+
+
+def build_gallery_item(ply_filename, repair_missing_thumbnail=False):
+    """构建单个图库条目的响应数据"""
+    name_without_ext = os.path.splitext(ply_filename)[0]
+    ply_path = os.path.join(OUTPUT_FOLDER, ply_filename)
+
+    if not os.path.exists(ply_path):
+        return None
+
+    ply_size = os.path.getsize(ply_path)
+    file_timestamps = [os.path.getmtime(ply_path)]
+
+    spz_filename = name_without_ext + '.spz'
+    spz_path = os.path.join(OUTPUT_FOLDER, spz_filename)
+    spz_url = None
+    spz_size = None
+    if os.path.exists(spz_path):
+        spz_url = f'/files/{get_relative_files_path(spz_path)}'
+        spz_size = os.path.getsize(spz_path)
+        file_timestamps.append(os.path.getmtime(spz_path))
+
+    original_filename, original_path = find_original_image(name_without_ext)
+    image_url = None
+    if original_filename and original_path:
+        image_url = f'/api/original/{name_without_ext}'
+        file_timestamps.append(os.path.getmtime(original_path))
+
+    thumb_path = get_thumbnail_path(name_without_ext)
+    if not os.path.exists(thumb_path) and repair_missing_thumbnail:
+        thumb_path = ensure_thumbnail_for_item(name_without_ext, allow_generation=True)
+
+    thumb_url = None
+    thumb_version = None
+    if thumb_path and os.path.exists(thumb_path):
+        thumb_url = f'/api/thumbnail/{name_without_ext}'
+        thumb_version = get_file_version(thumb_path)
+        file_timestamps.append(os.path.getmtime(thumb_path))
+
+    latest_timestamp = max(file_timestamps)
+
+    return {
+        'id': name_without_ext,
+        'name': name_without_ext,
+        'model_url': f'/files/{get_relative_files_path(ply_path)}',
+        'spz_url': spz_url,
+        'image_url': image_url,
+        'thumb_url': thumb_url,
+        'thumb_version': thumb_version,
+        'size': ply_size,
+        'spz_size': spz_size,
+        'created_at': get_file_timestamp(ply_path),
+        'updated_at': datetime.datetime.fromtimestamp(
+            latest_timestamp,
+            tz=datetime.timezone.utc,
+        ).isoformat(),
+    }
 
 
 def ply_to_splat(ply_path):
@@ -522,46 +636,20 @@ def get_gallery():
     if os.path.exists(OUTPUT_FOLDER):
         files = [f for f in os.listdir(OUTPUT_FOLDER) if f.endswith('.ply')]
         files.sort(key=lambda x: os.path.getmtime(os.path.join(OUTPUT_FOLDER, x)), reverse=True)
+        remaining_thumbnail_repairs = MAX_THUMBNAIL_REPAIRS_PER_REQUEST
 
         for ply_filename in files:
-            name_without_ext = os.path.splitext(ply_filename)[0]
-            ply_path = os.path.join(OUTPUT_FOLDER, ply_filename)
-            ply_rel_path = os.path.relpath(ply_path, BASE_DIR)
-            
-            # 获取文件大小
-            ply_size = os.path.getsize(ply_path)
-            
-            # 检查 SPZ 文件是否存在
-            spz_filename = name_without_ext + '.spz'
-            spz_path = os.path.join(OUTPUT_FOLDER, spz_filename)
-            spz_rel_path = None
-            spz_size = None
-            if os.path.exists(spz_path):
-                spz_rel_path = os.path.relpath(spz_path, BASE_DIR)
-                spz_size = os.path.getsize(spz_path)
-            
-            img_rel_path = None
-            thumb_rel_path = None
-            for ext in ['.jpg', '.jpeg', '.png', '.webp', '.JPG', '.PNG']:
-                possible_img = os.path.join(INPUT_FOLDER, name_without_ext + ext)
-                if os.path.exists(possible_img):
-                    img_rel_path = os.path.relpath(possible_img, BASE_DIR)
-                    # 检查缩略图是否存在
-                    thumb_path = os.path.join(THUMBNAIL_FOLDER, name_without_ext + '.jpg')
-                    if os.path.exists(thumb_path):
-                        thumb_rel_path = os.path.relpath(thumb_path, BASE_DIR)
-                    break
-            
-            items.append({
-                'id': name_without_ext,
-                'name': name_without_ext,
-                'model_url': f'/files/{ply_rel_path}',
-                'spz_url': f'/files/{spz_rel_path}' if spz_rel_path else None,
-                'image_url': f'/files/{img_rel_path}' if img_rel_path else None,
-                'thumb_url': f'/files/{thumb_rel_path}' if thumb_rel_path else (f'/files/{img_rel_path}' if img_rel_path else None),
-                'size': ply_size,
-                'spz_size': spz_size
-            })
+            item_id = os.path.splitext(ply_filename)[0]
+            thumb_missing = not os.path.exists(get_thumbnail_path(item_id))
+            repair_thumbnail = thumb_missing and remaining_thumbnail_repairs > 0
+            gallery_item = build_gallery_item(
+                ply_filename,
+                repair_missing_thumbnail=repair_thumbnail,
+            )
+            if gallery_item:
+                items.append(gallery_item)
+            if repair_thumbnail:
+                remaining_thumbnail_repairs -= 1
     return jsonify(items)
 
 
@@ -714,12 +802,8 @@ def download_model(item_id):
 
 def find_original_image_filename(item_id):
     """根据 item_id 查找原图文件名（保留真实扩展名）"""
-    for ext in ['.jpg', '.jpeg', '.png', '.webp', '.JPG', '.JPEG', '.PNG', '.WEBP']:
-        filename = item_id + ext
-        img_path = os.path.join(INPUT_FOLDER, filename)
-        if os.path.exists(img_path):
-            return filename
-    return None
+    filename, _ = find_original_image(item_id)
+    return filename
 
 
 @app.route('/api/original/<item_id>')
@@ -736,11 +820,32 @@ def get_original_image(item_id):
         as_attachment=download,
         download_name=filename,
         conditional=True,
+        max_age=DEFAULT_FILE_CACHE_SECONDS,
     )
 
     if not download:
         response.headers['Content-Disposition'] = f'inline; filename="{filename}"'
 
+    return response
+
+
+@app.route('/api/thumbnail/<item_id>')
+def get_thumbnail(item_id):
+    """按图库条目 ID 获取缩略图"""
+    thumb_path = ensure_thumbnail_for_item(item_id, allow_generation=True)
+    if not thumb_path or not os.path.exists(thumb_path):
+        return jsonify({'error': 'Thumbnail not found'}), 404
+
+    filename = os.path.basename(thumb_path)
+    response = send_from_directory(
+        THUMBNAIL_FOLDER,
+        filename,
+        conditional=True,
+        max_age=THUMBNAIL_CACHE_SECONDS,
+    )
+    response.headers['Content-Disposition'] = f'inline; filename="{filename}"'
+    response.cache_control.public = True
+    response.cache_control.max_age = THUMBNAIL_CACHE_SECONDS
     return response
 
 
@@ -790,7 +895,15 @@ def convert_all_to_spz():
 
 @app.route('/files/<path:filename>')
 def serve_files(filename):
-    return send_from_directory(BASE_DIR, filename)
+    normalized_filename = filename.replace('\\', '/')
+    thumbnail_prefix = get_relative_files_path(THUMBNAIL_FOLDER) + '/'
+    cache_timeout = THUMBNAIL_CACHE_SECONDS if normalized_filename.startswith(thumbnail_prefix) else DEFAULT_FILE_CACHE_SECONDS
+    return send_from_directory(
+        BASE_DIR,
+        filename,
+        conditional=True,
+        max_age=cache_timeout,
+    )
 
 
 @app.route('/api/settings', methods=['GET', 'POST'])

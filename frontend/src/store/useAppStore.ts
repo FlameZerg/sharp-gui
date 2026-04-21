@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { getLodPresetConfig } from '@/constants/spark';
+import { getGalleryModelSource, reconcileGalleryItems } from '@/utils';
 import type {
   GalleryItem,
   ModelFormat,
@@ -412,6 +413,7 @@ interface AppState {
   setBootError: (error: string) => void;
 
   setGalleryItems: (items: GalleryItem[]) => void;
+  removeGalleryItem: (id: string) => void;
   setCurrentModel: (id: string | null, url: string | null, format?: ViewerModelFormat) => void;
   setPreviewImage: (item: GalleryItem | null) => void;
 
@@ -533,7 +535,81 @@ export const useAppStore = create<AppState>((set, get) => ({
   setBootComplete: () => set({ isBooting: false }),
   setBootError: (error) => set({ bootError: error }),
 
-  setGalleryItems: (items) => set({ galleryItems: items }),
+  setGalleryItems: (items) => set((state) => {
+    const nextGalleryItems = reconcileGalleryItems(state.galleryItems, items);
+    const selectedItem = state.currentModelId
+      ? nextGalleryItems.find((item) => item.id === state.currentModelId) ?? null
+      : null;
+    const previewImage = state.previewImage
+      ? nextGalleryItems.find((item) => item.id === state.previewImage?.id) ?? null
+      : null;
+
+    let currentModelId = state.currentModelId;
+    let currentModelUrl = state.currentModelUrl;
+    let currentModelFormat = state.currentModelFormat;
+
+    if (state.currentModelId && !selectedItem) {
+      currentModelId = null;
+      currentModelUrl = null;
+      currentModelFormat = null;
+    } else if (
+      selectedItem &&
+      state.currentModelFormat !== 'splat' &&
+      state.currentModelFormat !== 'rad' &&
+      !state.currentModelUrl?.startsWith('blob:')
+    ) {
+      const preferredFormat =
+        state.currentModelFormat === 'spz' || state.currentModelFormat === 'ply'
+          ? state.currentModelFormat
+          : state.localModelFormat ?? state.serverModelFormat;
+      const nextModel = getGalleryModelSource(selectedItem, preferredFormat);
+      currentModelId = selectedItem.id;
+      currentModelUrl = nextModel.url;
+      currentModelFormat = nextModel.format;
+    }
+
+    const galleryUnchanged = nextGalleryItems === state.galleryItems;
+    const selectionUnchanged =
+      currentModelId === state.currentModelId &&
+      currentModelUrl === state.currentModelUrl &&
+      currentModelFormat === state.currentModelFormat;
+    const previewUnchanged = previewImage === state.previewImage;
+
+    if (galleryUnchanged && selectionUnchanged && previewUnchanged) {
+      return state;
+    }
+
+    return {
+      galleryItems: nextGalleryItems,
+      currentModelId,
+      currentModelUrl,
+      currentModelFormat,
+      previewImage,
+    };
+  }),
+  removeGalleryItem: (id) => set((state) => {
+    if (!state.galleryItems.some((item) => item.id === id)) {
+      return state;
+    }
+
+    const nextGalleryItems = state.galleryItems.filter((item) => item.id !== id);
+    const previewImage = state.previewImage?.id === id ? null : state.previewImage;
+
+    if (state.currentModelId === id) {
+      return {
+        galleryItems: nextGalleryItems,
+        currentModelId: null,
+        currentModelUrl: null,
+        currentModelFormat: null,
+        previewImage,
+      };
+    }
+
+    return {
+      galleryItems: nextGalleryItems,
+      previewImage,
+    };
+  }),
   setCurrentModel: (id, url, format = null) => set((state) => {
     const fallbackQuality = getViewerQualityFromPreset(state.lodPreset, state.isLodEnabled);
     const fallbackOverride = getDefaultViewerOverride(fallbackQuality);
