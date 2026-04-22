@@ -81,6 +81,17 @@ export function HelpIcon(props: IconProps) {
   );
 }
 
+// Sparkles / magic icon
+export function SparklesIcon(props: IconProps) {
+  return (
+    <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l1.35 4.15L17.5 8.5l-4.15 1.35L12 14l-1.35-4.15L6.5 8.5l4.15-1.35L12 3z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l.7 2.3L22 17l-2.3.7L19 20l-.7-2.3L16 17l2.3-.7L19 14z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 15l.55 1.45L8 17l-1.45.55L6 19l-.55-1.45L4 17l1.45-.55L6 15z" />
+    </svg>
+  );
+}
+
 // Reset icon
 export function ResetIcon(props: IconProps) {
   return (
@@ -275,4 +286,3 @@ export function FormatIcon(props: IconProps) {
     </svg>
   );
 }
-

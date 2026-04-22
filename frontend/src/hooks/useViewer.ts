@@ -12,6 +12,14 @@ import {
   hasLodComparisonData,
 } from '@/constants/spark';
 import { DEFAULT_CAMERA_CONFIG } from '@/utils/camera';
+import {
+  applyRevealEffectToMesh,
+  createRevealEffectRuntime,
+  isRevealEffectEnabled,
+  syncRevealEffectSelection,
+  type RevealEffectId,
+  updateRevealEffectPlayback,
+} from '@/utils/viewerRevealEffects';
 import { useKeyboard } from './useKeyboard';
 import { useGyroscope } from './useGyroscope';
 import { useJoystick } from './useJoystick';
@@ -81,8 +89,17 @@ export interface ViewerContext {
   splatMesh: SplatMesh | null;
 }
 
-export const useViewer = (containerRef: React.RefObject<HTMLDivElement | null>) => {
+interface UseViewerOptions {
+  revealEffect: RevealEffectId;
+  replayToken: number;
+}
+
+export const useViewer = (
+  containerRef: React.RefObject<HTMLDivElement | null>,
+  { revealEffect, replayToken }: UseViewerOptions,
+) => {
   const viewerRef = useRef<ViewerContext | null>(null);
+  const revealEffectRuntimeRef = useRef(createRevealEffectRuntime());
   const {
     currentModelUrl,
     currentModelFormat,
@@ -237,6 +254,26 @@ export const useViewer = (containerRef: React.RefObject<HTMLDivElement | null>) 
   const joystick = useJoystick({ viewerRef });
   const xr = useXR({ viewerRef });
 
+  useEffect(() => {
+    const runtime = revealEffectRuntimeRef.current;
+    syncRevealEffectSelection(runtime, revealEffect, replayToken);
+
+    const ctx = viewerRef.current;
+    if (!ctx?.splatMesh) return;
+
+    if (!isRevealEffectEnabled(revealEffect)) {
+      if (ctx.splatMesh.objectModifiers?.includes(runtime.modifier)) {
+        ctx.splatMesh.objectModifier = undefined;
+        ctx.splatMesh.updateGenerator();
+      }
+    } else if (!ctx.splatMesh.objectModifiers?.includes(runtime.modifier)) {
+      applyRevealEffectToMesh(runtime, ctx.splatMesh);
+    }
+
+    ctx.splatMesh.updateVersion();
+    ctx.sparkRenderer.sortDirty = true;
+  }, [replayToken, revealEffect]);
+
   // ── Initialize Three.js + Spark infrastructure ──────────────────────
   useEffect(() => {
     if (!containerRef.current) return;
@@ -314,6 +351,14 @@ export const useViewer = (containerRef: React.RefObject<HTMLDivElement | null>) 
 
         // Render loop
         renderer.setAnimationLoop(() => {
+          const activeMesh = viewerRef.current?.splatMesh;
+          if (
+            activeMesh
+            && isRevealEffectEnabled(revealEffectRuntimeRef.current.activeEffect)
+          ) {
+            updateRevealEffectPlayback(revealEffectRuntimeRef.current, performance.now());
+            activeMesh.updateVersion();
+          }
           controls.update();
           renderer.render(scene, camera);
         });
@@ -631,6 +676,7 @@ export const useViewer = (containerRef: React.RefObject<HTMLDivElement | null>) 
 
         ctx.scene.add(splatMesh);
         ctx.splatMesh = splatMesh;
+        applyRevealEffectToMesh(revealEffectRuntimeRef.current, splatMesh);
         applyCurrentTransformSettings();
 
         const hasComparison = lodEnabled && hasLodComparisonData(splatMesh);

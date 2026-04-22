@@ -1,0 +1,323 @@
+.root {
+  position: absolute;
+  right: var(--viewer-overlay-right);
+  top: calc(var(--viewer-overlay-top) + var(--viewer-overlay-trigger-size) + var(--viewer-overlay-vertical-gap));
+  bottom: calc(var(--viewer-overlay-bottom) + var(--viewer-overlay-trigger-size) + var(--viewer-overlay-vertical-gap));
+  z-index: 32;
+  pointer-events: none;
+}
+
+.desktopRail {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  pointer-events: auto;
+}
+
+.railPanel {
+  width: 58px;
+  padding: 8px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.64);
+  backdrop-filter: blur(30px) saturate(175%);
+  -webkit-backdrop-filter: blur(30px) saturate(175%);
+  box-shadow:
+    0 14px 34px rgba(17, 24, 39, 0.06),
+    0 1px 10px rgba(255, 255, 255, 0.46) inset;
+}
+
+.railNavButton,
+.replayButton {
+  position: relative;
+  border: none;
+  background: transparent;
+  color: rgba(29, 29, 31, 0.58);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    color 0.18s ease,
+    opacity 0.18s ease,
+    transform 0.18s ease,
+    background 0.18s ease;
+}
+
+.railNavButton {
+  width: 32px;
+  height: 26px;
+  border-radius: 999px;
+}
+
+.railNavButton:hover:not(:disabled) {
+  color: rgba(17, 24, 39, 0.92);
+  background: rgba(255, 255, 255, 0.34);
+}
+
+.railNavButton:disabled {
+  cursor: default;
+  opacity: 0.28;
+}
+
+.replayButton:disabled {
+  cursor: default;
+  opacity: 0.38;
+}
+
+.railNavButton svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 1.9;
+}
+
+.railTrack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.railItem {
+  position: relative;
+  width: 36px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.railLine {
+  width: 18px;
+  height: 2.5px;
+  border-radius: 999px;
+  background: rgba(29, 29, 31, 0.16);
+  transition:
+    width 0.22s ease,
+    background 0.22s ease,
+    opacity 0.22s ease;
+}
+
+.railLineNeighbor {
+  width: 20px;
+  background: rgba(29, 29, 31, 0.2);
+}
+
+.railLineActive {
+  width: 26px;
+  background: rgba(17, 24, 39, 0.9);
+}
+
+.railIndicatorDot {
+  position: absolute;
+  right: 1px;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(17, 24, 39, 0.88);
+  transform: translateY(-50%);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.78);
+}
+
+.tooltip {
+  position: absolute;
+  right: calc(100% + 12px);
+  top: 50%;
+  min-width: 82px;
+  padding: 8px 10px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.76);
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(24px) saturate(165%);
+  -webkit-backdrop-filter: blur(24px) saturate(165%);
+  box-shadow:
+    0 12px 30px rgba(15, 23, 42, 0.1),
+    0 1px 0 rgba(255, 255, 255, 0.52) inset;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(-50%) translateX(6px) scale(0.96);
+  transform-origin: center right;
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease,
+    visibility 0.18s ease;
+  white-space: nowrap;
+}
+
+.tooltipTitle,
+.tooltipSubtitle {
+  display: block;
+}
+
+.tooltipTitle {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.1;
+  color: rgba(17, 24, 39, 0.96);
+}
+
+.tooltipSubtitle {
+  margin-top: 3px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: rgba(100, 116, 139, 0.9);
+}
+
+.railItem:hover .tooltip,
+.railItem:focus-visible .tooltip,
+.replayButton:hover .tooltip,
+.replayButton:focus-visible .tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(-50%) translateX(0) scale(1);
+}
+
+.replayButton {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.64);
+  backdrop-filter: blur(30px) saturate(175%);
+  -webkit-backdrop-filter: blur(30px) saturate(175%);
+  box-shadow:
+    0 14px 34px rgba(17, 24, 39, 0.06),
+    0 1px 10px rgba(255, 255, 255, 0.46) inset;
+}
+
+.replayButton:hover {
+  color: rgba(17, 24, 39, 0.95);
+  transform: translateY(-1px);
+}
+
+.replayButton:disabled:hover {
+  color: rgba(29, 29, 31, 0.58);
+  transform: none;
+}
+
+.replayButton svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.9;
+}
+
+.railItem:focus-visible,
+.railNavButton:focus-visible,
+.replayButton:focus-visible,
+.mobileTrigger:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}
+
+.mobileRail {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .root {
+    position: fixed;
+    top: auto;
+    bottom: calc(var(--viewer-overlay-mobile-bottom) + var(--viewer-overlay-trigger-size) + 10px);
+    right: var(--viewer-overlay-mobile-right);
+    pointer-events: auto;
+  }
+
+  .desktopRail {
+    display: none;
+  }
+
+  .mobileRail {
+    display: block;
+    position: relative;
+    width: max-content;
+  }
+
+  .mobileTrigger {
+    width: var(--viewer-overlay-trigger-size);
+    height: var(--viewer-overlay-trigger-size);
+    border-radius: 50%;
+    border: 1px solid var(--glass-border);
+    background: var(--glass-bg);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    box-shadow: var(--glass-shadow);
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+    transition:
+      transform var(--transition-normal),
+      background var(--transition-normal),
+      opacity var(--transition-normal);
+  }
+
+  .mobileTrigger svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .mobileTrigger:hover {
+    transform: scale(1.04);
+    background: rgba(255, 255, 255, 0.82);
+  }
+
+  .mobilePopup {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 12px);
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(10px) scale(0.94);
+    transform-origin: bottom right;
+    pointer-events: none;
+    transition:
+      opacity 0.24s cubic-bezier(0.16, 1, 0.3, 1),
+      transform 0.24s cubic-bezier(0.16, 1, 0.3, 1),
+      visibility 0.24s ease;
+  }
+
+  .mobilePopupOpen {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+  }
+
+  .mobilePopupContent {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .mobilePopup .tooltip {
+    display: none;
+  }
+
+  .mobilePopup .replayButton {
+    width: var(--viewer-overlay-trigger-size);
+    height: var(--viewer-overlay-trigger-size);
+  }
+
+  .mobilePopup .replayButton svg {
+    width: 14px;
+    height: 14px;
+  }
+}

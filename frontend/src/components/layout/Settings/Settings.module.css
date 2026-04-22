@@ -217,6 +217,10 @@
     gap: 2px;
 }
 
+.segmentedControlWrap {
+    flex-wrap: wrap;
+}
+
 @media (prefers-color-scheme: dark) {
     .segmentedControl {
         background: rgba(255, 255, 255, 0.05);
@@ -259,10 +263,22 @@
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
 }
 
+.segmentedControlWrap .segmentBtn {
+    flex: 1 1 calc(33.333% - 2px);
+    min-width: calc(33.333% - 2px);
+}
+
 @media (prefers-color-scheme: dark) {
     .segmentBtn.segmentActive {
         background: rgba(255, 255, 255, 0.15);
         color: #4da3ff;
+    }
+}
+
+@media (max-width: 768px) {
+    .segmentedControlWrap .segmentBtn {
+        flex-basis: calc(50% - 2px);
+        min-width: calc(50% - 2px);
     }
 }
 

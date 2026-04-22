@@ -1,9 +1,9 @@
 .helpBtn {
     position: absolute;
-    top: 16px;
-    right: 16px;
-    width: 32px;
-    height: 32px;
+    top: var(--viewer-overlay-top);
+    right: var(--viewer-overlay-right);
+    width: var(--viewer-overlay-trigger-size);
+    height: var(--viewer-overlay-trigger-size);
     background: rgba(255, 255, 255, 0.6);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
@@ -32,8 +32,8 @@
 
 .helpPanel {
     position: absolute;
-    top: 56px;
-    right: 16px;
+    top: calc(var(--viewer-overlay-top) + var(--viewer-overlay-trigger-size) + 8px);
+    right: var(--viewer-overlay-right);
     width: 280px;
     max-height: calc(100vh - 80px);
     max-height: calc(100dvh - 80px);
@@ -140,7 +140,7 @@
 @media (pointer: coarse) {
     .helpPanel {
         width: calc(100% - 32px);
-        right: 16px;
+        right: var(--viewer-overlay-right);
         left: 16px;
     }
 }

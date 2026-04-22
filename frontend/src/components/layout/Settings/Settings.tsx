@@ -3,6 +3,10 @@ import { useTranslation } from 'react-i18next';
 import { useAppStore } from '@/store/useAppStore';
 import { fetchSettings, saveSettings, browseFolder, restartServer, convertAllToSpz } from '@/api';
 import type { ModelFormat } from '@/types';
+import {
+    REVEAL_EFFECT_SETTINGS_OPTIONS,
+    type RevealEffectId,
+} from '@/utils/viewerRevealEffects';
 import styles from './Settings.module.css';
 
 // Folder icon
@@ -23,6 +27,8 @@ export const Settings: React.FC = () => {
         setLocalModelFormat,
         effectiveModelFormat,
         isLocalAccess,
+        viewerDefaultRevealEffect,
+        setViewerDefaultRevealEffect,
         quickPresetMode,
         setQuickPresetMode,
         applyQuickPreset,
@@ -48,6 +54,7 @@ export const Settings: React.FC = () => {
     } = useAppStore();
     const [workspaceFolder, setWorkspaceFolder] = useState('');
     const [modelFormat, setModelFormat] = useState<ModelFormat>('spz');
+    const [defaultRevealEffect, setDefaultRevealEffect] = useState<RevealEffectId>(viewerDefaultRevealEffect);
     const [isSaving, setIsSaving] = useState(false);
     const [isConverting, setIsConverting] = useState(false);
 
@@ -83,9 +90,10 @@ export const Settings: React.FC = () => {
     useEffect(() => {
         if (settingsModalOpen) {
             setModelFormat(effectiveModelFormat());
+            setDefaultRevealEffect(viewerDefaultRevealEffect);
             loadSettings();
         }
-    }, [settingsModalOpen, effectiveModelFormat]);
+    }, [settingsModalOpen, effectiveModelFormat, viewerDefaultRevealEffect]);
 
     const loadSettings = async () => {
         try {
@@ -125,6 +133,10 @@ export const Settings: React.FC = () => {
     const handleSave = async () => {
         setIsSaving(true);
         try {
+            if (defaultRevealEffect !== viewerDefaultRevealEffect) {
+                setViewerDefaultRevealEffect(defaultRevealEffect);
+            }
+
             // For non-local users, simply save format preference to localStorage and close.
             if (!isLocalAccess) {
                 setLocalModelFormat(modelFormat);
@@ -274,6 +286,27 @@ export const Settings: React.FC = () => {
                     </div>
                     <p className={styles.hint}>
                         {t('quickPresetHint')}
+                    </p>
+                </div>
+
+                <div className={styles.group}>
+                    <label className={styles.label}>
+                        {t('defaultRevealEffectLabel')}
+                    </label>
+                    <div className={`${styles.segmentedControl} ${styles.segmentedControlWrap}`}>
+                        {REVEAL_EFFECT_SETTINGS_OPTIONS.map((effect) => (
+                            <button
+                                key={effect.id}
+                                type="button"
+                                className={`${styles.segmentBtn} ${defaultRevealEffect === effect.id ? styles.segmentActive : ''}`}
+                                onClick={() => setDefaultRevealEffect(effect.id)}
+                            >
+                                {t(effect.labelKey)}
+                            </button>
+                        ))}
+                    </div>
+                    <p className={styles.hint}>
+                        {t('defaultRevealEffectHint')}
                     </p>
                 </div>
 

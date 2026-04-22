@@ -1,6 +1,11 @@
 import { create } from 'zustand';
 import { getLodPresetConfig } from '@/constants/spark';
 import { getGalleryModelSource, reconcileGalleryItems } from '@/utils';
+import {
+  DEFAULT_REVEAL_EFFECT_ID,
+  isRevealEffectId,
+  type RevealEffectId,
+} from '@/utils/viewerRevealEffects';
 import type {
   GalleryItem,
   ModelFormat,
@@ -30,6 +35,7 @@ const LOCAL_RAD_MODE_KEY = 'sharp-rad-mode-enabled';
 const LOCAL_RAD_PAGED_KEY = 'sharp-rad-paged-enabled';
 const LOCAL_XR_UPDATE_MODE_KEY = 'sharp-xr-update-mode';
 const LOCAL_QUICK_OVERRIDES_KEY = 'sharp-viewer-quick-overrides-v1';
+const LOCAL_DEFAULT_REVEAL_EFFECT_KEY = 'sharp-default-reveal-effect';
 
 const QUALITY_LIMITS = {
   lodScale: { min: 0.2, max: 3.0 },
@@ -262,6 +268,14 @@ function getLocalXrUpdateMode(): XrUpdateMode {
   return 'auto';
 }
 
+function getLocalDefaultRevealEffect(): RevealEffectId {
+  try {
+    const value = localStorage.getItem(LOCAL_DEFAULT_REVEAL_EFFECT_KEY);
+    if (isRevealEffectId(value)) return value;
+  } catch { /* ignore */ }
+  return DEFAULT_REVEAL_EFFECT_ID;
+}
+
 interface QuickPresetState {
   isLodEnabled: boolean;
   lodPreset: LodPresetKey;
@@ -372,6 +386,7 @@ interface AppState {
   isLimitsOn: boolean;
   isGyroEnabled: boolean;
   isJoystickEnabled: boolean;
+  viewerDefaultRevealEffect: RevealEffectId;
   quickPresetMode: QuickPresetMode;
   isLodEnabled: boolean;
   lodPreset: LodPresetKey;
@@ -426,6 +441,7 @@ interface AppState {
   toggleLimits: () => void;
   toggleGyro: () => void;
   toggleJoystick: () => void;
+  setViewerDefaultRevealEffect: (effectId: RevealEffectId) => void;
   setQuickPresetMode: (mode: QuickPresetMode) => void;
   applyQuickPreset: (mode: LodPresetKey) => void;
   toggleLod: () => void;
@@ -486,6 +502,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   isLimitsOn: true,
   isGyroEnabled: false,
   isJoystickEnabled: false,
+  viewerDefaultRevealEffect: getLocalDefaultRevealEffect(),
   quickPresetMode: initialViewerPresetState.quickPresetMode,
   isLodEnabled: initialViewerPresetState.isLodEnabled,
   lodPreset: initialViewerPresetState.lodPreset,
@@ -656,6 +673,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   toggleLimits: () => set((state) => ({ isLimitsOn: !state.isLimitsOn })),
   toggleGyro: () => set((state) => ({ isGyroEnabled: !state.isGyroEnabled })),
   toggleJoystick: () => set((state) => ({ isJoystickEnabled: !state.isJoystickEnabled })),
+  setViewerDefaultRevealEffect: (effectId) => {
+    try { localStorage.setItem(LOCAL_DEFAULT_REVEAL_EFFECT_KEY, effectId); } catch { /* ignore */ }
+    set({ viewerDefaultRevealEffect: effectId });
+  },
   setQuickPresetMode: (mode) => {
     try { localStorage.setItem(LOCAL_QUICK_PRESET_KEY, mode); } catch { /* ignore */ }
     set({ quickPresetMode: mode });

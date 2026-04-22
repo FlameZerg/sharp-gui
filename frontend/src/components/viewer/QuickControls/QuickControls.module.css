@@ -1,14 +1,14 @@
 .root {
   position: absolute;
-  right: 16px;
-  bottom: calc(var(--controls-height) + 8px);
+  right: var(--viewer-overlay-right);
+  bottom: var(--viewer-overlay-bottom);
   z-index: 90;
   pointer-events: auto;
 }
 
 .trigger {
-  width: 32px;
-  height: 32px;
+  width: var(--viewer-overlay-trigger-size);
+  height: var(--viewer-overlay-trigger-size);
   border-radius: var(--radius-full);
   border: 1px solid var(--glass-border);
   background: var(--glass-bg);
@@ -210,8 +210,8 @@
 
 @media (max-width: 768px) {
   .root {
-    right: 12px;
-    bottom: calc(var(--controls-height) + 8px);
+    right: var(--viewer-overlay-mobile-right);
+    bottom: var(--viewer-overlay-mobile-bottom);
   }
 
   .panel {

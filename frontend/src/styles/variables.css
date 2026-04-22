@@ -49,6 +49,13 @@
   /* === 布局 === */
   --sidebar-width: 280px;
   --controls-height: 60px;
+  --viewer-overlay-right: 16px;
+  --viewer-overlay-top: 16px;
+  --viewer-overlay-bottom: calc(var(--controls-height) + 8px);
+  --viewer-overlay-mobile-bottom: calc(var(--controls-height) + 24px);
+  --viewer-overlay-trigger-size: 32px;
+  --viewer-overlay-vertical-gap: 12px;
+  --viewer-overlay-mobile-right: 12px;
 }
 
 @media (prefers-color-scheme: dark) {
