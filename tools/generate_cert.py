@@ -200,7 +200,7 @@ def generate_certificate(quiet=False):
     version, version_str = get_openssl_version(openssl_path)
     
     if not quiet:
-        print(f"🔐 正在生成自签名 SSL 证书...")
+        print(f"[INFO] 正在生成自签名 SSL 证书...")
         print(f"   使用: {version_str or openssl_path}")
     
     # 根据版本选择生成方式
@@ -214,18 +214,18 @@ def generate_certificate(quiet=False):
         
         if result.returncode == 0:
             if not quiet:
-                print("✅ 证书生成成功!")
+                print("[OK] 证书生成成功!")
                 print(f"   证书: {CERT_FILE}")
                 print(f"   密钥: {KEY_FILE}")
                 print("")
-                print("📱 首次在设备上访问时会显示安全警告，选择「继续访问」即可")
+                print("[INFO] 首次在设备上访问时会显示安全警告，选择「继续访问」即可")
             return True
         else:
-            print(f"❌ 生成失败: {result.stderr}")
+            print(f"[ERROR] 生成失败: {result.stderr}")
             return False
             
     except Exception as e:
-        print(f"❌ 生成证书时出错: {e}")
+        print(f"[ERROR] 生成证书时出错: {e}")
         return False
 
 

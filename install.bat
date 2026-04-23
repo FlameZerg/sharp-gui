@@ -1,6 +1,8 @@
 @echo off
 chcp 65001 >nul 2>&1
 setlocal enabledelayedexpansion
+set PYTHONUTF8=1
+set PYTHONIOENCODING=utf-8
 
 echo.
 echo ========================================
@@ -554,82 +556,10 @@ call "%VENV_DIR%\Scripts\activate.bat"
 
 python -m pip install --upgrade pip
 
-REM --- 检测并安装正确版本的 PyTorch ---
-REM Windows 上 PyPI 默认安装 CPU 版 PyTorch
-REM 如果有 NVIDIA GPU，需要先安装 CUDA 版
-set NEED_CUDA_TORCH=false
-set CUDA_INDEX_URL=
+REM Install ml-sharp requirements first. Its requirements.txt pins torch,
+REM so the final CUDA/CPU PyTorch build is selected and verified afterward.
 
-where nvidia-smi >nul 2>&1
-if !ERRORLEVEL! equ 0 (
-    echo.
-    echo [GPU] 检测到 NVIDIA GPU，检查 PyTorch CUDA 支持...
-    set NEED_CUDA_TORCH=true
-)
-
-REM 检查当前 PyTorch 是否已支持 CUDA (python -c 含括号, 必须在 if 块外执行)
-if "!NEED_CUDA_TORCH!"=="true" (
-    python -c "import torch; exit^(0 if torch.cuda.is_available^(^) else 1^)" 2>nul
-    if !ERRORLEVEL! equ 0 (
-        set NEED_CUDA_TORCH=false
-        echo [GPU] PyTorch 已支持 CUDA，无需重装
-    ) else (
-        echo [GPU] 当前 PyTorch 不支持 CUDA，将自动选择合适的 CUDA 版本
-    )
-)
-
-REM 检测 CUDA 版本 (必须在 if 块外执行, 避免 CMD 括号/引号冲突导致闪退)
-set DRIVER_CUDA_VER=
-if "!NEED_CUDA_TORCH!"=="true" (
-    python "%SCRIPT_DIR%tools\detect_cuda.py" > "%TEMP%\sharp_cuda_ver.tmp" 2>nul
-    set /p DRIVER_CUDA_VER=<"%TEMP%\sharp_cuda_ver.tmp"
-    del "%TEMP%\sharp_cuda_ver.tmp" 2>nul
-)
-
-REM 根据检测结果选择 CUDA 版本 (使用 goto 避免嵌套括号导致 CMD 闪退)
-if "!NEED_CUDA_TORCH!"=="true" if not defined DRIVER_CUDA_VER (
-    REM 无法检测版本，使用兼容性最好的 CUDA 11.8
-    set CUDA_INDEX_URL=https://download.pytorch.org/whl/cu118
-    echo [GPU] 无法检测 CUDA 版本，使用兼容性最广的 CUDA 11.8
-    goto :cuda_version_done
-)
-if not "!NEED_CUDA_TORCH!"=="true" goto :cuda_version_done
-
-echo [GPU] 驱动支持的 CUDA 版本: !DRIVER_CUDA_VER!
-
-REM 提取主版本号
-for /f "tokens=1 delims=." %%m in ("!DRIVER_CUDA_VER!") do set CUDA_MAJOR=%%m
-
-if !CUDA_MAJOR! geq 12 (
-    set CUDA_INDEX_URL=https://download.pytorch.org/whl/cu124
-    echo [GPU] 选择 PyTorch CUDA 12.4 版本
-    goto :cuda_version_done
-)
-if !CUDA_MAJOR! geq 11 (
-    set CUDA_INDEX_URL=https://download.pytorch.org/whl/cu118
-    echo [GPU] 选择 PyTorch CUDA 11.8 版本
-    goto :cuda_version_done
-)
-echo [警告] CUDA 版本过低 (!DRIVER_CUDA_VER!)，将使用 CPU 模式
-set NEED_CUDA_TORCH=false
-
-:cuda_version_done
-
-if "!NEED_CUDA_TORCH!"=="true" (
-    echo.
-    echo 正在安装 CUDA 版 PyTorch, 这可能需要几分钟...
-    echo 下载源: !CUDA_INDEX_URL!
-    pip install torch torchvision --index-url !CUDA_INDEX_URL! --force-reinstall
-    if !ERRORLEVEL! neq 0 (
-        echo.
-        echo [警告] CUDA 版 PyTorch 安装失败，将使用 CPU 版本
-        echo         推理仍可工作，但速度较慢
-        echo.
-    ) else (
-        echo [OK] CUDA 版 PyTorch 安装完成！
-    )
-)
-
+:install_sharp_core_deps
 echo 安装 Sharp 核心 (这可能需要几分钟)...
 cd /d "%SCRIPT_DIR%%SHARP_DIR%"
 pip install -r requirements.txt
@@ -645,17 +575,14 @@ if !ERRORLEVEL! neq 0 (
 )
 cd /d "%SCRIPT_DIR%"
 
-REM --- 保护: 确保 CUDA torch 没有被 requirements.txt 覆盖 ---
-if "!NEED_CUDA_TORCH!"=="true" (
-    python -c "import torch; exit^(0 if torch.cuda.is_available^(^) else 1^)" 2>nul
-    if !ERRORLEVEL! neq 0 (
-        echo.
-        echo [GPU] CUDA PyTorch 被 requirements.txt 覆盖，正在重新安装...
-        pip install torch torchvision --index-url !CUDA_INDEX_URL! --force-reinstall
-        if !ERRORLEVEL! equ 0 (
-            echo [OK] CUDA 版 PyTorch 重新安装完成
-        )
-    )
+echo.
+echo 检查并修复 PyTorch / CUDA 运行环境...
+python "%SCRIPT_DIR%tools\install_torch.py"
+if !ERRORLEVEL! neq 0 (
+    echo.
+    echo [错误] PyTorch 安装或 CUDA kernel 验证失败
+    pause
+    exit /b 1
 )
 
 echo 安装 GUI 依赖...

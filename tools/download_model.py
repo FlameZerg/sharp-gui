@@ -53,7 +53,7 @@ def download_with_progress(url, dest, ssl_context=None):
             mb_total = total_size / (1024 * 1024)
             bar_len = 30
             filled = int(bar_len * pct / 100)
-            bar = "█" * filled + "░" * (bar_len - filled)
+            bar = "#" * filled + "-" * (bar_len - filled)
             sys.stdout.write(
                 f"\r  {bar} {mb_done:.1f}/{mb_total:.1f} MB ({pct}%)"
             )

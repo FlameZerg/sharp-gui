@@ -400,6 +400,35 @@ TASK_RETENTION_SECONDS = 3600  # 已完成任务保留1小时
 CLEANUP_INTERVAL = 300  # 每5分钟清理一次
 
 
+def select_sharp_device():
+    """Return a device that can actually execute kernels."""
+    configured = os.environ.get("SHARP_DEVICE", "").strip().lower()
+    if configured in {"cpu", "cuda", "mps"}:
+        return configured
+
+    try:
+        import torch
+    except Exception as exc:
+        print(f"[WARN] Unable to import torch, falling back to CPU: {exc}")
+        return "cpu"
+
+    if torch.cuda.is_available():
+        try:
+            x = torch.ones((4, 4), device="cuda")
+            _ = (x @ x).sum().cpu()
+            torch.cuda.synchronize()
+            return "cuda"
+        except Exception as exc:
+            msg = str(exc).splitlines()[0] if str(exc) else repr(exc)
+            print(f"[WARN] CUDA is visible but unusable, falling back to CPU: {msg}")
+            return "cpu"
+
+    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        return "mps"
+
+    return "cpu"
+
+
 def cleanup_old_tasks():
     """定期清理已完成的旧任务，防止内存泄漏"""
     while True:
@@ -441,21 +470,32 @@ def worker():
             task_status[task_id]['stage'] = 'starting'
         
         # 构建命令
+        device = select_sharp_device()
+        print(f"Using Sharp device: {device}")
+
         cmd = [
             "sharp", "predict",
             "-i", input_path,
-            "-o", output_folder
+            "-o", output_folder,
+            "--device", device
         ]
         
         process = None
         try:
+            process_env = os.environ.copy()
+            process_env.setdefault("PYTHONUTF8", "1")
+            process_env.setdefault("PYTHONIOENCODING", "utf-8")
+
             # 使用 Popen 异步执行，实时读取输出解析进度
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
-                bufsize=1
+                encoding="utf-8",
+                errors="replace",
+                bufsize=1,
+                env=process_env
             )
             
             # 存储进程引用，用于取消
