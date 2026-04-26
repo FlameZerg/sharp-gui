@@ -183,7 +183,7 @@
   "quickPresetManual": "手动",
   "quickPresetHint": "推荐大多数用户直接选择：性能优先 / 平衡 / 细节优先。仅在需要精细调参时使用手动模式。",
   "defaultRevealEffectLabel": "默认渲染特效",
-  "defaultRevealEffectHint": "仅保存到当前设备的当前浏览器。默认仍为 Magic；在较卡的设备上可改为“无特效”，让模型打开时不自动播放启动效果。",
+  "defaultRevealEffectHint": "仅保存到当前设备的当前浏览器。PC 端默认仍为 Magic，而移动设备首次访问时默认会使用“无特效”，你也可以随时在这里改回其他效果。",
   "advancedSettingsLabel": "高级设置",
   "advancedSettingsHint": "以下选项面向高级调参与问题排查。",
   "advancedSettingsAutoHint": "预设模式下已隐藏高级选项以保持界面简洁。若需精细控制，请切换到手动。",

@@ -39,6 +39,7 @@ ALLOWED_IMAGE_EXTENSIONS = (
 MAX_THUMBNAIL_REPAIRS_PER_REQUEST = 6
 THUMBNAIL_CACHE_SECONDS = 86400
 DEFAULT_FILE_CACHE_SECONDS = 3600
+WORKSPACE_FILES_PREFIX = 'workspace/'
 
 
 def load_config():
@@ -114,9 +115,34 @@ def generate_thumbnail(input_path, filename):
         return None
 
 
+def is_path_inside(path, root):
+    """判断路径是否位于指定根目录内，兼容 Windows 跨盘符场景。"""
+    try:
+        abs_path = os.path.abspath(path)
+        abs_root = os.path.abspath(root)
+        common_path = os.path.commonpath([abs_path, abs_root])
+        return os.path.normcase(common_path) == os.path.normcase(abs_root)
+    except ValueError:
+        return False
+
+
+def to_url_path(path):
+    """将本地路径片段转换为 URL 路径片段。"""
+    return path.replace(os.sep, '/').replace('\\', '/')
+
+
 def get_relative_files_path(path):
-    """将绝对路径转换为 /files 可用的相对路径"""
-    return os.path.relpath(path, BASE_DIR).replace(os.sep, '/')
+    """将绝对路径转换为 /files 可用的相对路径。"""
+    abs_path = os.path.abspath(path)
+
+    if is_path_inside(abs_path, BASE_DIR):
+        return to_url_path(os.path.relpath(abs_path, BASE_DIR))
+
+    if is_path_inside(abs_path, WORKSPACE_FOLDER):
+        workspace_relative_path = to_url_path(os.path.relpath(abs_path, WORKSPACE_FOLDER))
+        return f'{WORKSPACE_FILES_PREFIX}{workspace_relative_path}'
+
+    raise ValueError(f'File path is outside served roots: {path}')
 
 
 def get_thumbnail_path(item_id):
@@ -936,11 +962,17 @@ def convert_all_to_spz():
 @app.route('/files/<path:filename>')
 def serve_files(filename):
     normalized_filename = filename.replace('\\', '/')
+    served_root = BASE_DIR
+    served_filename = filename
+    if normalized_filename.startswith(WORKSPACE_FILES_PREFIX):
+        served_root = WORKSPACE_FOLDER
+        served_filename = normalized_filename[len(WORKSPACE_FILES_PREFIX):]
+
     thumbnail_prefix = get_relative_files_path(THUMBNAIL_FOLDER) + '/'
     cache_timeout = THUMBNAIL_CACHE_SECONDS if normalized_filename.startswith(thumbnail_prefix) else DEFAULT_FILE_CACHE_SECONDS
     return send_from_directory(
-        BASE_DIR,
-        filename,
+        served_root,
+        served_filename,
         conditional=True,
         max_age=cache_timeout,
     )

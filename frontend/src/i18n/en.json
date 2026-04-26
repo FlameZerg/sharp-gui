@@ -183,7 +183,7 @@
   "quickPresetManual": "Manual",
   "quickPresetHint": "Recommended for most users: choose Performance, Balanced, or Detail. Use Manual only if you need advanced tuning.",
   "defaultRevealEffectLabel": "Default Reveal Effect",
-  "defaultRevealEffectHint": "Saved to this browser on this device only. Default is Magic; choose None on slower hardware to open models without startup effects.",
+  "defaultRevealEffectHint": "Saved to this browser on this device only. Desktop stays on Magic by default, while first-time mobile visits default to None. You can change it here anytime.",
   "advancedSettingsLabel": "Advanced Settings",
   "advancedSettingsHint": "These options are intended for advanced tuning and debugging.",
   "advancedSettingsAutoHint": "Advanced options are hidden in preset mode to keep the experience simple. Select Manual if you need fine control.",

@@ -3,6 +3,7 @@ import { getLodPresetConfig } from '@/constants/spark';
 import { getGalleryModelSource, reconcileGalleryItems } from '@/utils';
 import {
   DEFAULT_REVEAL_EFFECT_ID,
+  REVEAL_EFFECT_NONE_ID,
   isRevealEffectId,
   type RevealEffectId,
 } from '@/utils/viewerRevealEffects';
@@ -268,12 +269,54 @@ function getLocalXrUpdateMode(): XrUpdateMode {
   return 'auto';
 }
 
+function persistDefaultRevealEffect(effectId: RevealEffectId): void {
+  try {
+    localStorage.setItem(LOCAL_DEFAULT_REVEAL_EFFECT_KEY, effectId);
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function isLikelyMobileDevice(): boolean {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+    return false;
+  }
+
+  const navigatorWithUAData = navigator as Navigator & {
+    userAgentData?: {
+      mobile?: boolean;
+    };
+  };
+
+  if (typeof navigatorWithUAData.userAgentData?.mobile === 'boolean') {
+    return navigatorWithUAData.userAgentData.mobile;
+  }
+
+  const userAgent = navigator.userAgent || '';
+  if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(userAgent)) {
+    return true;
+  }
+
+  return typeof window.matchMedia === 'function'
+    && window.matchMedia('(pointer: coarse)').matches
+    && window.matchMedia('(max-width: 1024px)').matches;
+}
+
+function getInitialDefaultRevealEffect(): RevealEffectId {
+  return isLikelyMobileDevice() ? REVEAL_EFFECT_NONE_ID : DEFAULT_REVEAL_EFFECT_ID;
+}
+
 function getLocalDefaultRevealEffect(): RevealEffectId {
   try {
     const value = localStorage.getItem(LOCAL_DEFAULT_REVEAL_EFFECT_KEY);
     if (isRevealEffectId(value)) return value;
+
+    const initialEffect = getInitialDefaultRevealEffect();
+    persistDefaultRevealEffect(initialEffect);
+    return initialEffect;
   } catch { /* ignore */ }
-  return DEFAULT_REVEAL_EFFECT_ID;
+
+  return getInitialDefaultRevealEffect();
 }
 
 interface QuickPresetState {
@@ -674,7 +717,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   toggleGyro: () => set((state) => ({ isGyroEnabled: !state.isGyroEnabled })),
   toggleJoystick: () => set((state) => ({ isJoystickEnabled: !state.isJoystickEnabled })),
   setViewerDefaultRevealEffect: (effectId) => {
-    try { localStorage.setItem(LOCAL_DEFAULT_REVEAL_EFFECT_KEY, effectId); } catch { /* ignore */ }
+    persistDefaultRevealEffect(effectId);
     set({ viewerDefaultRevealEffect: effectId });
   },
   setQuickPresetMode: (mode) => {

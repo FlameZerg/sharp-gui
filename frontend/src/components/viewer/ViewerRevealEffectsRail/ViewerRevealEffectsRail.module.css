@@ -1,4 +1,25 @@
 .root {
+  --reveal-rail-panel-bg: rgba(255, 255, 255, 0.64);
+  --reveal-rail-panel-border: rgba(255, 255, 255, 0.72);
+  --reveal-rail-panel-shadow:
+    0 14px 34px rgba(17, 24, 39, 0.06),
+    0 1px 10px rgba(255, 255, 255, 0.46) inset;
+  --reveal-rail-icon: rgba(29, 29, 31, 0.58);
+  --reveal-rail-icon-hover: rgba(17, 24, 39, 0.92);
+  --reveal-rail-icon-hover-bg: rgba(255, 255, 255, 0.34);
+  --reveal-rail-line: rgba(29, 29, 31, 0.16);
+  --reveal-rail-line-neighbor: rgba(29, 29, 31, 0.2);
+  --reveal-rail-line-active: rgba(17, 24, 39, 0.9);
+  --reveal-rail-dot: rgba(17, 24, 39, 0.88);
+  --reveal-rail-dot-ring: rgba(255, 255, 255, 0.78);
+  --reveal-tooltip-bg: rgba(255, 255, 255, 0.72);
+  --reveal-tooltip-border: rgba(255, 255, 255, 0.76);
+  --reveal-tooltip-shadow:
+    0 12px 30px rgba(15, 23, 42, 0.1),
+    0 1px 0 rgba(255, 255, 255, 0.52) inset;
+  --reveal-tooltip-title: rgba(17, 24, 39, 0.96);
+  --reveal-tooltip-subtitle: rgba(100, 116, 139, 0.9);
+  --reveal-trigger-hover-bg: rgba(255, 255, 255, 0.82);
   position: absolute;
   right: var(--viewer-overlay-right);
   top: calc(var(--viewer-overlay-top) + var(--viewer-overlay-trigger-size) + var(--viewer-overlay-vertical-gap));
@@ -25,13 +46,11 @@
   align-items: center;
   gap: 8px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.72);
-  background: rgba(255, 255, 255, 0.64);
+  border: 1px solid var(--reveal-rail-panel-border);
+  background: var(--reveal-rail-panel-bg);
   backdrop-filter: blur(30px) saturate(175%);
   -webkit-backdrop-filter: blur(30px) saturate(175%);
-  box-shadow:
-    0 14px 34px rgba(17, 24, 39, 0.06),
-    0 1px 10px rgba(255, 255, 255, 0.46) inset;
+  box-shadow: var(--reveal-rail-panel-shadow);
 }
 
 .railNavButton,
@@ -39,7 +58,7 @@
   position: relative;
   border: none;
   background: transparent;
-  color: rgba(29, 29, 31, 0.58);
+  color: var(--reveal-rail-icon);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -58,8 +77,8 @@
 }
 
 .railNavButton:hover:not(:disabled) {
-  color: rgba(17, 24, 39, 0.92);
-  background: rgba(255, 255, 255, 0.34);
+  color: var(--reveal-rail-icon-hover);
+  background: var(--reveal-rail-icon-hover-bg);
 }
 
 .railNavButton:disabled {
@@ -103,7 +122,7 @@
   width: 18px;
   height: 2.5px;
   border-radius: 999px;
-  background: rgba(29, 29, 31, 0.16);
+  background: var(--reveal-rail-line);
   transition:
     width 0.22s ease,
     background 0.22s ease,
@@ -112,12 +131,12 @@
 
 .railLineNeighbor {
   width: 20px;
-  background: rgba(29, 29, 31, 0.2);
+  background: var(--reveal-rail-line-neighbor);
 }
 
 .railLineActive {
   width: 26px;
-  background: rgba(17, 24, 39, 0.9);
+  background: var(--reveal-rail-line-active);
 }
 
 .railIndicatorDot {
@@ -127,9 +146,9 @@
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: rgba(17, 24, 39, 0.88);
+  background: var(--reveal-rail-dot);
   transform: translateY(-50%);
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.78);
+  box-shadow: 0 0 0 2px var(--reveal-rail-dot-ring);
 }
 
 .tooltip {
@@ -139,13 +158,11 @@
   min-width: 82px;
   padding: 8px 10px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.76);
-  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--reveal-tooltip-border);
+  background: var(--reveal-tooltip-bg);
   backdrop-filter: blur(24px) saturate(165%);
   -webkit-backdrop-filter: blur(24px) saturate(165%);
-  box-shadow:
-    0 12px 30px rgba(15, 23, 42, 0.1),
-    0 1px 0 rgba(255, 255, 255, 0.52) inset;
+  box-shadow: var(--reveal-tooltip-shadow);
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
@@ -167,7 +184,7 @@
   font-size: 13px;
   font-weight: 600;
   line-height: 1.1;
-  color: rgba(17, 24, 39, 0.96);
+  color: var(--reveal-tooltip-title);
 }
 
 .tooltipSubtitle {
@@ -175,7 +192,7 @@
   font-size: 9px;
   font-weight: 600;
   letter-spacing: 0.14em;
-  color: rgba(100, 116, 139, 0.9);
+  color: var(--reveal-tooltip-subtitle);
 }
 
 .railItem:hover .tooltip,
@@ -191,22 +208,20 @@
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.72);
-  background: rgba(255, 255, 255, 0.64);
+  border: 1px solid var(--reveal-rail-panel-border);
+  background: var(--reveal-rail-panel-bg);
   backdrop-filter: blur(30px) saturate(175%);
   -webkit-backdrop-filter: blur(30px) saturate(175%);
-  box-shadow:
-    0 14px 34px rgba(17, 24, 39, 0.06),
-    0 1px 10px rgba(255, 255, 255, 0.46) inset;
+  box-shadow: var(--reveal-rail-panel-shadow);
 }
 
 .replayButton:hover {
-  color: rgba(17, 24, 39, 0.95);
+  color: var(--reveal-rail-icon-hover);
   transform: translateY(-1px);
 }
 
 .replayButton:disabled:hover {
-  color: rgba(29, 29, 31, 0.58);
+  color: var(--reveal-rail-icon);
   transform: none;
 }
 
@@ -275,7 +290,7 @@
 
   .mobileTrigger:hover {
     transform: scale(1.04);
-    background: rgba(255, 255, 255, 0.82);
+    background: var(--reveal-trigger-hover-bg);
   }
 
   .mobilePopup {
@@ -319,5 +334,31 @@
   .mobilePopup .replayButton svg {
     width: 14px;
     height: 14px;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .root {
+    --reveal-rail-panel-bg: rgba(24, 24, 30, 0.84);
+    --reveal-rail-panel-border: rgba(255, 255, 255, 0.16);
+    --reveal-rail-panel-shadow:
+      0 18px 36px rgba(0, 0, 0, 0.3),
+      0 1px 0 rgba(255, 255, 255, 0.08) inset;
+    --reveal-rail-icon: rgba(245, 245, 247, 0.72);
+    --reveal-rail-icon-hover: rgba(255, 255, 255, 0.96);
+    --reveal-rail-icon-hover-bg: rgba(255, 255, 255, 0.08);
+    --reveal-rail-line: rgba(255, 255, 255, 0.16);
+    --reveal-rail-line-neighbor: rgba(255, 255, 255, 0.28);
+    --reveal-rail-line-active: rgba(255, 255, 255, 0.88);
+    --reveal-rail-dot: rgba(77, 163, 255, 0.96);
+    --reveal-rail-dot-ring: rgba(24, 24, 30, 0.92);
+    --reveal-tooltip-bg: rgba(18, 18, 24, 0.9);
+    --reveal-tooltip-border: rgba(255, 255, 255, 0.16);
+    --reveal-tooltip-shadow:
+      0 14px 30px rgba(0, 0, 0, 0.34),
+      0 1px 0 rgba(255, 255, 255, 0.08) inset;
+    --reveal-tooltip-title: rgba(245, 245, 247, 0.96);
+    --reveal-tooltip-subtitle: rgba(192, 197, 207, 0.82);
+    --reveal-trigger-hover-bg: rgba(50, 50, 56, 0.9);
   }
 }
