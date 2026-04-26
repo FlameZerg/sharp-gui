@@ -54,13 +54,14 @@ No need to install apps on every device. Run Sharp GUI on one computer, and any 
 | Feature                  | Description                                                                                       |
 | ------------------------ | ------------------------------------------------------------------------------------------------- |
 | **📸 Image to 3D**       | Upload any image, AI generates 3D Gaussian Splatting model                                        |
-| **🖼️ Batch Processing**  | Multi-select/drag-drop upload with smart queue scheduling                                         |
-| **👁️ Real-time Preview** | High-performance WASM-accelerated viewer with Three.js + Spark, click-to-focus                    |
+| **🖼️ Batch Processing**  | Multi-select/drag-drop upload, virtualized gallery, in-app original image viewer, and smart queue scheduling |
+| **👁️ Real-time Preview** | High-performance WASM-accelerated viewer with Three.js + Spark 2.0, click-to-focus, quick transform controls, and Reveal Effects |
 | **📱 Mobile Optimized**  | Perfect adaptation for phones/tablets with gyroscope, virtual joystick, and touch gestures         |
 | **🥽 VR/AR Preview**     | WebXR VR mode + AR Passthrough mode, immersive experience on Quest 3/Pro with controller/touch    |
-| **📤 One-Click Share**   | Export as standalone HTML, viewable without server                                                |
+| **📤 One-Click Share**   | Export as Spark-powered standalone HTML, viewable without server                                  |
 | **🎮 GPU Acceleration** | Auto-detect NVIDIA GPU, smart CUDA version selection (cu118/cu124) for faster inference           |
 | **🔄 Auto-Update**       | One-click update to latest version, supports pre-release channel                                  |
+| **🔐 Security & Privacy** | Fully local data, one-click SSL certificate generation for safer LAN access                       |
 | **🚀 One-Click Deploy**  | Auto-configures Python/Git env, downloads deps, pre-downloads model, generates HTTPS certs        |
 
 ### 🎨 Apple-Style UI Design
@@ -80,16 +81,20 @@ Built with Apple Human Interface Guidelines for a premium user experience:
 - **Skeleton Loading** - Smooth gradient animation while loading thumbnails
 - **Smart Polling** - 2s polling when active, 10s when idle
 - **Drag & Drop Upload** - Drop images directly into sidebar
-- **Drag & Drop Preview** - Drop .ply/.splat models to preview directly
+- **Drag & Drop Preview** - Drop .ply/.splat/.spz/.rad models to preview directly
 - **Queue Management** - Cancel/delete pending tasks
+- **Original Image Viewer** - Open the uploaded source image directly from the gallery for comparison
+- **Virtualized Gallery** - Large model lists stay smooth with stable thumbnails
 - **Progress Bar** - Real-time loading percentage
 - **Delete Animation** - Smooth slide-out effect
 - **Collapsible Controls** - Bottom bar can be collapsed for more preview space
+- **Quick Controls** - Per-model scale, position, rotation, interaction direction, and quality adjustments
+- **Reveal Effects** - Magic / Spread / Unroll / Twister / Rain reveal animations with replay
 
 ### 🔧 Advanced Features
 
 - **🔒 HTTPS Support** - Auto-generated self-signed certificates for LAN access
-- **📦 File Optimization** - PLY → Splat format conversion, **43% smaller**
+- **📦 File Optimization** - Auto-generates compact SPZ models, usually **5-10x smaller** than PLY while preserving the original PLY
 - **🧹 Auto Cleanup** - Completed tasks auto-cleaned after 1 hour
 - **⚙️ Configurable Paths** - Custom workspace folder
 - **🖥️ Fullscreen Mode** - Immersive 3D preview
@@ -175,6 +180,8 @@ Built with Apple Human Interface Guidelines for a premium user experience:
 
 - 🪟 **Glass Morphism** - Frosted glass control bar with `backdrop-filter: blur(30px)`
 - ✨ **Dynamic Particles** - Canvas-rendered floating tech-style particles
+- ✨ **Reveal Effects Rail** - Viewer-side effect rail for Magic / Spread / Unroll / Twister / Rain
+- 🧭 **Quick Transform Panel** - Instant model scale, position, rotation, and interaction direction tuning
 - 🎯 **iOS-Style Indicator** - Mobile gyroscope real-time feedback ball
 - 🎬 **Fluid Animations** - All interactions with `cubic-bezier` easing curves
 - 📱 **Responsive Design** - Perfect for desktop/tablet/mobile
@@ -322,6 +329,8 @@ rm -rf sharp-gui/
 
 | Mode       | Action                  | Description                        |
 | ---------- | ----------------------- | ---------------------------------- |
+| Quick Controls | Tap the gear button | Adjust model scale, position, rotation, interaction direction, and quality |
+| Reveal Effects | Use the right-side effects rail | Switch or replay Magic / Spread / Unroll / Twister / Rain |
 | Gyroscope  | Tap "Gyro" button       | Tilt phone to control view         |
 | Front View | Tap "Front View" button | Lock to front view, tap again free |
 | Reset      | Tap "Reset" button      | Restore initial view               |
@@ -334,9 +343,9 @@ rm -rf sharp-gui/
 
 Click **Share** button to generate a standalone HTML file:
 
-- 📦 Complete 3D viewer included (Three.js + Spark)
+- 📦 Complete 3D viewer included (Three.js + Spark 2.0)
 - 🌐 No server needed, double-click to open in browser
-- 📉 Optimized size: PLY → Splat format, 43% smaller
+- 📉 Embeds compact SPZ by default; the legacy PLY/Splat export path remains available for compatibility
 - 🔒 Includes disclaimer about content responsibility
 
 ---
@@ -400,10 +409,10 @@ sharp-gui/
 │   └── 📄 update.py          # Auto-update core logic
 ├── 📁 frontend/              # React modern frontend (v1.0.0+)
 ├── 📁 templates/             # Original single-file frontend (Legacy)
-├── 📁 static/lib/            # Three.js + Gaussian Splats 3D (Legacy)
+├── 📁 static/lib/            # Three.js + Gaussian Splats 3D (legacy frontend)
 ├── 📁 ml-sharp/              # (after install) Apple ML-Sharp core
 ├── 📁 inputs/                # Input images
-└── 📁 outputs/               # Output models (.ply)
+└── 📁 outputs/               # Output models (.ply + .spz)
 ```
 
 ### Frontend Architecture (React)
@@ -413,11 +422,11 @@ frontend/
 ├── 📁 src/
 │   ├── 📁 api/               # API client (gallery, tasks, settings)
 │   ├── 📁 components/
-│   │   ├── 📁 common/        # Common components (Button, Modal, Loading, ParticleBackground)
+│   │   ├── 📁 common/        # Common components (Button, Modal, Loading, ImageViewer, ParticleBackground)
 │   │   ├── 📁 gallery/       # Gallery components (GalleryList, GalleryItem)
 │   │   ├── 📁 layout/        # Layout components (Sidebar, ControlsBar, TaskQueue, Settings)
-│   │   └── 📁 viewer/        # Viewer components (ViewerCanvas, VirtualJoystick, GyroIndicator)
-│   ├── 📁 hooks/             # Custom Hooks (useViewer, useXR, useGyroscope, useKeyboard)
+│   │   └── 📁 viewer/        # Viewer components (ViewerCanvas, QuickControls, ViewerRevealEffectsRail, VirtualJoystick, GyroIndicator)
+│   ├── 📁 hooks/             # Custom Hooks (useViewer, useXR, useGyroscope, useKeyboard, useGalleryVirtualizer)
 │   ├── 📁 i18n/              # Internationalization (zh.json, en.json)
 │   ├── 📁 store/             # Zustand state management
 │   ├── 📁 styles/            # Global styles (variables, animations)
@@ -446,7 +455,7 @@ frontend/
 | **Code Splitting**        | Vite manualChunks: three.js (~493KB), spark (~487KB), react-vendor (4KB)         |
 | **Thumbnail System**      | Auto-generated 200px JPEG thumbnails, saves bandwidth                            |
 | **Smart Polling**         | Active 2s polling, idle 10s, saves resources                                     |
-| **Format Conversion**     | PLY → Splat export conversion, 43% smaller file size                             |
+| **Format Conversion**     | Auto-converts generated models to compact SPZ; share export embeds SPZ by default while preserving the legacy PLY/Splat path |
 | **Memory Cleanup**        | Completed tasks auto-removed from memory after 1 hour                            |
 | **Progress Optimization** | Progress bar only moves forward, no visual jumping                               |
 

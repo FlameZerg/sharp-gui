@@ -108,11 +108,13 @@ export function MyComponent() {
 
 | Hook | 职责 | 接收参数 |
 |------|------|----------|
-| `useViewer` | 核心：初始化 GS3D Viewer、加载模型、相机控制 | `containerRef` |
+| `useViewer` | 核心：初始化 Spark Viewer、加载模型、相机控制、Reveal Effects | `containerRef` |
 | `useKeyboard` | WASD+QE 键盘移动，Shift/Alt 变速 | `viewerRef` |
 | `useGyroscope` | 设备陀螺仪控制相机 | `{ viewerRef }` |
 | `useJoystick` | 虚拟摇杆触控移动 | `{ viewerRef }` |
-| `useVR` | WebXR VR 会话管理 | `{ viewerRef }` |
+| `useXR` | WebXR VR / AR 会话管理 | `{ viewerRef }` |
+| `useGalleryVirtualizer` | 图库虚拟滚动与稳定高度计算 | 参数对象 |
+| `useGalleryThumbnail` | 缩略图加载状态管理 | `src`, `enabled` |
 | `useTaskQueue` | 轮询任务状态，完成时刷新画廊 | 无 |
 
 ---
@@ -126,9 +128,9 @@ export const useViewer = (containerRef) => {
   const { speedMode } = useKeyboard(viewerRef);
   const gyroscope = useGyroscope({ viewerRef });
   const joystick = useJoystick({ viewerRef });
-  const vr = useVR({ viewerRef });
+  const xr = useXR({ viewerRef });
 
-  return { ...gyroscope, ...joystick, ...vr, speedMode };
+  return { ...gyroscope, ...joystick, ...xr, speedMode };
 };
 ```
 

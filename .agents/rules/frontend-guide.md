@@ -53,7 +53,7 @@ export const MyButton: React.FC = () => { ... } // 新代码不用 React.FC
 > 1. `React.FC` 仍在部分组件中使用：`ViewerCanvas`、`Settings`、`ControlsBar`、`ParticleBackground`、`TaskQueue`、`Help`、`GyroIndicator`、`VirtualJoystick`、`SpeedTooltip`。
 > 2. `App.tsx` 仍为 `export default`（应用入口历史遗留）。
 > 3. 部分组件目录缺少 `index.ts`：`layout/ControlsBar/`、`layout/Help/`、`viewer/ViewerCanvas/`、`viewer/GyroIndicator/`、`viewer/VirtualJoystick/`。
-> 4. `useVR.ts` 已重构为 `useXR.ts`（统一 VR + AR）。
+> 4. `useXR.ts` 是当前统一的 VR + AR 实现；`useVR.ts` 为历史遗留文件，未被业务引用，新 XR 代码不要继续扩展它。
 
 ### Props 定义
 
@@ -78,10 +78,10 @@ const classes = [
 
 | 目录 | 用途 | 示例 |
 |------|------|------|
-| `components/common/` | 通用 UI 组件，不含业务逻辑 | Button, Modal, Loading, Icons |
+| `components/common/` | 通用 UI 组件，不含业务逻辑 | Button, Modal, Loading, Icons, ImageViewer |
 | `components/gallery/` | 图库相关组件 | GalleryItem, GalleryList |
 | `components/layout/` | 页面布局与导航组件 | Sidebar, ControlsBar, Settings, Help |
-| `components/viewer/` | 3D 查看器相关组件 | ViewerCanvas, GyroIndicator, VirtualJoystick, SpeedTooltip |
+| `components/viewer/` | 3D 查看器相关组件 | ViewerCanvas, QuickControls, ViewerRevealEffectsRail, GyroIndicator, VirtualJoystick, SpeedTooltip |
 
 ---
 
@@ -192,6 +192,8 @@ export const useMyHook = (param: ParamType) => {
 |------|------|------|
 | Viewer 操作 | 接收 `viewerRef` 参数操作 3D viewer | `useKeyboard(viewerRef)` |
 | 动画循环 | 使用 `requestAnimationFrame` + `useRef` | `useGyroscope`, `useJoystick` |
+| 图库性能 | 组合虚拟滚动、缩略图预加载与稳定高度 | `useGalleryVirtualizer`, `useGalleryThumbnail` |
+| 任务轮询 | 根据队列状态调整刷新频率 | `useTaskQueue` |
 | 状态引用 | 使用 `useRef` 管理不触发重渲染的状态 | 各 3D 相关 hook |
 | 组合模式 | 主 hook 内部调用子 hook | `useViewer` 组合 `useKeyboard` + `useGyroscope` + `useJoystick` + `useXR` |
 
@@ -320,6 +322,9 @@ Vite 配置了 `manualChunks` 代码分割：
 | **SparkRenderer** | 继承 `THREE.Mesh`，作为渲染管线的一部分加入场景 |
 | **RAD + paged** | 支持 `.rad` 头文件 + `.radc` 分块流式加载 |
 | **WASM Raycaster** | 内置 WASM 加速射线检测，用于点击聚焦（`splatMesh.raycast()`） |
+| **GsplatModifier** | 用于 Reveal Effects（Magic / Spread / Unroll / Twister / Rain）等渲染特效 |
+
+当前 React 查看器支持的模型格式：`.ply`、`.splat`、`.spz`、`.rad`。后端默认生成 `.ply`，并自动转换 `.spz` 供默认查看/下载。
 
 ### 关键代码模式
 
@@ -353,6 +358,8 @@ const intersects = raycaster.intersectObject(splatMesh);
 - **缩放**：通过 `splatMesh.scale.setScalar(modelScale)` 控制（默认 2.0）
 - **清理**：切换模型或组件销毁时调用 `splatMesh.dispose()`，并销毁 `sparkRenderer`
 - **listenToKeyEvents**：不可调用 `OrbitControls.listenToKeyEvents()`（Spark 注册的全局 listener 与之冲突）
+- **Reveal Effects**：效果选择与默认值走 Zustand + localStorage，用户可见文案必须同步 `en.json` / `zh.json`
+- **Quick Controls**：模型姿态、交互方向和质量覆盖按模型持久化，新字段需同步更新 `types/viewerQuickControls.ts`
 
 ---
 

@@ -52,8 +52,8 @@ git push origin v1.3.0-beta.1
 推送 tag 后，`.github/workflows/release.yml` 自动触发：
 
 1. **Checkout 代码**
-2. **Setup Node.js 20**（使用 npm cache）
-3. **构建前端**：`npm ci` + `npm run build`
+2. **Setup Node.js 20**
+3. **构建前端**：删除平台相关 lockfile 后执行 `npm install` + `npm run build`
 4. **创建发布包**：
    - 复制 `app.py`、脚本文件、`tools/`、`templates/`、`static/`、`frontend/`
    - 删除 `node_modules/`、`.vite/`、`src/`（仅保留 `dist/`）

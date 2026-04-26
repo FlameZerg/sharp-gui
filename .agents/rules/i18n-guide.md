@@ -122,8 +122,8 @@ toggleLanguage();
 ```
 frontend/src/i18n/
 ├── index.ts     # i18n 初始化配置 + toggleLanguage 函数
-├── en.json      # 英文翻译（~100 个 key）
-└── zh.json      # 中文翻译（~100 个 key）
+├── en.json      # 英文翻译（约 190 个 key）
+└── zh.json      # 中文翻译（约 190 个 key）
 ```
 
 ## 检查清单

@@ -1,73 +1,45 @@
-# React + TypeScript + Vite
+# Sharp GUI Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React 19 + TypeScript + Vite frontend for Sharp GUI. The production build is served by the Flask backend from `frontend/dist/`; release packages already include this build, so normal users do not need Node.js.
 
-Currently, two official plugins are available:
+## Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- React 19 + TypeScript 5.9 + Vite 7
+- Zustand single-store state management
+- i18next + react-i18next bilingual UI
+- Three.js + `@sparkjsdev/spark` 2.0 viewer
+- CSS Modules + CSS Variables design system
 
-## React Compiler
+## Key Areas
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```
+src/
+├── api/          # fetch client and API modules
+├── components/   # common, gallery, layout, viewer components
+├── constants/    # Spark/LoD constants
+├── hooks/        # viewer, XR, keyboard, gallery virtualizer, task queue hooks
+├── i18n/         # en.json + zh.json
+├── store/        # useAppStore Zustand store
+├── styles/       # variables, animations, global styles
+├── types/        # shared TypeScript types
+└── utils/        # camera, format, gallery, reveal effects helpers
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Development
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev
+npm run build
+npm run lint
 ```
+
+Run the Flask backend separately for API/file requests. Vite proxies `/api` and `/files` to the backend during development.
+
+## Notes For Agents
+
+- Read `../.antigravityrules` and the referenced `.agents/rules/*.md` files before changing code.
+- Use `@/` imports for frontend source paths and `import type` for pure type imports.
+- Keep user-visible text synchronized in `src/i18n/en.json` and `src/i18n/zh.json`.
+- New components use `ComponentName.tsx` + `ComponentName.module.css` + `index.ts`, named exports, and CSS Modules.
+- Do not add Tailwind, Sass, CSS-in-JS, axios, Redux, or default exports in new code.

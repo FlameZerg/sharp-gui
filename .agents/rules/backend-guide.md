@@ -2,12 +2,12 @@
 
 ## 架构概述
 
-后端是一个 **单文件 Flask 应用**（`app.py`，约 831 行），承担以下职责：
+后端是一个 **单文件 Flask 应用**（`app.py`，约 1,340 行），承担以下职责：
 
 1. **REST API 服务** — 处理前端请求，返回 JSON
 2. **静态文件服务** — 提供图片和模型文件
 3. **任务队列** — `queue.Queue` + 后台 Worker 线程调用 `sharp predict` 推理
-4. **文件管理** — 图片上传、模型存储、缩略图生成、PLY→Splat 转换
+4. **文件管理** — 图片上传、模型存储、缩略图生成、PLY→SPZ 自动转换、历史 PLY→Splat 导出兼容
 5. **配置管理** — `config.json` 读写
 6. **安全** — CORS、HTTPS、仅本机可修改设置
 
@@ -22,12 +22,15 @@
 | GET | `/api/tasks` | 获取任务队列状态 | 全部 |
 | POST | `/api/task/<id>/cancel` | 取消任务 | 全部 |
 | DELETE | `/api/delete/<id>` | 删除作品 | 全部 |
-| GET | `/api/download/<id>` | 下载 .ply 文件 | 全部 |
+| GET | `/api/download/<id>` | 下载模型文件（支持 `?format=spz|ply`） | 全部 |
+| GET | `/api/original/<id>` | 获取上传原图（inline 预览或附件下载） | 全部 |
+| GET | `/api/thumbnail/<id>` | 获取或按需修复缩略图 | 全部 |
+| POST | `/api/convert-all` | 批量将既有 PLY 转换为 SPZ | 仅 localhost |
 | GET | `/api/settings` | 读取设置 | 全部 |
 | POST | `/api/settings` | 写入设置 | 仅 localhost |
 | POST | `/api/restart` | 重启服务器 | 仅 localhost |
 | POST | `/api/browse-folder` | 原生文件夹选择 | 仅 localhost |
-| GET | `/api/export/<id>` | 导出为独立 HTML | 全部 |
+| GET | `/api/export/<id>` | 导出为 Spark 2.0 独立 HTML（支持 `?format=spz|ply`） | 全部 |
 
 ### 新增端点规则
 
@@ -98,13 +101,15 @@ with task_lock:
 workspace_folder = config.get('workspace_folder', BASE_DIR)
 input_folder = os.path.join(workspace_folder, 'inputs')
 output_folder = os.path.join(workspace_folder, 'outputs')
+thumbnail_folder = os.path.join(input_folder, '.thumbnails')
 ```
 
 ### 规则
 
 - 使用 `os.path` 构造绝对路径，不使用字符串拼接
 - `secure_filename()` 处理用户上传的文件名
-- 缩略图存储在 `{workspace}/.thumbnails/`
+- 缩略图存储在 `{workspace}/inputs/.thumbnails/`
+- 输出目录同时保留 `.ply` 原始模型和自动生成的 `.spz` 紧凑模型
 - 配置文件 `config.json` 位于项目根目录（`BASE_DIR`）
 
 ---
@@ -115,13 +120,16 @@ output_folder = os.path.join(workspace_folder, 'outputs')
 
 ```json
 {
-  "workspace_folder": "/path/to/workspace"
+  "workspace_folder": "/path/to/workspace",
+  "model_format": "spz"
 }
 ```
 
 ### 兼容性
 
 代码需兼容旧配置格式（`input_folder` / `output_folder`）到新格式（`workspace_folder`）的自动迁移。
+
+`model_format` 控制前端默认查看和下载格式，当前有效值为 `spz` / `ply`。
 
 ---
 
@@ -157,6 +165,7 @@ def after_request(response):
 | `tools/detect_cuda.py` | 解析 `nvidia-smi` 获取 CUDA 版本 | 安装阶段 |
 | `tools/download_model.py` | 多源下载模型（HF → HF 镜像 → Apple CDN）| 安装阶段 |
 | `tools/generate_cert.py` | 跨平台生成自签名 SSL 证书 | 安装阶段 / 手动 |
+| `tools/install_torch.py` | 根据 CPU/CUDA 环境安装兼容 PyTorch | 安装阶段 |
 | `tools/update.py` | GitHub Releases 自动更新（避免 rate limit）| update.sh |
 
 ---
