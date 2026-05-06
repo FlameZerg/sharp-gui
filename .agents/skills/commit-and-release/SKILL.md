@@ -1,6 +1,6 @@
 ---
 name: commit-and-release
-description: Sharp GUI 项目的 Commit Message 和 Release Note 格式规范
+description: Sharp GUI 项目的 Commit Message、Release Note、Windows 完整便携包一键打包与网盘发布流程规范
 ---
 
 # Commit Message & Release Note 规范
@@ -126,6 +126,60 @@ Bug 修复 (install.bat):
 
 📖 **English Guide**: [View README.en.md](https://github.com/lueluelue12138/sharp-gui/blob/main/README.en.md)
 ```
+
+### Windows 完整便携包发布步骤
+
+当用户要求发布 Windows 完整包、网盘包、一键打包、便携包、RTX 50 / CUDA 包时，优先使用项目根目录的一键入口：
+
+```bat
+build_portable_release.bat
+```
+
+默认行为：
+
+- 默认从 `version.txt` 或 Git tag 自动提取版本号，生成包含真实版本号的包名。
+- 若解析结果不像 `vX.Y.Z`，脚本默认会拒绝继续，避免误生成 `local-*` 测试包；测试时才使用 `-AllowLocalVersion`。
+- 构建 React 前端。
+- 前端构建会优先复用现有 `frontend\node_modules`，通过 Node 直接调用 TypeScript 与 Vite 入口；只有缺失或构建失败时才安装依赖，避免 npm 版本差异导致 lockfile 被改、`npm ci` 失败或 Windows `.bin` shim 权限问题。
+- 使用主 `venv` 生成 `cu128-rtx50` 完整包。
+- 自动准备 `.portable-venvs\cu126` 并生成 `cu126-mainstream` 完整包。
+- 生成 `.sha256.txt`。
+- 用 7-Zip 测试 ZIP 完整性。
+- 生成 `portable-dist\portable-release-template-<version>.md`，用于复制到 GitHub Release 正文并填写网盘链接。
+- 默认保留 `.portable-venvs` 作为下次打包加速缓存，并保留 `portable-dist` 中的历史旧版本产物；脚本结束时会打印缓存位置和手动清理命令。
+
+常用命令：
+
+```bat
+build_portable_release.bat -Version v1.2.3
+build_portable_release.bat -PlanOnly
+build_portable_release.bat -Version v1.2.3 -PlanOnly
+build_portable_release.bat -AllowLocalVersion -PlanOnly
+build_portable_release.bat -SkipCu126
+build_portable_release.bat -SkipCu128
+build_portable_release.bat -CleanBuildVenvs
+build_portable_release.bat -CleanOldArtifacts
+```
+
+清理策略：
+
+- 默认保留最终产物：`portable-dist\sharp-gui-*.zip`、对应 `.sha256.txt`、`portable-release-template-*.md`。
+- 默认保留 `.portable-venvs` 作为 `cu126` 打包加速缓存，避免每次重新下载和安装 PyTorch。
+- 默认清理 `.portable-build` 临时 staging 目录，避免异常之外的中间目录残留。
+- 默认保留旧版本 ZIP，避免误删历史发布包。
+- 如需清理 `cu126` 打包缓存，可显式加 `-CleanBuildVenvs`，或手动删除 `.portable-venvs`。
+- 如需清理旧版本便携包产物，可显式加 `-CleanOldArtifacts`，或手动删除 `portable-dist` 中不需要的版本。
+
+根目录只保留 `build_portable_release.bat` 作为公开入口；`tools/build_portable_package.ps1` 是内部单包构建实现，除非用户明确要求调试单个目标包，否则不要让用户直接调用它。
+
+发布检查清单：
+
+- 确认 `portable-dist\*.zip` 与对应 `.sha256.txt` 已生成，且文件名包含真实版本号 `vX.Y.Z`，不能发布 `local-*` 或 `v-local-test` 包。
+- 确认 `portable-dist\portable-release-template-<version>.md` 已生成，并将网盘链接补进去。
+- `cu128-rtx50` 面向 RTX 50 系列；`cu126-mainstream` 面向 RTX 50 以下主流 NVIDIA 显卡。
+- 首版完整便携包不提供纯 CPU 包。
+- 不要把完整大 ZIP 上传到 GitHub Release 资产；GitHub Release 只贴网盘链接和 SHA256。
+- 生成 commit message 或 release note 时，必须提到 Windows 完整便携包的适用显卡和校验方式。
 
 ### 规则
 

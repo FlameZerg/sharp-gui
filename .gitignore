@@ -48,6 +48,12 @@ Thumbs.db
 # Logs
 *.log
 
+# Local portable package output
+.portable-build/
+.portable-smoke/
+.portable-venvs/
+portable-dist/
+
 # Backup files
 *.bak
 *.zip
