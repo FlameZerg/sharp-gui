@@ -251,24 +251,33 @@ function Write-ReleaseTemplate {
 
     $lines.Add("## Windows 完整便携包下载")
     $lines.Add("")
-    $lines.Add("> 大包通过网盘分发，GitHub Release 仅保留说明与校验值。")
+    $lines.Add("下载：[点击打开网盘文件夹](待填写网盘链接)")
     $lines.Add("")
-    $lines.Add("| 适用显卡 | 文件 | SHA256 | 网盘链接 |")
-    $lines.Add("|---|---|---|---|")
+    $lines.Add("网盘文件夹内包含 RTX 50 和主流 NVIDIA 两个完整包，请按显卡选择：")
+    $lines.Add("")
+    $lines.Add("| 适用显卡 | 下载文件 | SHA256 |")
+    $lines.Add("|---|---|---|")
 
-    foreach ($pkg in $Packages) {
-        $label = if ($pkg.Target -eq "cu128-rtx50") { "RTX 50 系列" } else { "RTX 50 以下主流 NVIDIA" }
-        $lines.Add("| $label | `$($pkg.File)` | `$($pkg.Hash)` | 待填写 |")
+    $orderedPackages = $Packages | Sort-Object @{
+        Expression = {
+            if ($_.Target -eq "cu128-rtx50") { 0 } else { 1 }
+        }
+    }, Target
+
+    foreach ($pkg in $orderedPackages) {
+        if ($pkg.Target -eq "cu128-rtx50") {
+            $label = "RTX 50 系列"
+        } else {
+            $label = "RTX 50 以下主流 NVIDIA"
+        }
+
+        $lines.Add(('| {0} | `{1}` | `{2}` |' -f $label, $pkg.File, $pkg.Hash))
     }
 
     $lines.Add("")
-    $lines.Add("使用方式：")
+    $lines.Add('使用方式：下载匹配显卡的 ZIP，校验 SHA256，解压后双击 `portable-run.bat`。')
     $lines.Add("")
-    $lines.Add("1. 下载匹配显卡的完整 ZIP。")
-    $lines.Add("2. 校验 SHA256。")
-    $lines.Add("3. 解压后双击 `portable-run.bat`。")
-    $lines.Add("")
-    $lines.Add("注意：首版完整便携包只支持 NVIDIA GPU，不提供纯 CPU 包。")
+    $lines.Add("> 首版完整便携包只支持 NVIDIA GPU，不提供纯 CPU 包。")
 
     Set-Content -LiteralPath $template -Encoding UTF8 -Value ($lines -join "`r`n")
     Write-Info "Release 模板: $template"
