@@ -8,7 +8,10 @@ import { QuickControls } from '@/components/viewer/QuickControls';
 import { ViewerRevealEffectsRail } from '@/components/viewer/ViewerRevealEffectsRail';
 import { VirtualJoystick } from '@/components/viewer/VirtualJoystick/VirtualJoystick';
 import { SpeedTooltip } from '@/components/viewer/SpeedTooltip';
-import type { RevealEffectId } from '@/utils/viewerRevealEffects';
+import {
+  resolveRevealEffectPreference,
+  type RevealEffectId,
+} from '@/utils/viewerRevealEffects';
 import styles from './ViewerCanvas.module.css';
 
 export const ViewerCanvas: React.FC = () => {
@@ -30,7 +33,9 @@ export const ViewerCanvas: React.FC = () => {
 const ViewerInstance: React.FC = () => {
     const containerRef = useRef<HTMLDivElement>(null);
     const viewerDefaultRevealEffect = useAppStore((state) => state.viewerDefaultRevealEffect);
-    const [activeEffect, setActiveEffect] = useState<RevealEffectId>(viewerDefaultRevealEffect);
+    const [activeEffect, setActiveEffect] = useState<RevealEffectId>(
+        resolveRevealEffectPreference(viewerDefaultRevealEffect),
+    );
     const [replayToken, setReplayToken] = useState(0);
     const viewerHook = useViewer(containerRef, {
         revealEffect: activeEffect,
@@ -38,7 +43,7 @@ const ViewerInstance: React.FC = () => {
     });
 
     useEffect(() => {
-        setActiveEffect(viewerDefaultRevealEffect);
+        setActiveEffect(resolveRevealEffectPreference(viewerDefaultRevealEffect));
     }, [viewerDefaultRevealEffect]);
 
     return (

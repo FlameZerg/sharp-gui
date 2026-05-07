@@ -1,25 +1,28 @@
 import { dyno, type GsplatModifier, type SplatMesh } from '@sparkjsdev/spark';
 import * as THREE from 'three';
 
-export type ActiveRevealEffectId = 'magic' | 'spread' | 'unroll' | 'twister' | 'rain';
+export type ActiveRevealEffectId = 'default' | 'magic' | 'spread' | 'unroll' | 'twister' | 'rain';
 export type RevealEffectId = 'none' | ActiveRevealEffectId;
+export type RevealEffectPreferenceId = ActiveRevealEffectId;
 
-export interface RevealEffectOption {
-  id: RevealEffectId;
+export interface RevealEffectOption<TId extends string = RevealEffectId> {
+  id: TId;
   labelKey: string;
   shortLabel: string;
 }
 
-export const DEFAULT_REVEAL_EFFECT_ID = 'magic' as const satisfies RevealEffectId;
 export const REVEAL_EFFECT_NONE_ID = 'none' as const satisfies RevealEffectId;
+export const DEFAULT_REVEAL_EFFECT_ID = 'default' as const satisfies ActiveRevealEffectId;
+export const DEFAULT_REVEAL_EFFECT_PREFERENCE_ID = 'default' as const satisfies RevealEffectPreferenceId;
 
-export const REVEAL_EFFECT_NONE_OPTION: RevealEffectOption = {
-  id: REVEAL_EFFECT_NONE_ID,
-  labelKey: 'revealEffectsNone',
-  shortLabel: 'OFF',
+export const REVEAL_EFFECT_DEFAULT_OPTION: RevealEffectOption<typeof DEFAULT_REVEAL_EFFECT_PREFERENCE_ID> = {
+  id: DEFAULT_REVEAL_EFFECT_PREFERENCE_ID,
+  labelKey: 'revealEffectsDefault',
+  shortLabel: 'DEF',
 };
 
-export const VIEWER_REVEAL_EFFECTS: RevealEffectOption[] = [
+export const VIEWER_REVEAL_EFFECTS: Array<RevealEffectOption<ActiveRevealEffectId>> = [
+  REVEAL_EFFECT_DEFAULT_OPTION,
   { id: 'magic', labelKey: 'revealEffectsMagic', shortLabel: 'MAG' },
   { id: 'spread', labelKey: 'revealEffectsSpread', shortLabel: 'SPD' },
   { id: 'unroll', labelKey: 'revealEffectsUnroll', shortLabel: 'UNR' },
@@ -27,12 +30,11 @@ export const VIEWER_REVEAL_EFFECTS: RevealEffectOption[] = [
   { id: 'rain', labelKey: 'revealEffectsRain', shortLabel: 'RAN' },
 ];
 
-export const REVEAL_EFFECT_SETTINGS_OPTIONS: RevealEffectOption[] = [
-  REVEAL_EFFECT_NONE_OPTION,
+export const REVEAL_EFFECT_SETTINGS_OPTIONS: Array<RevealEffectOption<RevealEffectPreferenceId>> = [
   ...VIEWER_REVEAL_EFFECTS,
 ];
 
-const REVEAL_EFFECT_TYPES: Record<ActiveRevealEffectId, number> = {
+const REVEAL_EFFECT_TYPES: Record<Exclude<ActiveRevealEffectId, 'default'>, number> = {
   magic: 1,
   spread: 2,
   unroll: 3,
@@ -41,7 +43,7 @@ const REVEAL_EFFECT_TYPES: Record<ActiveRevealEffectId, number> = {
 };
 
 function getRevealEffectType(effectId: RevealEffectId): number {
-  if (effectId === 'none') return 0;
+  if (effectId === 'none' || effectId === 'default') return 0;
   return REVEAL_EFFECT_TYPES[effectId];
 }
 
@@ -52,12 +54,29 @@ export function isRevealEffectEnabled(
 }
 
 export function isRevealEffectId(value: unknown): value is RevealEffectId {
+  return value === REVEAL_EFFECT_NONE_ID
+    || VIEWER_REVEAL_EFFECTS.some((effect) => effect.id === value);
+}
+
+export function isRevealEffectPreferenceId(
+  value: unknown,
+): value is RevealEffectPreferenceId {
   return REVEAL_EFFECT_SETTINGS_OPTIONS.some((effect) => effect.id === value);
 }
 
-export function getRevealEffectOption(effectId: RevealEffectId): RevealEffectOption {
-  return REVEAL_EFFECT_SETTINGS_OPTIONS.find((effect) => effect.id === effectId)
-    ?? REVEAL_EFFECT_NONE_OPTION;
+export function resolveRevealEffectPreference(
+  preferenceId: RevealEffectPreferenceId,
+): RevealEffectId {
+  return preferenceId;
+}
+
+export function getRevealEffectOption(effectId: RevealEffectId): RevealEffectOption<string> {
+  if (effectId === REVEAL_EFFECT_NONE_ID) {
+    return REVEAL_EFFECT_DEFAULT_OPTION;
+  }
+
+  return VIEWER_REVEAL_EFFECTS.find((effect) => effect.id === effectId)
+    ?? REVEAL_EFFECT_DEFAULT_OPTION;
 }
 
 export interface RevealEffectRuntime {
@@ -167,7 +186,10 @@ function createRevealEffectModifier(runtime: RevealEffectRuntime): GsplatModifie
         vec3 localPos = vec3(basePos.x / radius, basePos.y / halfHeight, basePos.z / radius);
         float l = length(localPos.xz);
 
-        if (${inputs.effectType} == 1) {
+        if (${inputs.effectType} == 0) {
+          float reveal = smoothstep(0.0, 0.75, t * 1.35);
+          ${outputs.gsplat}.rgba = ${inputs.gsplat}.rgba * reveal;
+        } else if (${inputs.effectType} == 1) {
           float sweep = smoothstep(0.0, 10.0, t - 1.5) * 3.2;
           float border = abs(sweep - l - 0.35);
           localPos *= 1.0 - 0.12 * exp(-18.0 * border);

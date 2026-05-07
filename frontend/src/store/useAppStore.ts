@@ -2,10 +2,10 @@ import { create } from 'zustand';
 import { getLodPresetConfig } from '@/constants/spark';
 import { getGalleryModelSource, reconcileGalleryItems } from '@/utils';
 import {
-  DEFAULT_REVEAL_EFFECT_ID,
+  DEFAULT_REVEAL_EFFECT_PREFERENCE_ID,
   REVEAL_EFFECT_NONE_ID,
-  isRevealEffectId,
-  type RevealEffectId,
+  isRevealEffectPreferenceId,
+  type RevealEffectPreferenceId,
 } from '@/utils/viewerRevealEffects';
 import type {
   GalleryItem,
@@ -269,7 +269,7 @@ function getLocalXrUpdateMode(): XrUpdateMode {
   return 'auto';
 }
 
-function persistDefaultRevealEffect(effectId: RevealEffectId): void {
+function persistDefaultRevealEffect(effectId: RevealEffectPreferenceId): void {
   try {
     localStorage.setItem(LOCAL_DEFAULT_REVEAL_EFFECT_KEY, effectId);
   } catch {
@@ -277,46 +277,16 @@ function persistDefaultRevealEffect(effectId: RevealEffectId): void {
   }
 }
 
-function isLikelyMobileDevice(): boolean {
-  if (typeof window === 'undefined' || typeof navigator === 'undefined') {
-    return false;
-  }
-
-  const navigatorWithUAData = navigator as Navigator & {
-    userAgentData?: {
-      mobile?: boolean;
-    };
-  };
-
-  if (typeof navigatorWithUAData.userAgentData?.mobile === 'boolean') {
-    return navigatorWithUAData.userAgentData.mobile;
-  }
-
-  const userAgent = navigator.userAgent || '';
-  if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(userAgent)) {
-    return true;
-  }
-
-  return typeof window.matchMedia === 'function'
-    && window.matchMedia('(pointer: coarse)').matches
-    && window.matchMedia('(max-width: 1024px)').matches;
-}
-
-function getInitialDefaultRevealEffect(): RevealEffectId {
-  return isLikelyMobileDevice() ? REVEAL_EFFECT_NONE_ID : DEFAULT_REVEAL_EFFECT_ID;
-}
-
-function getLocalDefaultRevealEffect(): RevealEffectId {
+function getLocalDefaultRevealEffect(): RevealEffectPreferenceId {
   try {
     const value = localStorage.getItem(LOCAL_DEFAULT_REVEAL_EFFECT_KEY);
-    if (isRevealEffectId(value)) return value;
-
-    const initialEffect = getInitialDefaultRevealEffect();
-    persistDefaultRevealEffect(initialEffect);
-    return initialEffect;
+    if (isRevealEffectPreferenceId(value)) return value;
+    if (value === REVEAL_EFFECT_NONE_ID) {
+      persistDefaultRevealEffect(DEFAULT_REVEAL_EFFECT_PREFERENCE_ID);
+    }
   } catch { /* ignore */ }
 
-  return getInitialDefaultRevealEffect();
+  return DEFAULT_REVEAL_EFFECT_PREFERENCE_ID;
 }
 
 interface QuickPresetState {
@@ -429,7 +399,7 @@ interface AppState {
   isLimitsOn: boolean;
   isGyroEnabled: boolean;
   isJoystickEnabled: boolean;
-  viewerDefaultRevealEffect: RevealEffectId;
+  viewerDefaultRevealEffect: RevealEffectPreferenceId;
   quickPresetMode: QuickPresetMode;
   isLodEnabled: boolean;
   lodPreset: LodPresetKey;
@@ -484,7 +454,7 @@ interface AppState {
   toggleLimits: () => void;
   toggleGyro: () => void;
   toggleJoystick: () => void;
-  setViewerDefaultRevealEffect: (effectId: RevealEffectId) => void;
+  setViewerDefaultRevealEffect: (effectId: RevealEffectPreferenceId) => void;
   setQuickPresetMode: (mode: QuickPresetMode) => void;
   applyQuickPreset: (mode: LodPresetKey) => void;
   toggleLod: () => void;

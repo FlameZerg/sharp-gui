@@ -5,7 +5,7 @@ import { fetchSettings, saveSettings, browseFolder, restartServer, convertAllToS
 import type { ModelFormat } from '@/types';
 import {
     REVEAL_EFFECT_SETTINGS_OPTIONS,
-    type RevealEffectId,
+    type RevealEffectPreferenceId,
 } from '@/utils/viewerRevealEffects';
 import styles from './Settings.module.css';
 
@@ -54,7 +54,7 @@ export const Settings: React.FC = () => {
     } = useAppStore();
     const [workspaceFolder, setWorkspaceFolder] = useState('');
     const [modelFormat, setModelFormat] = useState<ModelFormat>('spz');
-    const [defaultRevealEffect, setDefaultRevealEffect] = useState<RevealEffectId>(viewerDefaultRevealEffect);
+    const [defaultRevealEffect, setDefaultRevealEffect] = useState<RevealEffectPreferenceId>(viewerDefaultRevealEffect);
     const [isSaving, setIsSaving] = useState(false);
     const [isConverting, setIsConverting] = useState(false);
 
