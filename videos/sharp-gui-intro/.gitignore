@@ -1,0 +1,8 @@
+node_modules/
+.hyperframes/
+.thumbnails/
+.waveform-cache/
+renders/
+
+# Local source capture kept out of git; the committed H.264 render is used by the composition.
+assets/Reveal_Effects.mp4

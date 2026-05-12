@@ -1,0 +1,16 @@
+{
+  "name": "sharp-gui-intro-video",
+  "private": true,
+  "scripts": {
+    "lint": "hyperframes lint",
+    "inspect": "powershell -ExecutionPolicy Bypass -File ./render.ps1 -CheckOnly",
+    "check": "powershell -ExecutionPolicy Bypass -File ./render.ps1 -CheckOnly",
+    "render": "powershell -ExecutionPolicy Bypass -File ./render.ps1",
+    "render:hq": "powershell -ExecutionPolicy Bypass -File ./render.ps1",
+    "preview": "hyperframes preview --port 3017"
+  },
+  "devDependencies": {
+    "gsap": "^3.15.0",
+    "hyperframes": "latest"
+  }
+}
