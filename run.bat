@@ -3,8 +3,9 @@ chcp 65001 >nul 2>&1
 REM ============================================================
 REM Sharp GUI - Launcher Script (Windows)
 REM 
-REM Usage: run.bat [--legacy]
-REM   --legacy  Use legacy single-file frontend
+REM Usage: run.bat [--legacy] [--verbose]
+REM   --legacy   Use legacy single-file frontend
+REM   --verbose  Print extra diagnostics for troubleshooting
 REM ============================================================
 
 setlocal enabledelayedexpansion
@@ -19,19 +20,33 @@ set USE_LEGACY=false
 set SHARP_FRONTEND_MODE=react
 
 REM Parse arguments
-if "%1"=="--legacy" (
+:parse_args
+if "%~1"=="" goto :main
+if /I "%~1"=="--legacy" (
     set USE_LEGACY=true
     set SHARP_FRONTEND_MODE=legacy
+    shift
+    goto :parse_args
 )
-if "%1"=="-h" goto :show_help
-if "%1"=="--help" goto :show_help
+if /I "%~1"=="--verbose" (
+    set SHARP_VERBOSE=1
+    set SHARP_LOG_LEVEL=DEBUG
+    set "SHARP_LOG_FILE=%SCRIPT_DIR%sharp-gui-verbose.log"
+    set PYTHONFAULTHANDLER=1
+    shift
+    goto :parse_args
+)
+if "%~1"=="-h" goto :show_help
+if "%~1"=="--help" goto :show_help
+echo 未知参数: %~1
 goto :main
 
 :show_help
-echo 用法 (Usage): run.bat [--legacy]
+echo 用法 (Usage): run.bat [--legacy] [--verbose]
 echo.
 echo 选项 (Options):
 echo   --legacy    使用原始单文件前端
+echo   --verbose   输出更多诊断日志，用于反馈问题
 echo   -h, --help  显示帮助信息
 exit /b 0
 
@@ -92,6 +107,10 @@ echo ========================================
 echo   Sharp GUI 启动中...
 echo ========================================
 echo.
+if "%SHARP_VERBOSE%"=="1" (
+    echo [Verbose] 已启用详细诊断日志
+    echo [Verbose] 日志文件: %SHARP_LOG_FILE%
+)
 
 REM Get LAN IP
 for /f "delims=" %%i in ('python -c "import socket; ips=list(set(ip[4][0] for ip in socket.getaddrinfo(socket.gethostname(),None,socket.AF_INET))); result=next((ip for ip in ips if ip.startswith('192.168.') or ip.startswith('10.') or (ip.startswith('172.') and 16<=int(ip.split('.')[1])<=31 and not ip.startswith('172.17.'))),None); print(result or next((ip for ip in ips if not ip.startswith('127.')),'127.0.0.1'))" 2^>nul') do set LOCAL_IP=%%i

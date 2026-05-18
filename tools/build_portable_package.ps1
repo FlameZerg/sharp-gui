@@ -514,6 +514,13 @@ set "TORCH_HOME=%SCRIPT_DIR%.cache\torch"
 set "SHARP_FRONTEND_MODE=react"
 set "PATH=%SCRIPT_DIR%;%SCRIPT_DIR%python;%SCRIPT_DIR%python\Scripts;%PATH%"
 
+if /I "%~1"=="--verbose" (
+    set "SHARP_VERBOSE=1"
+    set "SHARP_LOG_LEVEL=DEBUG"
+    set "SHARP_LOG_FILE=%SCRIPT_DIR%sharp-gui-verbose.log"
+    set "PYTHONFAULTHANDLER=1"
+)
+
 if not exist "%SCRIPT_DIR%python\python.exe" (
     echo [ERROR] Missing bundled Python: %SCRIPT_DIR%python\python.exe
     goto failed
@@ -536,6 +543,11 @@ if not "%SHARP_SKIP_CUDA_CHECK%"=="1" (
     echo [1/2] Checking bundled CUDA runtime...
     "%SCRIPT_DIR%python\python.exe" -c "import torch; assert torch.cuda.is_available(), 'CUDA is not available'; x=torch.ones((4,4),device='cuda'); y=(x@x).sum(); torch.cuda.synchronize(); print('CUDA OK: torch=' + torch.__version__ + ', cuda=' + str(torch.version.cuda) + ', gpu=' + torch.cuda.get_device_name(0))"
     if errorlevel 1 goto cuda_failed
+)
+
+if "%SHARP_VERBOSE%"=="1" (
+    echo [Verbose] Extra diagnostics enabled.
+    echo [Verbose] Log file: %SHARP_LOG_FILE%
 )
 
 echo.
@@ -566,6 +578,17 @@ exit /b 1
     [System.Text.Encoding]::ASCII
 )
 
+$portableRunVerbose = @'
+@echo off
+call "%~dp0portable-run.bat" --verbose %*
+exit /b %ERRORLEVEL%
+'@
+[System.IO.File]::WriteAllText(
+    "$packageRoot\portable-run-verbose.bat",
+    ($portableRunVerbose -replace "`r?`n", "`r`n"),
+    [System.Text.Encoding]::ASCII
+)
+
 $sharpCmd = @'
 @echo off
 "%~dp0python\python.exe" -c "from sharp.cli import main_cli; main_cli()" %*
@@ -587,6 +610,7 @@ $packageInfo = [ordered]@{
     notes = @(
         "这是本地打包生成的 Windows GPU 完整 ZIP。",
         "首选入口是 portable-run.bat。",
+        "反馈问题时可以运行 portable-run-verbose.bat 获取更多日志。",
         "包内使用本地 TORCH_HOME，模型文件放在 .cache\\torch\\hub\\checkpoints。"
     )
 }
@@ -597,6 +621,8 @@ $notes = @"
 
 入口：双击 `portable-run.bat`。
 
+反馈问题时：双击 `portable-run-verbose.bat`，并把窗口中的完整日志或 `sharp-gui-verbose.log` 发给维护者。
+
 本包包含：
 
 - Sharp GUI 后端与已构建 React 前端
@@ -604,6 +630,7 @@ $notes = @"
 - 包内 Python 运行时与当前本机 venv 中的 Python 依赖
 - Sharp 模型缓存（除非打包时使用了 `-SkipModel`）
 - `sharp.cmd` 包内 CLI 入口
+- `portable-run-verbose.bat` 详细日志入口
 
 注意：
 

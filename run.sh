@@ -2,8 +2,9 @@
 # ============================================================
 # Sharp GUI - 一键启动脚本 (Linux/macOS)
 # 
-# 用法: ./run.sh [--legacy]
-#   --legacy  使用原始单文件版本
+# 用法: ./run.sh [--legacy] [--verbose]
+#   --legacy   使用原始单文件版本
+#   --verbose  输出更多诊断日志，用于反馈问题
 # ============================================================
 
 set -e
@@ -13,6 +14,7 @@ cd "$SCRIPT_DIR"
 
 # 默认使用 React 版本
 USE_LEGACY=false
+SHARP_VERBOSE="${SHARP_VERBOSE:-}"
 
 # 解析参数
 while [[ $# -gt 0 ]]; do
@@ -21,15 +23,24 @@ while [[ $# -gt 0 ]]; do
             USE_LEGACY=true
             shift
             ;;
+        --verbose)
+            export SHARP_VERBOSE=1
+            export SHARP_LOG_LEVEL=DEBUG
+            export SHARP_LOG_FILE="$SCRIPT_DIR/sharp-gui-verbose.log"
+            export PYTHONFAULTHANDLER=1
+            shift
+            ;;
         -h|--help)
-            echo "用法 (Usage): ./run.sh [--legacy]"
+            echo "用法 (Usage): ./run.sh [--legacy] [--verbose]"
             echo ""
             echo "选项 (Options):"
             echo "  --legacy    使用原始单文件前端"
+            echo "  --verbose   输出更多诊断日志，用于反馈问题"
             echo "  -h, --help  显示帮助信息"
             exit 0
             ;;
         *)
+            echo "未知参数: $1"
             shift
             ;;
     esac
@@ -76,6 +87,10 @@ echo "========================================"
 echo "  Sharp GUI 启动中..."
 echo "========================================"
 echo ""
+if [ "${SHARP_VERBOSE:-}" = "1" ]; then
+    echo "[Verbose] 已启用详细诊断日志"
+    echo "[Verbose] 日志文件: ${SHARP_LOG_FILE:-$SCRIPT_DIR/sharp-gui-verbose.log}"
+fi
 
 # 获取本机局域网 IP
 if [[ "$OSTYPE" == "darwin"* ]]; then

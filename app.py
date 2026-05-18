@@ -14,6 +14,8 @@ import shutil
 import base64
 import gzip
 import datetime
+import platform
+import traceback
 import numpy as np
 from io import BytesIO
 from flask import Flask, render_template, request, jsonify, send_from_directory, Response
@@ -29,6 +31,9 @@ app = Flask(__name__, template_folder=os.path.join(BASE_DIR, 'templates'))
 # 前端模式: "react" 或 "legacy"
 FRONTEND_MODE = os.environ.get('SHARP_FRONTEND_MODE', 'react')
 REACT_BUILD_DIR = os.path.join(BASE_DIR, 'frontend', 'dist')
+SHARP_VERBOSE = os.environ.get('SHARP_VERBOSE', '').strip().lower() in {'1', 'true', 'yes', 'on', 'debug', 'verbose'}
+SHARP_LOG_LEVEL = os.environ.get('SHARP_LOG_LEVEL', 'DEBUG' if SHARP_VERBOSE else 'INFO').strip().upper()
+SHARP_LOG_FILE = os.environ.get('SHARP_LOG_FILE', os.path.join(BASE_DIR, 'sharp-gui-verbose.log'))
 
 # 默认文件夹
 DEFAULT_WORKSPACE_FOLDER = BASE_DIR  # 工作目录默认为应用根目录
@@ -455,6 +460,86 @@ def select_sharp_device():
     return "cpu"
 
 
+def resolve_sharp_command():
+    """Return an executable Sharp CLI path that subprocess can launch."""
+    if os.name == "nt":
+        bundled_cmd = os.path.join(BASE_DIR, "sharp.cmd")
+        if os.path.exists(bundled_cmd):
+            return bundled_cmd
+
+        for candidate in ("sharp.cmd", "sharp.exe", "sharp"):
+            resolved = shutil.which(candidate)
+            if resolved:
+                return resolved
+
+    resolved = shutil.which("sharp")
+    return resolved or "sharp"
+
+
+def verbose_log(message):
+    if SHARP_VERBOSE:
+        print(f"[DEBUG] {message}", flush=True)
+
+
+class TeeStream:
+    def __init__(self, primary, secondary):
+        self.primary = primary
+        self.secondary = secondary
+
+    def write(self, data):
+        self.primary.write(data)
+        self.secondary.write(data)
+        return len(data)
+
+    def flush(self):
+        self.primary.flush()
+        self.secondary.flush()
+
+
+def enable_verbose_log_file():
+    if not SHARP_VERBOSE:
+        return
+
+    try:
+        log_dir = os.path.dirname(SHARP_LOG_FILE)
+        if log_dir:
+            os.makedirs(log_dir, exist_ok=True)
+        log_file = open(SHARP_LOG_FILE, "a", encoding="utf-8", buffering=1)
+    except Exception as exc:
+        print(f"[WARN] Unable to open verbose log file: {exc}", flush=True)
+        return
+
+    sys.stdout = TeeStream(sys.stdout, log_file)
+    sys.stderr = TeeStream(sys.stderr, log_file)
+    print(f"[DEBUG] verbose_log_file={SHARP_LOG_FILE}", flush=True)
+
+
+def format_command_for_log(cmd):
+    return " ".join(f'"{part}"' if " " in str(part) else str(part) for part in cmd)
+
+
+def print_runtime_diagnostics(protocol=None, local_ip=None):
+    if not SHARP_VERBOSE:
+        return
+
+    print("[DEBUG] Sharp GUI verbose diagnostics", flush=True)
+    print(f"[DEBUG]   log_level={SHARP_LOG_LEVEL}", flush=True)
+    print(f"[DEBUG]   base_dir={BASE_DIR}", flush=True)
+    print(f"[DEBUG]   cwd={os.getcwd()}", flush=True)
+    print(f"[DEBUG]   python={sys.executable}", flush=True)
+    print(f"[DEBUG]   verbose_log_file={SHARP_LOG_FILE}", flush=True)
+    print(f"[DEBUG]   python_version={sys.version.split()[0]}", flush=True)
+    print(f"[DEBUG]   platform={platform.platform()}", flush=True)
+    print(f"[DEBUG]   frontend_mode={FRONTEND_MODE}", flush=True)
+    if protocol and local_ip:
+        print(f"[DEBUG]   url_local={protocol}://127.0.0.1:5050", flush=True)
+        print(f"[DEBUG]   url_lan={protocol}://{local_ip}:5050", flush=True)
+    print(f"[DEBUG]   sharp_cmd={resolve_sharp_command()}", flush=True)
+    print(f"[DEBUG]   which_sharp={shutil.which('sharp')}", flush=True)
+    print(f"[DEBUG]   which_sharp_cmd={shutil.which('sharp.cmd')}", flush=True)
+    print(f"[DEBUG]   path={os.environ.get('PATH', '')}", flush=True)
+
+
 def cleanup_old_tasks():
     """定期清理已完成的旧任务，防止内存泄漏"""
     while True:
@@ -498,9 +583,11 @@ def worker():
         # 构建命令
         device = select_sharp_device()
         print(f"Using Sharp device: {device}")
+        sharp_command = resolve_sharp_command()
+        print(f"Using Sharp command: {sharp_command}")
 
         cmd = [
-            "sharp", "predict",
+            sharp_command, "predict",
             "-i", input_path,
             "-o", output_folder,
             "--device", device
@@ -511,6 +598,11 @@ def worker():
             process_env = os.environ.copy()
             process_env.setdefault("PYTHONUTF8", "1")
             process_env.setdefault("PYTHONIOENCODING", "utf-8")
+            verbose_log(f"Task {task_id} input_path={input_path} exists={os.path.exists(input_path)}")
+            verbose_log(f"Task {task_id} output_folder={output_folder} exists={os.path.exists(output_folder)}")
+            verbose_log(f"Task {task_id} command={format_command_for_log(cmd)}")
+            verbose_log(f"Task {task_id} subprocess_cwd={os.getcwd()}")
+            verbose_log(f"Task {task_id} subprocess_path={process_env.get('PATH', '')}")
 
             # 使用 Popen 异步执行，实时读取输出解析进度
             process = subprocess.Popen(
@@ -622,11 +714,15 @@ def worker():
                     print(f"   Error output:\n{stderr_output}")
 
         except Exception as e:
+            error_text = traceback.format_exc() if SHARP_VERBOSE else str(e)
             with task_lock:
                 if task_status.get(task_id, {}).get('status') != 'cancelled':
                     task_status[task_id]['status'] = 'failed'
-                    task_status[task_id]['error'] = str(e)
+                    task_status[task_id]['error'] = error_text
             print(f"❌ Task {task_id} exception: {e}")
+            if SHARP_VERBOSE:
+                print("[DEBUG] Full task exception traceback:", flush=True)
+                print(error_text, flush=True)
         finally:
             # 清理进程引用
             with task_lock:
@@ -634,6 +730,8 @@ def worker():
         
         task_queue.task_done()
 
+
+enable_verbose_log_file()
 
 # 启动后台线程
 threading.Thread(target=worker, daemon=True).start()
@@ -1317,7 +1415,7 @@ if __name__ == '__main__':
     # 自定义启动日志，只显示正确的 IP 地址
     import logging
     log = logging.getLogger('werkzeug')
-    log.setLevel(logging.WARNING)  # 抑制默认的 "Running on" 输出
+    log.setLevel(logging.DEBUG if SHARP_VERBOSE else logging.WARNING)
     
     # 检查是否存在 SSL 证书
     if os.path.exists(cert_file) and os.path.exists(key_file):
@@ -1332,6 +1430,7 @@ if __name__ == '__main__':
         print(f' * Running on {protocol}://127.0.0.1:5050')
         print(f' * Running on {protocol}://{local_ip}:5050')
         print('Press CTRL+C to quit')
+        print_runtime_diagnostics(protocol, local_ip)
     
     if ssl_ctx:
         app.run(debug=True, port=5050, host='0.0.0.0', ssl_context=ssl_ctx)
