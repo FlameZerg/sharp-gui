@@ -39,6 +39,16 @@ const i18n = {
     "workflow.step3.title": "即刻漫游",
     "workflow.step3.desc": "在任意设备上通过浏览器沉浸式预览",
 
+    // === Photo Gallery Section ===
+    "photoGallery.tag": "本地照片图库",
+    "photoGallery.title": "把电脑和 NAS 变成<br>空间照片入口",
+    "photoGallery.desc":
+      "配置多个本地目录作为相册，用缓存缩略图快速浏览，打开时加载原图，并可把单张或多张照片直接加入 3D 生成队列。",
+    "photoGallery.point1": "多目录相册",
+    "photoGallery.point2": "可调瀑布流",
+    "photoGallery.point3": "原图预览下载",
+    "photoGallery.point4": "批量转 3D",
+
     // === Platform Section ===
     "platform.badge": "🌐 无界互联",
     "platform.title": "一次部署，全屋触手可及",
@@ -144,6 +154,16 @@ const i18n = {
     "workflow.step2.desc": "Powered by Ml-Sharp, fully local, privacy-first",
     "workflow.step3.title": "Explore Now",
     "workflow.step3.desc": "Immersive preview on any device via browser",
+
+    // === Photo Gallery Section ===
+    "photoGallery.tag": "Local Photo Gallery",
+    "photoGallery.title": "Turn Your PC and NAS<br>Into a Spatial Photo Hub",
+    "photoGallery.desc":
+      "Configure multiple local folders as albums, browse fast cached thumbnails, open original images, and send one or many photos into the 3D generation queue.",
+    "photoGallery.point1": "Multi-folder albums",
+    "photoGallery.point2": "Adjustable masonry",
+    "photoGallery.point3": "Original preview/download",
+    "photoGallery.point4": "Batch 3D conversion",
 
     // === Platform Section ===
     "platform.badge": "🌐 Seamless Access",

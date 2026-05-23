@@ -1,0 +1,2 @@
+export { PhotoGalleryView } from './PhotoGalleryView';
+

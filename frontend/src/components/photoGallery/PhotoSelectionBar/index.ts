@@ -1,0 +1,2 @@
+export { PhotoSelectionBar } from './PhotoSelectionBar';
+

@@ -16,11 +16,12 @@ import gzip
 import datetime
 import platform
 import traceback
+import hashlib
 import numpy as np
 from io import BytesIO
 from flask import Flask, render_template, request, jsonify, send_from_directory, Response
 from werkzeug.utils import secure_filename
-from PIL import Image
+from PIL import Image, ImageOps
 from plyfile import PlyData
 
 # --- 配置 ---
@@ -45,6 +46,10 @@ MAX_THUMBNAIL_REPAIRS_PER_REQUEST = 6
 THUMBNAIL_CACHE_SECONDS = 86400
 DEFAULT_FILE_CACHE_SECONDS = 3600
 WORKSPACE_FILES_PREFIX = 'workspace/'
+PHOTO_THUMBNAIL_WIDTH = 480
+PHOTO_DEFAULT_PAGE_SIZE = 60
+PHOTO_MAX_PAGE_SIZE = 120
+PHOTO_MAX_CONVERSION_BATCH = 100
 
 
 def load_config():
@@ -87,16 +92,24 @@ WORKSPACE_FOLDER = config.get('workspace_folder', DEFAULT_WORKSPACE_FOLDER)
 INPUT_FOLDER = os.path.join(WORKSPACE_FOLDER, 'inputs')
 OUTPUT_FOLDER = os.path.join(WORKSPACE_FOLDER, 'outputs')
 THUMBNAIL_FOLDER = os.path.join(INPUT_FOLDER, '.thumbnails')
+PHOTO_GALLERY_CACHE_FOLDER = os.path.join(WORKSPACE_FOLDER, '.photo-gallery-cache')
+PHOTO_THUMBNAIL_FOLDER = os.path.join(PHOTO_GALLERY_CACHE_FOLDER, 'thumbnails')
+PHOTO_INDEX_FILE = os.path.join(PHOTO_GALLERY_CACHE_FOLDER, 'index.json')
 
 # 确保文件夹存在
 os.makedirs(INPUT_FOLDER, exist_ok=True)
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 os.makedirs(THUMBNAIL_FOLDER, exist_ok=True)
+os.makedirs(PHOTO_THUMBNAIL_FOLDER, exist_ok=True)
 
 app.config['WORKSPACE_FOLDER'] = WORKSPACE_FOLDER
 app.config['INPUT_FOLDER'] = INPUT_FOLDER
 app.config['OUTPUT_FOLDER'] = OUTPUT_FOLDER
 app.config['THUMBNAIL_FOLDER'] = THUMBNAIL_FOLDER
+app.config['PHOTO_GALLERY_CACHE_FOLDER'] = PHOTO_GALLERY_CACHE_FOLDER
+app.config['PHOTO_THUMBNAIL_FOLDER'] = PHOTO_THUMBNAIL_FOLDER
+
+photo_index_lock = threading.Lock()
 
 
 def generate_thumbnail(input_path, filename):
@@ -249,6 +262,424 @@ def build_gallery_item(ply_filename, repair_missing_thumbnail=False):
             tz=datetime.timezone.utc,
         ).isoformat(),
     }
+
+
+def make_photo_album_id(path):
+    """根据目录真实路径生成稳定相册 ID。"""
+    normalized = os.path.normcase(os.path.realpath(os.path.abspath(os.path.expanduser(path))))
+    return hashlib.sha1(normalized.encode('utf-8', 'surrogatepass')).hexdigest()[:16]
+
+
+def normalize_photo_album_roots(config_data=None):
+    """读取并规范化照片图库目录配置。"""
+    source_config = config_data or load_config()
+    raw_roots = source_config.get('photo_gallery_roots', [])
+    if not isinstance(raw_roots, list):
+        return []
+
+    albums = []
+    seen_ids = set()
+    for raw in raw_roots:
+        if isinstance(raw, str):
+            raw = {'path': raw}
+        if not isinstance(raw, dict):
+            continue
+
+        path = raw.get('path')
+        if not isinstance(path, str) or not path.strip():
+            continue
+
+        absolute_path = os.path.abspath(os.path.expanduser(path.strip()))
+        album_id = raw.get('id')
+        if not isinstance(album_id, str) or not album_id.strip():
+            album_id = make_photo_album_id(absolute_path)
+        album_id = ''.join(ch for ch in album_id if ch.isalnum() or ch in ('-', '_'))[:64]
+        if not album_id or album_id in seen_ids:
+            album_id = make_photo_album_id(f'{absolute_path}-{len(seen_ids)}')
+        seen_ids.add(album_id)
+
+        default_name = os.path.basename(os.path.normpath(absolute_path)) or absolute_path
+        name = raw.get('name')
+        if not isinstance(name, str) or not name.strip():
+            name = default_name
+
+        albums.append({
+            'id': album_id,
+            'name': name.strip(),
+            'path': absolute_path,
+            'recursive': bool(raw.get('recursive', True)),
+            'enabled': raw.get('enabled', True) is not False,
+        })
+
+    return albums
+
+
+def find_photo_album(album_id):
+    """根据相册 ID 查找配置。"""
+    for album in normalize_photo_album_roots():
+        if album['id'] == album_id:
+            return album
+    return None
+
+
+def load_photo_index():
+    """读取照片图库轻量索引。"""
+    if not os.path.exists(PHOTO_INDEX_FILE):
+        return {'photos': {}}
+
+    try:
+        with open(PHOTO_INDEX_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        if isinstance(data, dict) and isinstance(data.get('photos'), dict):
+            return data
+    except Exception as e:
+        print(f"⚠️ Failed to load photo index: {e}")
+
+    return {'photos': {}}
+
+
+def save_photo_index(index_data):
+    """保存照片图库轻量索引。"""
+    os.makedirs(PHOTO_GALLERY_CACHE_FOLDER, exist_ok=True)
+    with open(PHOTO_INDEX_FILE, 'w', encoding='utf-8') as f:
+        json.dump(index_data, f, ensure_ascii=False, indent=2)
+
+
+def is_real_path_inside(path, root):
+    """判断真实路径是否在 root 内，避免符号链接逃逸。"""
+    try:
+        abs_path = os.path.realpath(os.path.abspath(path))
+        abs_root = os.path.realpath(os.path.abspath(root))
+        common_path = os.path.commonpath([abs_path, abs_root])
+        return os.path.normcase(common_path) == os.path.normcase(abs_root)
+    except ValueError:
+        return False
+
+
+def make_photo_id(album_id, relative_path):
+    """根据相册与相对路径生成不暴露路径的照片 ID。"""
+    normalized_relative = to_url_path(relative_path)
+    payload = f'{album_id}\0{normalized_relative}'
+    return hashlib.sha256(payload.encode('utf-8', 'surrogatepass')).hexdigest()[:32]
+
+
+def is_supported_photo(filename):
+    """判断文件是否是支持的照片格式。"""
+    return filename.endswith(ALLOWED_IMAGE_EXTENSIONS)
+
+
+def photo_meta_from_path(album, full_path, existing_meta=None):
+    """根据文件路径构建照片索引元数据。"""
+    root_path = os.path.realpath(album['path'])
+    real_path = os.path.realpath(full_path)
+    if not is_real_path_inside(real_path, root_path):
+        return None
+
+    try:
+        stat = os.stat(real_path)
+    except OSError:
+        return None
+
+    relative_path = to_url_path(os.path.relpath(real_path, root_path))
+    photo_id = make_photo_id(album['id'], relative_path)
+
+    width = None
+    height = None
+    if existing_meta:
+        same_version = (
+            existing_meta.get('mtime') == stat.st_mtime
+            and existing_meta.get('size') == stat.st_size
+        )
+        if same_version:
+            width = existing_meta.get('width')
+            height = existing_meta.get('height')
+
+    return {
+        'id': photo_id,
+        'album_id': album['id'],
+        'relative_path': relative_path,
+        'name': os.path.basename(real_path),
+        'mtime': stat.st_mtime,
+        'ctime': stat.st_ctime,
+        'size': stat.st_size,
+        'width': width,
+        'height': height,
+    }
+
+
+def iter_album_photo_paths(album):
+    """遍历相册中的图片路径。"""
+    root_path = album['path']
+    if not os.path.isdir(root_path):
+        return
+
+    if album.get('recursive', True):
+        for current_root, dirnames, filenames in os.walk(root_path):
+            dirnames[:] = [
+                dirname for dirname in dirnames
+                if dirname not in {'.photo-gallery-cache', '.thumbnails', '__pycache__'}
+            ]
+            for filename in filenames:
+                if is_supported_photo(filename):
+                    yield os.path.join(current_root, filename)
+    else:
+        for filename in os.listdir(root_path):
+            full_path = os.path.join(root_path, filename)
+            if os.path.isfile(full_path) and is_supported_photo(filename):
+                yield full_path
+
+
+def scan_photo_album(album):
+    """扫描相册并刷新轻量索引。"""
+    if not album.get('enabled', True):
+        return [], 'error', 'Album disabled'
+
+    if not os.path.isdir(album['path']):
+        return [], 'error', 'Album path is not available'
+
+    with photo_index_lock:
+        index_data = load_photo_index()
+        photos = index_data.setdefault('photos', {})
+        previous_by_key = {
+            (meta.get('album_id'), meta.get('relative_path')): meta
+            for meta in photos.values()
+            if isinstance(meta, dict)
+        }
+
+        album_photo_ids = set()
+        album_photos = []
+        try:
+            for full_path in iter_album_photo_paths(album):
+                root_path = os.path.realpath(album['path'])
+                relative_path = to_url_path(os.path.relpath(os.path.realpath(full_path), root_path))
+                existing = previous_by_key.get((album['id'], relative_path))
+                meta = photo_meta_from_path(album, full_path, existing_meta=existing)
+                if not meta:
+                    continue
+                photos[meta['id']] = meta
+                album_photo_ids.add(meta['id'])
+                album_photos.append(meta)
+        except Exception as e:
+            save_photo_index(index_data)
+            return [], 'error', str(e)
+
+        stale_ids = [
+            photo_id for photo_id, meta in photos.items()
+            if meta.get('album_id') == album['id'] and photo_id not in album_photo_ids
+        ]
+        for photo_id in stale_ids:
+            photos.pop(photo_id, None)
+
+        save_photo_index(index_data)
+
+    album_photos.sort(key=lambda item: item.get('mtime', 0), reverse=True)
+    return album_photos, 'idle', None
+
+
+def get_photo_dimensions(full_path):
+    """读取照片尺寸。"""
+    try:
+        with Image.open(full_path) as img:
+            return img.size
+    except Exception:
+        return None, None
+
+
+def build_photo_item(meta):
+    """构建照片条目响应。"""
+    width = meta.get('width')
+    height = meta.get('height')
+    if not width or not height:
+        resolved = resolve_photo_path(meta['id'], allow_stale=True)
+        if resolved:
+            _, full_path, current_meta = resolved
+            width, height = get_photo_dimensions(full_path)
+            if width and height:
+                current_meta['width'] = width
+                current_meta['height'] = height
+                with photo_index_lock:
+                    index_data = load_photo_index()
+                    index_data.setdefault('photos', {})[meta['id']] = current_meta
+                    save_photo_index(index_data)
+                meta = current_meta
+
+    updated_at = None
+    if meta.get('mtime'):
+        updated_at = datetime.datetime.fromtimestamp(
+            meta['mtime'],
+            tz=datetime.timezone.utc,
+        ).isoformat()
+    created_at = None
+    if meta.get('ctime'):
+        created_at = datetime.datetime.fromtimestamp(
+            meta['ctime'],
+            tz=datetime.timezone.utc,
+        ).isoformat()
+
+    return {
+        'id': meta['id'],
+        'album_id': meta['album_id'],
+        'name': meta.get('name') or meta['id'],
+        'width': width,
+        'height': height,
+        'thumb_url': f"/api/photo-thumbnail/{meta['id']}",
+        'full_url': f"/api/photo-original/{meta['id']}",
+        'preview_url': f"/api/photo-original/{meta['id']}",
+        'download_url': f"/api/photo-original/{meta['id']}?download=1",
+        'size': meta.get('size'),
+        'created_at': created_at,
+        'updated_at': updated_at,
+    }
+
+
+def resolve_photo_path(photo_id, allow_stale=False):
+    """根据照片 ID 解析真实路径，并验证仍在配置目录内。"""
+    with photo_index_lock:
+        index_data = load_photo_index()
+        meta = index_data.get('photos', {}).get(photo_id)
+
+    if not isinstance(meta, dict):
+        return None
+
+    album = find_photo_album(meta.get('album_id'))
+    if not album:
+        return None
+
+    root_path = os.path.realpath(album['path'])
+    relative_path = str(meta.get('relative_path', '')).replace('/', os.sep)
+    full_path = os.path.realpath(os.path.join(root_path, relative_path))
+    if not is_real_path_inside(full_path, root_path) or not os.path.isfile(full_path):
+        return None
+
+    try:
+        stat = os.stat(full_path)
+    except OSError:
+        return None
+
+    current_meta = dict(meta)
+    current_meta['mtime'] = stat.st_mtime
+    current_meta['ctime'] = stat.st_ctime
+    current_meta['size'] = stat.st_size
+    current_meta['name'] = os.path.basename(full_path)
+
+    if not allow_stale and (
+        meta.get('mtime') != stat.st_mtime or meta.get('size') != stat.st_size
+    ):
+        current_meta['width'] = None
+        current_meta['height'] = None
+        with photo_index_lock:
+            index_data = load_photo_index()
+            index_data.setdefault('photos', {})[photo_id] = current_meta
+            save_photo_index(index_data)
+
+    return album, full_path, current_meta
+
+
+def get_photo_thumbnail_filename(photo_id, meta):
+    """生成与源文件版本绑定的缩略图文件名。"""
+    version = f"{int(float(meta.get('mtime', 0)) * 1000)}-{int(meta.get('size', 0))}"
+    return f"{photo_id}-{version}-{PHOTO_THUMBNAIL_WIDTH}.jpg"
+
+
+def ensure_photo_thumbnail(photo_id):
+    """确保照片缩略图存在。"""
+    resolved = resolve_photo_path(photo_id)
+    if not resolved:
+        return None
+
+    _, full_path, meta = resolved
+    thumb_filename = get_photo_thumbnail_filename(photo_id, meta)
+    thumb_path = os.path.join(PHOTO_THUMBNAIL_FOLDER, thumb_filename)
+    if os.path.exists(thumb_path):
+        return thumb_path
+
+    try:
+        os.makedirs(PHOTO_THUMBNAIL_FOLDER, exist_ok=True)
+        with Image.open(full_path) as img:
+            img = ImageOps.exif_transpose(img)
+            meta['width'], meta['height'] = img.size
+            img.thumbnail((PHOTO_THUMBNAIL_WIDTH, PHOTO_THUMBNAIL_WIDTH * 3), Image.LANCZOS)
+            if img.mode in ('RGBA', 'LA'):
+                background = Image.new('RGB', img.size, (255, 255, 255))
+                background.paste(img, mask=img.getchannel('A'))
+                img = background
+            elif img.mode != 'RGB':
+                img = img.convert('RGB')
+            img.save(thumb_path, 'JPEG', quality=82, optimize=True)
+
+        with photo_index_lock:
+            index_data = load_photo_index()
+            index_data.setdefault('photos', {})[photo_id] = meta
+            save_photo_index(index_data)
+        return thumb_path
+    except Exception as e:
+        print(f"⚠️ Photo thumbnail generation failed for {photo_id}: {e}")
+        return None
+
+
+def build_photo_album_response(album):
+    """构建相册响应数据。"""
+    photos, scan_status, error = scan_photo_album(album)
+    cover = photos[0] if photos else None
+    updated_at = None
+    if photos:
+        updated_at = datetime.datetime.fromtimestamp(
+            max(photo.get('mtime', 0) for photo in photos),
+            tz=datetime.timezone.utc,
+        ).isoformat()
+
+    return {
+        'id': album['id'],
+        'name': album['name'],
+        'cover_thumb_url': f"/api/photo-thumbnail/{cover['id']}" if cover else None,
+        'photo_count': len(photos) if scan_status != 'error' else None,
+        'recursive': album.get('recursive', True),
+        'enabled': album.get('enabled', True),
+        'scan_status': scan_status,
+        'updated_at': updated_at,
+        'error': error,
+    }
+
+
+def make_unique_input_filename(filename):
+    """为照片转 3D 生成唯一输入文件名。"""
+    safe_name = secure_filename(filename)
+    name, ext = os.path.splitext(safe_name)
+    if not ext:
+        _, ext = os.path.splitext(filename)
+    if not name:
+        name = 'photo'
+    if not ext:
+        ext = '.jpg'
+
+    candidate = f"{name}{ext}"
+    candidate_path = os.path.join(INPUT_FOLDER, candidate)
+    if not os.path.exists(candidate_path):
+        return candidate
+
+    suffix = uuid.uuid4().hex[:8]
+    return f"{name}-{suffix}{ext}"
+
+
+def queue_generation_task_from_file(input_path, filename):
+    """把已有图片文件加入现有 3D 生成队列。"""
+    generate_thumbnail(input_path, filename)
+
+    task_id = str(uuid.uuid4())
+    task_info = {
+        'id': task_id,
+        'status': 'pending',
+        'filename': filename,
+        'input_path': input_path,
+        'output_folder': app.config['OUTPUT_FOLDER'],
+        'created_at': time.time(),
+        'error': None
+    }
+
+    with task_lock:
+        task_status[task_id] = task_info
+    task_queue.put(task_id)
+    return task_info
 
 
 def ply_to_splat(ply_path):
@@ -817,6 +1248,239 @@ def get_gallery():
     return jsonify(items)
 
 
+@app.route('/api/photo-albums', methods=['GET', 'POST'])
+def photo_albums():
+    """照片相册列表与新增配置。"""
+    if request.method == 'GET':
+        albums = [build_photo_album_response(album) for album in normalize_photo_album_roots()]
+        return jsonify({'albums': albums, 'is_local': is_local_request()})
+
+    if not is_local_request():
+        return jsonify({'error': 'Photo albums can only be modified from localhost'}), 403
+
+    data = request.get_json() or {}
+    path = data.get('path')
+    if not isinstance(path, str) or not path.strip():
+        return jsonify({'error': 'Photo album path is required'}), 400
+
+    absolute_path = os.path.abspath(os.path.expanduser(path.strip()))
+    if not os.path.isdir(absolute_path):
+        return jsonify({'error': 'Photo album path is not available'}), 400
+
+    current_config = load_config()
+    albums = normalize_photo_album_roots(current_config)
+    album_id = make_photo_album_id(absolute_path)
+    existing = next((album for album in albums if album['id'] == album_id), None)
+    if existing:
+        return jsonify({'success': True, 'album': build_photo_album_response(existing), 'duplicate': True})
+
+    name = data.get('name')
+    if not isinstance(name, str) or not name.strip():
+        name = os.path.basename(os.path.normpath(absolute_path)) or absolute_path
+
+    recursive = data.get('recursive', True) is not False
+    new_album = {
+        'id': album_id,
+        'name': name.strip(),
+        'path': absolute_path,
+        'recursive': recursive,
+        'enabled': True,
+    }
+
+    current_config['photo_gallery_roots'] = [
+        {
+            'id': album['id'],
+            'name': album['name'],
+            'path': album['path'],
+            'recursive': album['recursive'],
+            'enabled': album['enabled'],
+        }
+        for album in albums
+    ] + [new_album]
+    save_config(current_config)
+
+    return jsonify({'success': True, 'album': build_photo_album_response(new_album)})
+
+
+@app.route('/api/photo-albums/<album_id>', methods=['DELETE'])
+def delete_photo_album(album_id):
+    """移除照片相册配置，不删除原始照片。"""
+    if not is_local_request():
+        return jsonify({'error': 'Photo albums can only be modified from localhost'}), 403
+
+    current_config = load_config()
+    albums = normalize_photo_album_roots(current_config)
+    next_albums = [album for album in albums if album['id'] != album_id]
+    if len(next_albums) == len(albums):
+        return jsonify({'error': 'Album not found'}), 404
+
+    current_config['photo_gallery_roots'] = next_albums
+    save_config(current_config)
+
+    with photo_index_lock:
+        index_data = load_photo_index()
+        photos = index_data.setdefault('photos', {})
+        stale_ids = [
+            photo_id for photo_id, meta in photos.items()
+            if isinstance(meta, dict) and meta.get('album_id') == album_id
+        ]
+        for photo_id in stale_ids:
+            photos.pop(photo_id, None)
+        save_photo_index(index_data)
+
+    return jsonify({'success': True})
+
+
+@app.route('/api/photo-albums/<album_id>/scan', methods=['POST'])
+def scan_photo_album_endpoint(album_id):
+    """重新扫描照片相册。"""
+    if not is_local_request():
+        return jsonify({'error': 'Photo albums can only be rescanned from localhost'}), 403
+
+    album = find_photo_album(album_id)
+    if not album:
+        return jsonify({'error': 'Album not found'}), 404
+
+    return jsonify({'success': True, 'album': build_photo_album_response(album)})
+
+
+@app.route('/api/photo-albums/<album_id>/photos')
+def get_photo_album_photos(album_id):
+    """分页获取相册照片。"""
+    album = find_photo_album(album_id)
+    if not album:
+        return jsonify({'error': 'Album not found'}), 404
+
+    photos, scan_status, error = scan_photo_album(album)
+    if scan_status == 'error':
+        return jsonify({
+            'items': [],
+            'next_cursor': None,
+            'total': 0,
+            'scan_status': scan_status,
+            'error': error,
+        })
+
+    sort = request.args.get('sort', 'mtime_desc')
+    if sort == 'mtime_asc':
+        photos.sort(key=lambda item: item.get('mtime', 0))
+    elif sort == 'ctime_desc':
+        photos.sort(key=lambda item: item.get('ctime', item.get('mtime', 0)), reverse=True)
+    elif sort == 'ctime_asc':
+        photos.sort(key=lambda item: item.get('ctime', item.get('mtime', 0)))
+    elif sort == 'name_asc':
+        photos.sort(key=lambda item: item.get('name', '').lower())
+    elif sort == 'name_desc':
+        photos.sort(key=lambda item: item.get('name', '').lower(), reverse=True)
+    elif sort == 'size_desc':
+        photos.sort(key=lambda item: item.get('size', 0), reverse=True)
+    elif sort == 'size_asc':
+        photos.sort(key=lambda item: item.get('size', 0))
+    else:
+        photos.sort(key=lambda item: item.get('mtime', 0), reverse=True)
+
+    try:
+        cursor = max(0, int(request.args.get('cursor', '0')))
+    except ValueError:
+        cursor = 0
+
+    try:
+        limit = int(request.args.get('limit', str(PHOTO_DEFAULT_PAGE_SIZE)))
+    except ValueError:
+        limit = PHOTO_DEFAULT_PAGE_SIZE
+    limit = max(1, min(limit, PHOTO_MAX_PAGE_SIZE))
+
+    page = photos[cursor:cursor + limit]
+    next_cursor = cursor + limit if cursor + limit < len(photos) else None
+
+    return jsonify({
+        'items': [build_photo_item(meta) for meta in page],
+        'next_cursor': str(next_cursor) if next_cursor is not None else None,
+        'total': len(photos),
+        'scan_status': scan_status,
+        'error': error,
+    })
+
+
+@app.route('/api/photo-thumbnail/<photo_id>')
+def get_photo_thumbnail(photo_id):
+    """获取照片缩略图。"""
+    thumb_path = ensure_photo_thumbnail(photo_id)
+    if not thumb_path or not os.path.exists(thumb_path):
+        return jsonify({'error': 'Thumbnail not found'}), 404
+
+    filename = os.path.basename(thumb_path)
+    response = send_from_directory(
+        PHOTO_THUMBNAIL_FOLDER,
+        filename,
+        conditional=True,
+        max_age=THUMBNAIL_CACHE_SECONDS,
+    )
+    response.headers['Content-Disposition'] = f'inline; filename="{filename}"'
+    response.cache_control.public = True
+    response.cache_control.max_age = THUMBNAIL_CACHE_SECONDS
+    return response
+
+
+@app.route('/api/photo-original/<photo_id>')
+def get_photo_original(photo_id):
+    """获取照片原图，支持 inline 预览和附件下载。"""
+    resolved = resolve_photo_path(photo_id)
+    if not resolved:
+        return jsonify({'error': 'Photo not found'}), 404
+
+    _, full_path, meta = resolved
+    download = request.args.get('download', '0').lower() in ('1', 'true', 'yes')
+    filename = os.path.basename(full_path)
+    response = send_from_directory(
+        os.path.dirname(full_path),
+        filename,
+        as_attachment=download,
+        download_name=meta.get('name') or filename,
+        conditional=True,
+        max_age=DEFAULT_FILE_CACHE_SECONDS,
+    )
+
+    return response
+
+
+@app.route('/api/photo-conversions', methods=['POST'])
+def convert_photos_to_models():
+    """将照片图库中的照片加入现有 3D 生成队列。"""
+    data = request.get_json() or {}
+    photo_ids = data.get('photo_ids')
+    if not isinstance(photo_ids, list) or not photo_ids:
+        return jsonify({'error': 'photo_ids is required'}), 400
+
+    photo_ids = [str(photo_id) for photo_id in photo_ids[:PHOTO_MAX_CONVERSION_BATCH]]
+    created_tasks = []
+    failed = []
+
+    for photo_id in photo_ids:
+        resolved = resolve_photo_path(photo_id)
+        if not resolved:
+            failed.append({'id': photo_id, 'error': 'Photo not found'})
+            continue
+
+        _, full_path, meta = resolved
+        filename = make_unique_input_filename(meta.get('name') or os.path.basename(full_path))
+        input_path = os.path.join(app.config['INPUT_FOLDER'], filename)
+
+        try:
+            shutil.copy2(full_path, input_path)
+            task_info = queue_generation_task_from_file(input_path, filename)
+            created_tasks.append(task_info)
+            print(f"📥 Photo conversion task added: {filename} (ID: {task_info['id']})")
+        except Exception as e:
+            failed.append({'id': photo_id, 'error': str(e)})
+
+    return jsonify({
+        'success': len(created_tasks) > 0,
+        'tasks': created_tasks,
+        'failed': failed,
+    })
+
+
 @app.route('/api/generate', methods=['POST'])
 def generate():
     """批量接收文件并加入队列"""
@@ -986,9 +1650,6 @@ def get_original_image(item_id):
         conditional=True,
         max_age=DEFAULT_FILE_CACHE_SECONDS,
     )
-
-    if not download:
-        response.headers['Content-Disposition'] = f'inline; filename="{filename}"'
 
     return response
 

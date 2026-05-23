@@ -48,8 +48,8 @@ Sharp GUI 采用 **前后端分离 + 双前端模式** 架构：
 
 ```
 sharp-gui/
-├── app.py                    # Flask 后端 + 任务队列（单文件，约 1,340 行）
-├── config.json               # 运行时配置（workspace_folder）
+├── app.py                    # Flask 后端 + 任务队列 + 本地照片图库 API（单文件，约 2,000 行）
+├── config.json               # 运行时配置（workspace_folder, photo_gallery_roots）
 ├── install.sh / install.bat  # 一键安装脚本（Python/Git/CUDA/依赖/模型/证书）
 ├── run.sh / run.bat          # 启动脚本（支持 --legacy）
 ├── build.sh / build.bat      # 前端构建脚本
@@ -58,10 +58,11 @@ sharp-gui/
 │
 ├── frontend/                 # React 前端
 │   ├── src/
-│   │   ├── api/              #   API 层（client.ts + 功能模块）
-│   │   ├── components/       #   组件（common/gallery/layout/viewer 四类）
-│   │   │   ├── common/       #     通用 UI：Button, Icons, ImageViewer, Loading, Modal, ParticleBackground
-│   │   │   ├── gallery/      #     图库：GalleryItem, GalleryList
+│   │   ├── api/              #   API 层（client.ts + 功能模块，含 photoGallery.ts）
+│   │   ├── components/       #   组件（common/gallery/photoGallery/layout/viewer）
+│   │   │   ├── common/       #     通用 UI：Button, Icons, ImageViewer, Loading, Modal, ConfirmDialog, SelectMenu, TextInputDialog
+│   │   │   ├── gallery/      #     模型图库：GalleryItem, GalleryList
+│   │   │   ├── photoGallery/ #     本地照片图库：PhotoAlbumList, PhotoGalleryView, PhotoMasonryGrid, PhotoToolbar
 │   │   │   ├── layout/       #     布局：Sidebar, ControlsBar, Help, Settings, TaskQueue
 │   │   │   └── viewer/       #     查看器：ViewerCanvas, QuickControls, ViewerRevealEffectsRail, GyroIndicator, VirtualJoystick, SpeedTooltip
 │   │   ├── constants/        #   Spark / LoD / XR 相关常量
@@ -90,6 +91,7 @@ sharp-gui/
 ├── ml-sharp/                 # Apple ML-Sharp 引擎（⚠️ 不可修改）
 ├── inputs/                   # 用户上传的图片
 ├── outputs/                  # 生成的 3D 模型（.ply + 自动转换 .spz）
+├── .photo-gallery-cache/     # 本地照片图库索引与缩略图缓存（位于 workspace_folder）
 ├── openspec/                 # OpenSpec 变更与能力规格
 └── docs/                     # GitHub Pages 产品介绍页
 ```
@@ -144,12 +146,16 @@ sharp-gui/
 - **Legacy 前端**（`templates/index.html` + `static/lib/`）：仍使用预打包的 GaussianSplats3D，不修改
 - **导出分享**（`share_template.html`）：已迁移到 Spark 2.0，后端将 Three.js / OrbitControls / Spark 作为 data URL 嵌入独立 HTML
 
-## 模型格式与图库
+## 模型与照片图库
 
 - 后端推理仍生成 `.ply` 原始模型。
 - 生成完成后自动转换 `.spz` 紧凑模型；用户设置可在 PLY / SPZ 之间选择默认查看和下载格式。
 - 图库响应包含原图 URL、缩略图 URL、PLY/SPZ 大小与版本戳；缺失缩略图会在请求时限量修复。
 - React 图库使用虚拟滚动和缩略图加载状态，避免大量模型时滚动卡顿。
+- 本地照片图库通过 `photo_gallery_roots` 配置多个目录；每个目录作为一个相册展示，首图缩略图作为封面。
+- 照片列表 API 仅返回分页元数据与缩略图 URL；预览和下载使用 `/api/photo-original/<photo_id>` 加载原图。
+- 照片图库缩略图与索引写入 `{workspace_folder}/.photo-gallery-cache/`，可删除后重建，不影响原始照片。
+- 照片可单张或多选批量加入现有 3D 生成队列，后端会验证 photo id 属于已配置 root 后复制到 `inputs/`。
 
 ## WebXR 支持
 

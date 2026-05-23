@@ -28,7 +28,7 @@ As a Web enthusiast, I built Sharp GUI to bridge this gap. My goal is to let any
 ![Flask](https://img.shields.io/badge/Flask-Backend-000000?style=for-the-badge&logo=flask&logoColor=white)
 ![Three.js](https://img.shields.io/badge/Three.js-Viewer-000000?style=for-the-badge&logo=threedotjs&logoColor=white)
 
-Built on [Apple ml-sharp](https://github.com/apple/ml-sharp). No cloud uploads needed. **Host Locally, Access Everywhere.**
+Built on [Apple ml-sharp](https://github.com/apple/ml-sharp). No cloud uploads needed. **Host Locally, Access Everywhere.** Beyond generating and viewing 3D models, Sharp GUI can also browse local, external-drive, or NAS photo folders as a lightweight LAN photo gallery.
 
 [Features](#-features) •
 [Preview](#-preview) •
@@ -55,6 +55,7 @@ No need to install apps on every device. Run Sharp GUI on one computer, and any 
 | ------------------------ | ------------------------------------------------------------------------------------------------- |
 | **📸 Image to 3D**       | Upload any image, AI generates 3D Gaussian Splatting model                                        |
 | **🖼️ Batch Processing**  | Multi-select/drag-drop upload, virtualized gallery, in-app original image viewer, and smart queue scheduling |
+| **🗂️ Local Photo Gallery** | Configure multiple local folders as albums, browse cached thumbnail masonry, open/download originals, and convert one or many photos to 3D |
 | **👁️ Real-time Preview** | High-performance WASM-accelerated viewer with Three.js + Spark 2.0, click-to-focus, quick transform controls, and Reveal Effects |
 | **📱 Mobile Optimized**  | Perfect adaptation for phones/tablets with gyroscope, virtual joystick, and touch gestures         |
 | **🥽 VR/AR Preview**     | WebXR VR mode + AR Passthrough mode, immersive experience on Quest 3/Pro with controller/touch    |
@@ -82,6 +83,8 @@ Built with Apple Human Interface Guidelines for a premium user experience:
 - **Smart Polling** - 2s polling when active, 10s when idle
 - **Drag & Drop Upload** - Drop images directly into sidebar
 - **Drag & Drop Preview** - Drop .ply/.splat/.spz/.rad models to preview directly
+- **Local Albums** - Add multiple folders in the Photos view; each folder becomes an album
+- **Adjustable Masonry** - Sort by modified time, created time, name, or size; use a density slider on desktop and pinch gestures on mobile
 - **Queue Management** - Cancel/delete pending tasks
 - **Original Image Viewer** - Open the uploaded source image directly from the gallery for comparison
 - **Virtualized Gallery** - Large model lists stay smooth with stable thumbnails
@@ -113,6 +116,12 @@ Built with Apple Human Interface Guidelines for a premium user experience:
 </p>
 
 <p align="center"><i>Sidebar gallery + 3D model preview + glassmorphism control bar</i></p>
+
+### Local Photo Gallery
+
+<p align="center">
+  <img src="docs/images/photo-gallery.png" width="800" alt="Local photo gallery interface">
+</p>
 
 ### Mobile Adaptation
 
@@ -304,6 +313,13 @@ rm -rf sharp-gui/
 2. **Wait for Processing** - Watch queue progress (first run downloads ~500MB model)
 3. **Preview Model** - Click gallery items to view 3D
 
+### Browse Local Photo Albums
+
+1. **Switch to Photos** - Use the sidebar `Models / Photos` entry to open the photo gallery
+2. **Add Folder** - From localhost, add Windows / Linux / macOS paths; each folder is shown as an album
+3. **Open Originals** - The grid uses cached thumbnails for speed; opening a photo loads the original image and supports download
+4. **Convert to 3D** - Convert one photo from a card or preview, or multi-select and queue a batch into the existing generation workflow
+
 ### 3D Interaction Controls
 
 #### Basic Operations
@@ -358,7 +374,16 @@ Configure via UI settings or edit `config.json` (generated on first run):
 
 ```json
 {
-  "workspace_folder": "/path/to/workspace"
+  "workspace_folder": "/path/to/workspace",
+  "photo_gallery_roots": [
+    {
+      "id": "my-album",
+      "name": "Photos",
+      "path": "/path/to/photos",
+      "recursive": true,
+      "enabled": true
+    }
+  ]
 }
 ```
 
@@ -366,6 +391,9 @@ The system auto-creates:
 
 - `inputs/` - Uploaded images
 - `outputs/` - Generated models
+- `.photo-gallery-cache/` - Local photo gallery index and cached thumbnails
+
+> 💡 `photo_gallery_roots` can be added from the UI. When editing manually, use paths from the server machine. Windows, Linux, and macOS are supported; LAN clients browse folders on the host running Sharp GUI.
 
 ### Enable HTTPS (Recommended)
 
@@ -412,7 +440,8 @@ sharp-gui/
 ├── 📁 static/lib/            # Three.js + Gaussian Splats 3D (legacy frontend)
 ├── 📁 ml-sharp/              # (after install) Apple ML-Sharp core
 ├── 📁 inputs/                # Input images
-└── 📁 outputs/               # Output models (.ply + .spz)
+├── 📁 outputs/               # Output models (.ply + .spz)
+└── 📁 .photo-gallery-cache/  # Photo gallery index and thumbnail cache (inside workspace by default)
 ```
 
 ### Frontend Architecture (React)
@@ -420,10 +449,11 @@ sharp-gui/
 ```
 frontend/
 ├── 📁 src/
-│   ├── 📁 api/               # API client (gallery, tasks, settings)
+│   ├── 📁 api/               # API client (gallery, photoGallery, tasks, settings)
 │   ├── 📁 components/
 │   │   ├── 📁 common/        # Common components (Button, Modal, Loading, ImageViewer, ParticleBackground)
 │   │   ├── 📁 gallery/       # Gallery components (GalleryList, GalleryItem)
+│   │   ├── 📁 photoGallery/  # Local photo gallery components (AlbumList, MasonryGrid, Toolbar)
 │   │   ├── 📁 layout/        # Layout components (Sidebar, ControlsBar, TaskQueue, Settings)
 │   │   └── 📁 viewer/        # Viewer components (ViewerCanvas, QuickControls, ViewerRevealEffectsRail, VirtualJoystick, GyroIndicator)
 │   ├── 📁 hooks/             # Custom Hooks (useViewer, useXR, useGyroscope, useKeyboard, useGalleryVirtualizer)
@@ -453,7 +483,7 @@ frontend/
 | Optimization              | Description                                                                      |
 | ------------------------- | -------------------------------------------------------------------------------- |
 | **Code Splitting**        | Vite manualChunks: three.js (~493KB), spark (~487KB), react-vendor (4KB)         |
-| **Thumbnail System**      | Auto-generated 200px JPEG thumbnails, saves bandwidth                            |
+| **Thumbnail System**      | Model gallery uses 200px JPEG thumbnails; photo gallery creates cached thumbnails on demand and only loads originals for preview/download |
 | **Smart Polling**         | Active 2s polling, idle 10s, saves resources                                     |
 | **Format Conversion**     | Auto-converts generated models to compact SPZ; share export embeds SPZ by default while preserving the legacy PLY/Splat path |
 | **Memory Cleanup**        | Completed tasks auto-removed from memory after 1 hour                            |

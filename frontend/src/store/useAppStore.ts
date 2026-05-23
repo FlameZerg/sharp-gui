@@ -8,8 +8,11 @@ import {
   type RevealEffectPreferenceId,
 } from '@/utils/viewerRevealEffects';
 import type {
+  AppView,
   GalleryItem,
   ModelFormat,
+  PhotoAlbum,
+  PhotoItem,
   Task,
   ViewerInteractionState,
   ViewerOrientationPreset,
@@ -387,6 +390,17 @@ interface AppState {
   currentModelFormat: ViewerModelFormat; // Format hint for blob URLs
   previewImage: GalleryItem | null; // For image lightbox
 
+  // Photo Gallery
+  activeView: AppView;
+  photoAlbums: PhotoAlbum[];
+  currentPhotoAlbumId: string | null;
+  photoItems: PhotoItem[];
+  photoNextCursor: string | null;
+  photoTotal: number;
+  photoSelectionMode: boolean;
+  selectedPhotoIds: string[];
+  previewPhoto: PhotoItem | null;
+
   // Model Format Preference
   serverModelFormat: ModelFormat;        // Host default from config.json
   localModelFormat: ModelFormat | null;  // Client override via localStorage
@@ -444,6 +458,16 @@ interface AppState {
   removeGalleryItem: (id: string) => void;
   setCurrentModel: (id: string | null, url: string | null, format?: ViewerModelFormat) => void;
   setPreviewImage: (item: GalleryItem | null) => void;
+
+  setActiveView: (view: AppView) => void;
+  setPhotoAlbums: (albums: PhotoAlbum[]) => void;
+  setCurrentPhotoAlbum: (albumId: string | null) => void;
+  setPhotoItems: (items: PhotoItem[], nextCursor: string | null, total: number, append?: boolean) => void;
+  clearPhotoItems: () => void;
+  setPhotoSelectionMode: (enabled: boolean) => void;
+  toggleSelectedPhoto: (photoId: string) => void;
+  clearSelectedPhotos: () => void;
+  setPreviewPhoto: (item: PhotoItem | null) => void;
 
   setServerModelFormat: (format: ModelFormat) => void;
   setLocalModelFormat: (format: ModelFormat | null) => void;
@@ -504,6 +528,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   currentModelUrl: null,
   currentModelFormat: null,
   previewImage: null,
+
+  activeView: 'models',
+  photoAlbums: [],
+  currentPhotoAlbumId: null,
+  photoItems: [],
+  photoNextCursor: null,
+  photoTotal: 0,
+  photoSelectionMode: false,
+  selectedPhotoIds: [],
+  previewPhoto: null,
 
   // Model Format Preference
   serverModelFormat: 'spz',
@@ -662,6 +696,83 @@ export const useAppStore = create<AppState>((set, get) => ({
     };
   }),
   setPreviewImage: (item) => set({ previewImage: item }),
+
+  setActiveView: (view) => set({ activeView: view }),
+  setPhotoAlbums: (albums) => set((state) => {
+    const currentExists = state.currentPhotoAlbumId
+      ? albums.some((album) => album.id === state.currentPhotoAlbumId)
+      : false;
+    const currentPhotoAlbumId = currentExists
+      ? state.currentPhotoAlbumId
+      : albums[0]?.id ?? null;
+
+    return {
+      photoAlbums: albums,
+      currentPhotoAlbumId,
+      photoItems: currentPhotoAlbumId === state.currentPhotoAlbumId ? state.photoItems : [],
+      photoNextCursor: currentPhotoAlbumId === state.currentPhotoAlbumId ? state.photoNextCursor : null,
+      photoTotal: currentPhotoAlbumId === state.currentPhotoAlbumId ? state.photoTotal : 0,
+      selectedPhotoIds: currentPhotoAlbumId === state.currentPhotoAlbumId ? state.selectedPhotoIds : [],
+      previewPhoto: currentPhotoAlbumId === state.previewPhoto?.album_id ? state.previewPhoto : null,
+    };
+  }),
+  setCurrentPhotoAlbum: (albumId) => set((state) => {
+    if (state.currentPhotoAlbumId === albumId) {
+      return state;
+    }
+
+    return {
+      currentPhotoAlbumId: albumId,
+      photoItems: [],
+      photoNextCursor: null,
+      photoTotal: 0,
+      selectedPhotoIds: [],
+      photoSelectionMode: false,
+      previewPhoto: null,
+    };
+  }),
+  setPhotoItems: (items, nextCursor, total, append = false) => set((state) => {
+    const nextItems = append
+      ? [
+          ...state.photoItems,
+          ...items.filter((item) => !state.photoItems.some((existing) => existing.id === item.id)),
+        ]
+      : items;
+
+    return {
+      photoItems: nextItems,
+      photoNextCursor: nextCursor,
+      photoTotal: total,
+      selectedPhotoIds: state.selectedPhotoIds.filter((photoId) =>
+        nextItems.some((item) => item.id === photoId),
+      ),
+    };
+  }),
+  clearPhotoItems: () => set({
+    photoItems: [],
+    photoNextCursor: null,
+    photoTotal: 0,
+    selectedPhotoIds: [],
+    photoSelectionMode: false,
+    previewPhoto: null,
+  }),
+  setPhotoSelectionMode: (enabled) => set({
+    photoSelectionMode: enabled,
+    selectedPhotoIds: enabled ? get().selectedPhotoIds : [],
+  }),
+  toggleSelectedPhoto: (photoId) => set((state) => {
+    const exists = state.selectedPhotoIds.includes(photoId);
+    return {
+      selectedPhotoIds: exists
+        ? state.selectedPhotoIds.filter((id) => id !== photoId)
+        : [...state.selectedPhotoIds, photoId],
+    };
+  }),
+  clearSelectedPhotos: () => set({
+    selectedPhotoIds: [],
+    photoSelectionMode: false,
+  }),
+  setPreviewPhoto: (item) => set({ previewPhoto: item }),
 
   setServerModelFormat: (format) => set({ serverModelFormat: format }),
   setLocalModelFormat: (format) => {

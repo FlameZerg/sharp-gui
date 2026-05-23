@@ -66,6 +66,20 @@
   animation: spin 1s linear infinite;
 }
 
+.imageError {
+  min-width: min(420px, calc(100vw - 48px));
+  min-height: 220px;
+  padding: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.82);
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  background: rgba(0, 0, 0, 0.18);
+}
+
 /* Controls Header */
 .controls {
   position: absolute;
@@ -119,6 +133,132 @@
   animation: pulse 1.5s infinite;
 }
 
+.navBtn {
+  position: absolute;
+  top: 50%;
+  z-index: 1001;
+  transform: translateY(-50%);
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  transition:
+    opacity 0.2s ease,
+    background 0.2s ease,
+    transform 0.2s ease;
+}
+
+.navBtn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.25);
+  transform: translateY(-50%) scale(1.04);
+}
+
+.navBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.25;
+}
+
+.navPrev {
+  left: 24px;
+}
+
+.navNext {
+  right: 24px;
+}
+
+.infoPanel {
+  position: absolute;
+  left: 50%;
+  bottom: 26px;
+  z-index: 1001;
+  transform: translateX(-50%);
+  max-width: min(520px, calc(100vw - 32px));
+  min-height: 44px;
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-radius: 999px;
+  color: white;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+}
+
+.infoTitle {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.infoMeta {
+  flex-shrink: 0;
+  font-size: 12px;
+  opacity: 0.72;
+}
+
+.notice {
+  position: absolute;
+  right: 24px;
+  bottom: 26px;
+  z-index: 1002;
+  max-width: min(360px, calc(100vw - 48px));
+  min-height: 40px;
+  padding: 9px 9px 9px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: 999px;
+  color: white;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.notice span {
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.notice button {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: currentColor;
+  background: rgba(255, 255, 255, 0.14);
+  cursor: pointer;
+}
+
+.noticeSuccess {
+  background: rgba(34, 132, 64, 0.74);
+  border: 1px solid rgba(184, 245, 199, 0.28);
+}
+
+.noticeError {
+  background: rgba(176, 39, 30, 0.74);
+  border: 1px solid rgba(255, 180, 171, 0.28);
+}
+
 /* Keyframes */
 @keyframes fadeIn {
   from { opacity: 0; }
@@ -170,5 +310,32 @@
   
   .imageWrapper {
     border-radius: 12px;
+  }
+
+  .navBtn {
+    width: 40px;
+    height: 40px;
+  }
+
+  .navPrev {
+    left: 12px;
+  }
+
+  .navNext {
+    right: 12px;
+  }
+
+  .infoPanel {
+    bottom: 14px;
+    border-radius: 18px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+
+  .notice {
+    right: 16px;
+    bottom: 88px;
+    border-radius: 18px;
   }
 }

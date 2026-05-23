@@ -3,12 +3,13 @@ import { useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
 
-import { fetchGallery, fetchSettings, fetchTasks, generateFromImages } from '@/api';
+import { fetchGallery, fetchPhotoAlbums, fetchSettings, fetchTasks, generateFromImages } from '@/api';
 import { GalleryList } from '@/components/gallery';
 import { ImageViewer, Loading } from '@/components/common';
 import { ParticleBackground } from '@/components/common/ParticleBackground';
 import { Settings, Sidebar } from '@/components/layout';
 import { Help } from '@/components/layout/Help/Help';
+import { PhotoAlbumList, PhotoGalleryView } from '@/components/photoGallery';
 import { useTaskQueue } from '@/hooks/useTaskQueue';
 import { useAppStore } from '@/store';
 import { ViewerCanvas } from '@/components/viewer/ViewerCanvas/ViewerCanvas';
@@ -24,9 +25,11 @@ function App() {
     loadingText,
     loadingProgress,
     sidebarCollapsed,
+    activeView,
     setBootComplete, 
     setBootError,
     setGalleryItems,
+    setPhotoAlbums,
     setTasks,
     setLocalAccess,
     setLoading,
@@ -42,9 +45,11 @@ function App() {
       loadingText: state.loadingText,
       loadingProgress: state.loadingProgress,
       sidebarCollapsed: state.sidebarCollapsed,
+      activeView: state.activeView,
       setBootComplete: state.setBootComplete,
       setBootError: state.setBootError,
       setGalleryItems: state.setGalleryItems,
+      setPhotoAlbums: state.setPhotoAlbums,
       setTasks: state.setTasks,
       setLocalAccess: state.setLocalAccess,
       setLoading: state.setLoading,
@@ -62,6 +67,9 @@ function App() {
         // Fetch gallery
         const gallery = await fetchGallery()
         setGalleryItems(gallery)
+
+        const photoAlbums = await fetchPhotoAlbums()
+        setPhotoAlbums(photoAlbums.albums)
 
         // Fetch tasks
         const tasksData = await fetchTasks()
@@ -81,7 +89,7 @@ function App() {
       }
     }
     init();
-  }, [setBootComplete, setBootError, setGalleryItems, setTasks, setLocalAccess, setServerModelFormat]);
+  }, [setBootComplete, setBootError, setGalleryItems, setPhotoAlbums, setTasks, setLocalAccess, setServerModelFormat]);
 
   // Handle file upload
   const handleUpload = useCallback(async (files: FileList) => {
@@ -174,7 +182,7 @@ function App() {
 
       {/* Sidebar */}
       <Sidebar onUpload={handleUpload}>
-        <GalleryList />
+        {activeView === 'photos' ? <PhotoAlbumList /> : <GalleryList />}
       </Sidebar>
       
       {/* Main content */}
@@ -183,9 +191,9 @@ function App() {
         onDragOver={handleMainDragOver}
         onDrop={handleModelDrop}
       >
-        {/* Particle Background */}
-        <ParticleBackground />
+        {activeView === 'models' ? <ParticleBackground /> : null}
         
+        {activeView === 'photos' ? <PhotoGalleryView /> : (
         <div className="viewer-container">
           {/* Empty state - shown when no model selected */}
           {!currentModelUrl && (
@@ -216,6 +224,7 @@ function App() {
           {/* Viewer with internal empty state handling */}
           <ViewerCanvas />
         </div>
+        )}
 
         {/* Loading overlay */}
         {isLoading && (

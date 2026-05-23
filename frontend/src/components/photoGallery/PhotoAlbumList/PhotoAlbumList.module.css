@@ -1,0 +1,285 @@
+.root {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 12px 18px;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 0 4px 14px;
+}
+
+.header h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.header p {
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
+.addBtn,
+.iconBtn,
+.emptyBtn {
+  cursor: pointer;
+}
+
+.addBtn {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-left: auto;
+  color: #fff;
+  background: var(--accent-blue);
+  box-shadow: 0 8px 20px rgba(0, 113, 227, 0.22);
+  transition:
+    background var(--transition-normal),
+    transform var(--transition-normal),
+    opacity var(--transition-normal);
+}
+
+.addBtn:hover {
+  background: var(--accent-blue-hover);
+  transform: translateY(-1px);
+}
+
+.addBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  transform: none;
+}
+
+.empty {
+  margin: auto 8px;
+  padding: 24px 16px;
+  border-radius: var(--radius-xl);
+  background: rgba(255, 255, 255, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.empty svg {
+  color: var(--accent-blue);
+  opacity: 0.8;
+}
+
+.empty p {
+  margin: 10px 0 14px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.emptyBtn {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: var(--radius-lg);
+  font-size: 12px;
+  font-weight: 700;
+  background: rgba(0, 113, 227, 0.1);
+  color: var(--accent-blue);
+}
+
+.notice {
+  margin: 0 4px 12px;
+  padding: 9px 8px 9px 10px;
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: #b42318;
+  background: rgba(255, 59, 48, 0.1);
+  border: 1px solid rgba(255, 59, 48, 0.18);
+  font-size: 11px;
+  line-height: 1.42;
+}
+
+.notice span {
+  min-width: 0;
+  flex: 1;
+}
+
+.notice button {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  color: currentColor;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.46);
+}
+
+.list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 4px 6px;
+}
+
+.album {
+  min-height: 68px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px;
+  border-radius: var(--radius-lg);
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--transition-normal),
+    box-shadow var(--transition-normal),
+    transform var(--transition-normal);
+}
+
+.album:hover,
+.album:focus-visible {
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.album:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}
+
+.albumActive {
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.08);
+}
+
+.albumError {
+  color: var(--danger-color);
+}
+
+.cover {
+  width: 50px;
+  height: 50px;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.65);
+  color: var(--text-muted);
+}
+
+.cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.info {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.name,
+.meta {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.name {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.meta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.activeIcon {
+  flex-shrink: 0;
+  color: var(--accent-blue);
+}
+
+.actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity var(--transition-normal);
+}
+
+.album:hover .actions,
+.album:focus-within .actions {
+  opacity: 1;
+}
+
+.iconBtn {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-full);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.iconBtn:hover {
+  color: var(--accent-blue);
+}
+
+.deleteBtn:hover {
+  color: var(--danger-color);
+}
+
+@media (hover: none) {
+  .actions {
+    opacity: 1;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .empty,
+  .album:hover,
+  .album:focus-visible,
+  .albumActive {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.12);
+  }
+
+  .cover,
+  .iconBtn {
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .notice {
+    color: #ffb4ab;
+    background: rgba(255, 59, 48, 0.14);
+    border-color: rgba(255, 59, 48, 0.24);
+  }
+
+  .notice button {
+    background: rgba(255, 255, 255, 0.12);
+  }
+}

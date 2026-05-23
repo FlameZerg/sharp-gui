@@ -69,6 +69,8 @@
 }
 ```
 
+照片图库新增文案统一使用 `photo*` 前缀，例如 `photoGallery`、`photoSortModifiedNewest`、`photoGridDensityStandard`、`photoOriginalLoadFailed`。排序、弹窗、错误提示、按钮 tooltip 和 aria-label 都必须双语同步。
+
 ---
 
 ## 使用方式
@@ -122,8 +124,8 @@ toggleLanguage();
 ```
 frontend/src/i18n/
 ├── index.ts     # i18n 初始化配置 + toggleLanguage 函数
-├── en.json      # 英文翻译（约 190 个 key）
-└── zh.json      # 中文翻译（约 190 个 key）
+├── en.json      # 英文翻译（约 260+ 个 key）
+└── zh.json      # 中文翻译（约 260+ 个 key）
 ```
 
 ## 检查清单

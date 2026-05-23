@@ -12,6 +12,38 @@
   overscroll-behavior: contain;
 }
 
+.notice {
+  margin: 0 12px 10px;
+  padding: 9px 8px 9px 10px;
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: #b42318;
+  background: rgba(255, 59, 48, 0.1);
+  border: 1px solid rgba(255, 59, 48, 0.18);
+  font-size: 11px;
+  line-height: 1.42;
+}
+
+.notice span {
+  min-width: 0;
+  flex: 1;
+}
+
+.notice button {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  color: currentColor;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.46);
+}
+
 .viewport::-webkit-scrollbar {
   width: 6px;
   background: transparent;
@@ -70,5 +102,15 @@
 
   .viewport::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.28);
+  }
+
+  .notice {
+    color: #ffb4ab;
+    background: rgba(255, 59, 48, 0.14);
+    border-color: rgba(255, 59, 48, 0.24);
+  }
+
+  .notice button {
+    background: rgba(255, 255, 255, 0.12);
   }
 }

@@ -134,6 +134,49 @@
     /* Enforce min height */
 }
 
+.viewTabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    margin-top: 12px;
+    padding: 4px;
+    border-radius: var(--radius-lg);
+    background: rgba(0, 0, 0, 0.05);
+}
+
+.viewTab {
+    height: 32px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+        background var(--transition-normal),
+        color var(--transition-normal),
+        box-shadow var(--transition-normal);
+}
+
+.viewTab:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.5);
+}
+
+.viewTab:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 2px;
+}
+
+.viewTabActive {
+    background: rgba(255, 255, 255, 0.9);
+    color: var(--accent-blue);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
 /* Content */
 .content {
     flex: 1;
@@ -243,6 +286,21 @@
 
     .toggleBtn {
         display: none;
+    }
+}
+
+@media (prefers-color-scheme: dark) {
+    .viewTabs {
+        background: rgba(255, 255, 255, 0.08);
+    }
+
+    .viewTab:hover {
+        background: rgba(255, 255, 255, 0.1);
+    }
+
+    .viewTabActive {
+        background: rgba(255, 255, 255, 0.18);
+        color: #8ab4ff;
     }
 }
 

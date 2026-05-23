@@ -22,6 +22,17 @@
 | 🟡 中 | Zustand Store | Action 逻辑正确性 |
 | 🟢 低 | 自定义 Hooks | 需要模拟 3D 环境，复杂度较高 |
 
+### 本地照片图库 smoke checklist
+
+照片图库属于大功能，当前若暂不引入测试框架，至少应手动或脚本化验证：
+
+- `GET/POST/DELETE /api/photo-albums`、`POST /scan`、`GET /photos`、`GET /photo-thumbnail`、`GET /photo-original`、`POST /api/photo-conversions` 的成功与错误路径。
+- 列表返回 `thumb_url`，预览/下载使用 `full_url` 或 `preview_url` 原图地址，不能把缩略图放大当原图。
+- 中文、空格、大小写混合文件名可以生成缩略图、打开原图、下载和加入 3D 队列。
+- 构造非法 photo id、相对路径逃逸和 root 外路径访问会被拒绝。
+- 至少一个 1000+ 图片目录验证分页、缩略图缓存和瀑布流滚动性能。
+- Windows、Linux、macOS 或挂载/NAS 路径至少做路径配置与不可用目录错误状态验证。
+
 ---
 
 ## 推荐框架

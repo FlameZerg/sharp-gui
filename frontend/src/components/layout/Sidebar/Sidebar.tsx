@@ -8,7 +8,9 @@ import { toggleLanguage } from '@/i18n';
 import {
   PlusIcon,
   SettingsIcon,
-  ChevronLeftIcon
+  ChevronLeftIcon,
+  GalleryIcon,
+  FolderIcon,
 } from '@/components/common/Icons';
 import { Button } from '@/components/common/Button';
 import { TaskQueue } from '@/components/layout/TaskQueue';
@@ -30,6 +32,8 @@ export function Sidebar({ onUpload, children }: SidebarProps) {
     toggleSidebar,
     toggleSidebarCollapsed,
     setSettingsModalOpen,
+    activeView,
+    setActiveView,
   } = useAppStore(
     useShallow((state) => ({
       sidebarOpen: state.sidebarOpen,
@@ -37,6 +41,8 @@ export function Sidebar({ onUpload, children }: SidebarProps) {
       toggleSidebar: state.toggleSidebar,
       toggleSidebarCollapsed: state.toggleSidebarCollapsed,
       setSettingsModalOpen: state.setSettingsModalOpen,
+      activeView: state.activeView,
+      setActiveView: state.setActiveView,
     })),
   );
 
@@ -143,11 +149,40 @@ export function Sidebar({ onUpload, children }: SidebarProps) {
             hidden
             onChange={handleFileChange}
           />
+
+          <div className={styles.viewTabs} role="tablist" aria-label={t('appViewTabs')}>
+            <button
+              className={[
+                styles.viewTab,
+                activeView === 'models' ? styles.viewTabActive : '',
+              ].filter(Boolean).join(' ')}
+              onClick={() => setActiveView('models')}
+              role="tab"
+              aria-selected={activeView === 'models'}
+              type="button"
+            >
+              <GalleryIcon width={14} height={14} />
+              <span>{t('modelView')}</span>
+            </button>
+            <button
+              className={[
+                styles.viewTab,
+                activeView === 'photos' ? styles.viewTabActive : '',
+              ].filter(Boolean).join(' ')}
+              onClick={() => setActiveView('photos')}
+              role="tab"
+              aria-selected={activeView === 'photos'}
+              type="button"
+            >
+              <FolderIcon width={14} height={14} />
+              <span>{t('photoView')}</span>
+            </button>
+          </div>
         </div>
 
         {/* Content (Queue + Gallery) */}
         <div className={styles.content}>
-          <TaskQueue />
+          {activeView === 'models' ? <TaskQueue /> : null}
           <div className={styles.galleryPane}>
             {children}
           </div>

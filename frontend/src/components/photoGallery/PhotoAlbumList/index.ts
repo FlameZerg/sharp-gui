@@ -1,0 +1,2 @@
+export { PhotoAlbumList } from './PhotoAlbumList';
+

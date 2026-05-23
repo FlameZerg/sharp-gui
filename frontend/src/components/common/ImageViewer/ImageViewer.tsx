@@ -1,24 +1,34 @@
-import { useState, useEffect, useRef } from 'react';
+import { useCallback, useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { convertPhotosToModels } from '@/api';
 import { useAppStore } from '@/store/useAppStore';
-import { DownloadIcon } from '@/components/common/Icons';
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  CloseIcon,
+  DownloadIcon,
+  SparklesIcon,
+} from '@/components/common/Icons';
 import styles from './ImageViewer.module.css';
 
-// SVG icons for closing since we only have DownloadIcon in our current Icons.tsx
-const CloseIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="18" y1="6" x2="6" y2="18"></line>
-    <line x1="6" y1="6" x2="18" y2="18"></line>
-  </svg>
-);
-
 export function ImageViewer() {
-  const { previewImage, setPreviewImage } = useAppStore();
+  const {
+    previewImage,
+    previewPhoto,
+    photoItems,
+    setPreviewImage,
+    setPreviewPhoto,
+    setTasks,
+    setActiveView,
+  } = useAppStore();
   const { t } = useTranslation();
   
   const [isClosing, setIsClosing] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isConverting, setIsConverting] = useState(false);
+  const [imageError, setImageError] = useState(false);
+  const [notice, setNotice] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
   
   const overlayRef = useRef<HTMLDivElement>(null);
 
@@ -30,26 +40,44 @@ export function ImageViewer() {
   const isMoved = useRef(false); // To track if we dragged vs just clicked
   const startPos = useRef({ x: 0, y: 0, posX: 0, posY: 0, dist: 0, scale: 1 });
   const wheelTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activePreview = previewPhoto ?? previewImage;
+  const isPhotoPreview = Boolean(previewPhoto);
+
+  const handleClose = useCallback(() => {
+    setIsClosing(true);
+    // Wait for the exit animation to finish
+    setTimeout(() => {
+      if (isPhotoPreview) {
+        setPreviewPhoto(null);
+      } else {
+        setPreviewImage(null);
+      }
+      setIsClosing(false);
+    }, 250);
+  }, [isPhotoPreview, setPreviewImage, setPreviewPhoto]);
 
   // Handle Escape key to close
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && previewImage) {
+      if (e.key === 'Escape' && activePreview) {
         handleClose();
       }
     };
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [previewImage]);
+  }, [activePreview, handleClose]);
 
   // Lock body scroll and reset states when opened
   useEffect(() => {
-    if (previewImage) {
+    if (activePreview) {
       document.body.style.overflow = 'hidden';
       setIsLoaded(false);
       setIsClosing(false);
       setIsDownloading(false);
+      setIsConverting(false);
+      setImageError(false);
+      setNotice(null);
       setTransform({ scale: 1, x: 0, y: 0 });
     } else {
       document.body.style.overflow = '';
@@ -57,18 +85,18 @@ export function ImageViewer() {
     return () => {
       document.body.style.overflow = '';
     };
-  }, [previewImage]);
+  }, [activePreview]);
 
   // --- Wheel to Zoom ---
   useEffect(() => {
     const overlay = overlayRef.current;
-    if (!overlay || !previewImage) return;
+    if (!overlay || !activePreview) return;
 
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault(); // Prevent page scroll
       
       const isTrackpadPinch = e.ctrlKey;
-      let delta = e.deltaY;
+      const delta = e.deltaY;
       
       // Much softer, more elegant zoom sensitivity
       const zoomSensitivity = isTrackpadPinch ? 0.005 : 0.0015;
@@ -124,7 +152,7 @@ export function ImageViewer() {
       overlay.removeEventListener('wheel', handleWheel);
       if (wheelTimeout.current) clearTimeout(wheelTimeout.current);
     };
-  }, [previewImage]);
+  }, [activePreview]);
 
   // --- Touch (Pinch & Pan) ---
   const getDistance = (touches: React.TouchList) => {
@@ -232,16 +260,7 @@ export function ImageViewer() {
     }
   };
 
-  if (!previewImage) return null;
-
-  const handleClose = () => {
-    setIsClosing(true);
-    // Wait for the exit animation to finish
-    setTimeout(() => {
-      setPreviewImage(null);
-      setIsClosing(false);
-    }, 250); 
-  };
+  if (!activePreview) return null;
 
   const handleOverlayClick = () => {
     // If user was dragging, don't close
@@ -257,11 +276,15 @@ export function ImageViewer() {
     try {
       setIsDownloading(true);
       // Fetch the blob directly to bypass browser's default exact view behavior
-      const response = await fetch(`/api/original/${encodeURIComponent(previewImage.id)}?download=1`);
+      const downloadUrl = previewPhoto
+        ? previewPhoto.download_url
+        : `/api/original/${encodeURIComponent(previewImage?.id ?? '')}?download=1`;
+      const response = await fetch(downloadUrl);
       if (!response.ok) throw new Error('Download failed');
       
       const blob = await response.blob();
-      const filename = response.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1] || `${previewImage.id}.jpg`;
+      const headerFilename = response.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1];
+      const filename = previewPhoto?.name ?? headerFilename ?? `${activePreview.id}.jpg`;
       
       // Create temporary link and click it
       const url = window.URL.createObjectURL(blob);
@@ -277,9 +300,54 @@ export function ImageViewer() {
     } catch (err) {
       console.error('Download error:', err);
       // Fallback
-      window.open(`/api/original/${encodeURIComponent(previewImage.id)}?download=1`, '_blank');
+      const fallbackUrl = previewPhoto
+        ? previewPhoto.download_url
+        : `/api/original/${encodeURIComponent(previewImage?.id ?? '')}?download=1`;
+      window.open(fallbackUrl, '_blank');
     } finally {
       setIsDownloading(false);
+    }
+  };
+
+  const handleConvertPhoto = async () => {
+    if (!previewPhoto || isConverting) {
+      return;
+    }
+
+    try {
+      setIsConverting(true);
+      const result = await convertPhotosToModels([previewPhoto.id]);
+      if (result.tasks?.length) {
+        setTasks(result.tasks, true);
+      }
+      setNotice({
+        tone: 'success',
+        message: t('photoConvertQueued', { count: result.tasks?.length ?? 0 }),
+      });
+      if (result.tasks?.length) {
+        setActiveView('models');
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : t('photoConvertFailed');
+      setNotice({ tone: 'error', message });
+    } finally {
+      setIsConverting(false);
+    }
+  };
+
+  const handleNavigatePhoto = (direction: -1 | 1) => {
+    if (!previewPhoto || photoItems.length === 0) {
+      return;
+    }
+
+    const index = photoItems.findIndex((photo) => photo.id === previewPhoto.id);
+    if (index < 0) {
+      return;
+    }
+
+    const next = photoItems[index + direction];
+    if (next) {
+      setPreviewPhoto(next);
     }
   };
 
@@ -289,7 +357,15 @@ export function ImageViewer() {
   };
 
   // The actual high quality image URL
-  const imageUrl = `/api/original/${encodeURIComponent(previewImage.id)}`;
+  const imageUrl = previewPhoto
+    ? (previewPhoto.full_url ?? previewPhoto.preview_url)
+    : `/api/original/${encodeURIComponent(previewImage?.id ?? '')}`;
+  const activeName = previewPhoto?.name ?? previewImage?.name ?? '';
+  const photoIndex = previewPhoto
+    ? photoItems.findIndex((photo) => photo.id === previewPhoto.id)
+    : -1;
+  const hasPreviousPhoto = photoIndex > 0;
+  const hasNextPhoto = previewPhoto ? photoIndex >= 0 && photoIndex < photoItems.length - 1 : false;
 
   const isAnimating = (!isDragging && !isPinching);
   const wrapperStyle: React.CSSProperties = {
@@ -314,11 +390,23 @@ export function ImageViewer() {
       onDoubleClick={handleDoubleClick}
     >
       <div className={styles.controls} onClick={(e) => { e.stopPropagation(); setIsDragging(false); }}>
+        {previewPhoto ? (
+          <button
+            className={`${styles.controlBtn} ${isConverting ? styles.downloading : ''}`}
+            onClick={handleConvertPhoto}
+            title={t('photoConvertOne')}
+            disabled={isConverting}
+            type="button"
+          >
+            <SparklesIcon width={20} height={20} />
+          </button>
+        ) : null}
         <button 
           className={`${styles.controlBtn} ${isDownloading ? styles.downloading : ''}`} 
           onClick={handleDownload}
-          title={t('download')}
+          title={previewPhoto ? t('photoDownload') : t('download')}
           disabled={isDownloading}
+          type="button"
         >
           <DownloadIcon width={20} height={20} />
         </button>
@@ -326,10 +414,34 @@ export function ImageViewer() {
           className={styles.controlBtn} 
           onClick={handleClose}
           title={t('cancel') || 'Close'}
+          type="button"
         >
-          <CloseIcon />
+          <CloseIcon width={20} height={20} />
         </button>
       </div>
+
+      {previewPhoto ? (
+        <>
+          <button
+            className={[styles.navBtn, styles.navPrev].join(' ')}
+            onClick={(event) => { event.stopPropagation(); handleNavigatePhoto(-1); }}
+            disabled={!hasPreviousPhoto}
+            aria-label={t('photoPrevious')}
+            type="button"
+          >
+            <ChevronLeftIcon width={24} height={24} />
+          </button>
+          <button
+            className={[styles.navBtn, styles.navNext].join(' ')}
+            onClick={(event) => { event.stopPropagation(); handleNavigatePhoto(1); }}
+            disabled={!hasNextPhoto}
+            aria-label={t('photoNext')}
+            type="button"
+          >
+            <ChevronRightIcon width={24} height={24} />
+          </button>
+        </>
+      ) : null}
 
       <div 
         className={styles.container} 
@@ -338,15 +450,54 @@ export function ImageViewer() {
       >
         <div className={styles.imageWrapper}>
           {!isLoaded && <div className={styles.loadingSpinner} />}
+          {imageError ? <div className={styles.imageError}>{t('photoOriginalLoadFailed')}</div> : null}
           <img 
             src={imageUrl} 
-            alt={previewImage.name} 
+            alt={activeName} 
             className={`${styles.image} ${isLoaded ? styles.loaded : ''}`}
-            onLoad={() => setIsLoaded(true)}
+            onLoad={() => {
+              setIsLoaded(true);
+              setImageError(false);
+            }}
+            onError={() => {
+              setIsLoaded(true);
+              setImageError(true);
+            }}
             draggable={false}
           />
         </div>
       </div>
+
+      {notice ? (
+        <div
+          className={[
+            styles.notice,
+            notice.tone === 'success' ? styles.noticeSuccess : styles.noticeError,
+          ].join(' ')}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <span>{notice.message}</span>
+          <button
+            onClick={() => setNotice(null)}
+            type="button"
+            title={t('close')}
+            aria-label={t('close')}
+          >
+            <CloseIcon width={13} height={13} />
+          </button>
+        </div>
+      ) : null}
+
+      {previewPhoto ? (
+        <div className={styles.infoPanel} onClick={(event) => event.stopPropagation()}>
+          <span className={styles.infoTitle}>{previewPhoto.name}</span>
+          <span className={styles.infoMeta}>
+            {previewPhoto.width && previewPhoto.height
+              ? `${previewPhoto.width} × ${previewPhoto.height}`
+              : t('unknownSize')}
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 }

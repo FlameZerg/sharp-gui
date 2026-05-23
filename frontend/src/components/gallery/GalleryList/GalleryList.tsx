@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
 
 import { deleteGalleryItem, downloadModel } from '@/api';
+import { CloseIcon } from '@/components/common/Icons';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { GalleryItem } from '@/components/gallery/GalleryItem';
 import { useGalleryVirtualizer } from '@/hooks/useGalleryVirtualizer';
 import { useAppStore } from '@/store';
@@ -51,6 +53,9 @@ export function GalleryList() {
   const previousItemsRef = useRef(items);
   const scrollAnchorRef = useRef<ScrollAnchor>({ id: items[0]?.id ?? null, offset: 0 });
   const [rendererMode] = useState(() => getGalleryRendererMode());
+  const [deleteTarget, setDeleteTarget] = useState<GalleryItemType | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
 
   const rowVirtualizer = useGalleryVirtualizer({
     count: items.length,
@@ -183,23 +188,32 @@ export function GalleryList() {
     downloadModel(item.id, preferredFormat);
   }, [preferredFormat]);
 
-  const handleDelete = useCallback(async (item: GalleryItemType) => {
-    if (!confirm(t('confirmDeleteFull'))) {
+  const handleDelete = useCallback((item: GalleryItemType) => {
+    setDeleteTarget(item);
+  }, []);
+
+  const confirmDelete = useCallback(async () => {
+    if (!deleteTarget) {
       return;
     }
 
     try {
-      const result = await deleteGalleryItem(item.id);
+      setIsDeleting(true);
+      setMessage(null);
+      const result = await deleteGalleryItem(deleteTarget.id);
       if (result.success) {
-        removeGalleryItem(item.id);
+        removeGalleryItem(deleteTarget.id);
+        setDeleteTarget(null);
       } else {
-        alert(`${t('deleteFailed')}: ${result.error}`);
+        setMessage(`${t('deleteFailed')}: ${result.error}`);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      alert(`${t('errorDeleting')}: ${message}`);
+      setMessage(`${t('errorDeleting')}: ${message}`);
+    } finally {
+      setIsDeleting(false);
     }
-  }, [removeGalleryItem, t]);
+  }, [deleteTarget, removeGalleryItem, t]);
 
   if (items.length === 0) {
     return (
@@ -211,6 +225,20 @@ export function GalleryList() {
 
   return (
     <div className={styles.root}>
+      {message ? (
+        <div className={styles.notice}>
+          <span>{message}</span>
+          <button
+            onClick={() => setMessage(null)}
+            type="button"
+            title={t('close')}
+            aria-label={t('close')}
+          >
+            <CloseIcon width={13} height={13} />
+          </button>
+        </div>
+      ) : null}
+
       <div
         ref={scrollElementRef}
         className={styles.viewport}
@@ -269,6 +297,17 @@ export function GalleryList() {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        isOpen={Boolean(deleteTarget)}
+        title={t('delete')}
+        message={t('confirmDeleteFull')}
+        confirmLabel={t('delete')}
+        isBusy={isDeleting}
+        danger
+        onConfirm={confirmDelete}
+        onClose={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

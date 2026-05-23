@@ -9,6 +9,7 @@
 - 轻量过渡与微动效（0.15s~0.4s）
 - Light-first + Dark override（`prefers-color-scheme`）
 - 桌面与触控差异化交互（`pointer: coarse`）
+- 本地照片图库采用克制的沉浸式瀑布流：照片是视觉主角，控件保持玻璃态、轻量、可扫描
 
 **不使用**：CSS-in-JS、Tailwind、Sass/Less。
 
@@ -32,6 +33,8 @@
 | `frontend/src/styles/global.css` | Reset、基础标签样式、全局辅助类 | 保持轻量，避免业务样式堆积 |
 | `frontend/src/App.css` | 页面级布局与场景样式 | 仅放全局页面结构与状态样式 |
 | `frontend/src/components/**/**.module.css` | 组件局部样式 | 不污染全局命名空间 |
+
+照片图库相关控件应优先复用 `components/common/SelectMenu`、`ConfirmDialog`、`TextInputDialog` 等通用玻璃态组件，避免浏览器原生 `select` / `prompt` / `confirm` / `alert` 造成视觉割裂。
 
 > `frontend/src/index.css` 中仍有历史遗留变量定义；新增变量不要放在 `index.css`。
 
@@ -146,6 +149,15 @@ font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
 - 触控设备使用 `@media (pointer: coarse)` 做交互特化
 - 仅 hover 可见的操作按钮在触控设备上应改为常驻或可达
 - 全屏/主容器优先使用 `100dvh`，并保留 `100vh` fallback
+- 照片图库移动端默认不应只有单列；展示密度需要可调，且可保留双指捏合调整列数。
+- 图库列数/密度浮层应以触发按钮为中心定位，并在窄屏下限制最大宽度，避免贴边或遮挡关键内容。
+
+### 照片图库视觉细节
+
+- 瀑布流卡片标题默认使用白色文字 + 阴影，hover/focus 时再出现半透明背景，不要让标题条常驻占据小缩略图的大面积空间。
+- 排序标签需要同时保留字段名和方向提示，例如 `修改时间↓`、`名称 A-Z`；不要为了极简牺牲可读性。
+- 图库密度控制使用图标触发、滑块调节和当前档位提示；避免多个 `+` / `-` 文本按钮堆在工具栏里。
+- 主要动作如 `转换为 3D` 保持项目蓝色强调；次级图标使用当前文本色，不单独引入割裂的高饱和色。
 
 ---
 

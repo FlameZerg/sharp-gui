@@ -78,8 +78,9 @@ const classes = [
 
 | 目录 | 用途 | 示例 |
 |------|------|------|
-| `components/common/` | 通用 UI 组件，不含业务逻辑 | Button, Modal, Loading, Icons, ImageViewer |
-| `components/gallery/` | 图库相关组件 | GalleryItem, GalleryList |
+| `components/common/` | 通用 UI 组件，不含业务逻辑 | Button, Modal, Loading, Icons, ImageViewer, ConfirmDialog, SelectMenu, TextInputDialog |
+| `components/gallery/` | 模型图库相关组件 | GalleryItem, GalleryList |
+| `components/photoGallery/` | 本地照片图库业务组件 | PhotoAlbumList, PhotoGalleryView, PhotoMasonryGrid, PhotoSelectionBar, PhotoToolbar |
 | `components/layout/` | 页面布局与导航组件 | Sidebar, ControlsBar, Settings, Help |
 | `components/viewer/` | 3D 查看器相关组件 | ViewerCanvas, QuickControls, ViewerRevealEffectsRail, GyroIndicator, VirtualJoystick, SpeedTooltip |
 
@@ -123,6 +124,12 @@ export const useAppStore = create<AppState>((set) => ({
 - **Action 是箭头函数**：在 `create` 内部用 `set()` 修改状态
 - **桶导出**：通过 `store/index.ts` re-export
 
+当前 store 同时承载模型工作区与照片图库工作区：
+
+- `activeView` 在 `models` / `photos` 间切换，Sidebar 与主区域按该状态展示。
+- 模型图库仍使用 `galleryItems`、`selectedModel` 等字段。
+- 照片图库使用 `photoAlbums`、`currentPhotoAlbumId`、`photoItems`、`photoNextCursor`、`photoSelectionMode`、`selectedPhotoIds`、`previewPhoto` 等独立字段，避免影响 3D 查看器状态。
+
 ### 使用方式
 
 ```typescript
@@ -143,6 +150,7 @@ const isLoading = useAppStore(state => state.isLoading);
 api/
 ├── client.ts    # 底层 fetch 封装（apiGet, apiPost, apiPostFormData, apiDelete）
 ├── gallery.ts   # 图库相关 API
+├── photoGallery.ts # 本地照片相册、照片列表、扫描、转换 API
 ├── tasks.ts     # 任务相关 API
 ├── settings.ts  # 设置相关 API
 └── index.ts     # 桶导出（export * from 各模块）
@@ -192,7 +200,7 @@ export const useMyHook = (param: ParamType) => {
 |------|------|------|
 | Viewer 操作 | 接收 `viewerRef` 参数操作 3D viewer | `useKeyboard(viewerRef)` |
 | 动画循环 | 使用 `requestAnimationFrame` + `useRef` | `useGyroscope`, `useJoystick` |
-| 图库性能 | 组合虚拟滚动、缩略图预加载与稳定高度 | `useGalleryVirtualizer`, `useGalleryThumbnail` |
+| 图库性能 | 组合虚拟滚动、缩略图预加载与稳定高度；照片图库列表只加载缩略图，预览才加载原图 | `useGalleryVirtualizer`, `useGalleryThumbnail` |
 | 任务轮询 | 根据队列状态调整刷新频率 | `useTaskQueue` |
 | 状态引用 | 使用 `useRef` 管理不触发重渲染的状态 | 各 3D 相关 hook |
 | 组合模式 | 主 hook 内部调用子 hook | `useViewer` 组合 `useKeyboard` + `useGyroscope` + `useJoystick` + `useXR` |
@@ -266,6 +274,14 @@ export type { CameraConfig } from './viewer';
 ### 懒加载
 
 对大型页面级组件可使用 `React.lazy` + `Suspense`（当前项目为单页应用，暂无需要）。
+
+### 本地照片图库性能
+
+- 相册照片列表必须分页加载，不要一次性把大目录全部塞进 DOM。
+- 瀑布流图片使用 `thumb_url`、`loading="lazy"`、`decoding="async"` 和稳定 `aspect-ratio`。
+- 图片预览层使用 `full_url` / `preview_url` 原图地址，不能复用缩略图放大。
+- 网格密度调节和触控捏合只改变展示列数，不重新扫描相册。
+- 多选状态只存储 photo id 集合，避免复制大对象。
 
 ---
 

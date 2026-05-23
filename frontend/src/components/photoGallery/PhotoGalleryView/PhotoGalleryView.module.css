@@ -1,0 +1,127 @@
+.root {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+}
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.04)),
+    radial-gradient(circle at 20% 0%, rgba(0, 113, 227, 0.16), transparent 34%),
+    radial-gradient(circle at 90% 12%, rgba(52, 199, 89, 0.12), transparent 30%),
+    #f5f5f7;
+}
+
+.scrollArea {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-left: 18px;
+  transition: padding-left 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.scrollAreaWithSidebar {
+  padding-left: calc(var(--sidebar-width) + 18px);
+}
+
+.error {
+  margin: 0 18px 14px;
+  padding: 12px 14px;
+  border-radius: var(--radius-lg);
+  color: #b42318;
+  background: rgba(255, 59, 48, 0.1);
+  border: 1px solid rgba(255, 59, 48, 0.2);
+  font-size: 13px;
+}
+
+.notice {
+  margin: 0 18px 14px;
+  min-height: 40px;
+  padding: 9px 10px 9px 14px;
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.notice span {
+  min-width: 0;
+  line-height: 1.4;
+}
+
+.notice button {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  color: currentColor;
+  background: rgba(255, 255, 255, 0.42);
+  transition:
+    background var(--transition-normal),
+    transform var(--transition-normal);
+}
+
+.notice button:hover {
+  background: rgba(255, 255, 255, 0.64);
+  transform: translateY(-1px);
+}
+
+.success {
+  color: #146c2e;
+  background: rgba(52, 199, 89, 0.14);
+  border: 1px solid rgba(52, 199, 89, 0.22);
+}
+
+.error,
+.error.notice {
+  color: #b42318;
+  background: rgba(255, 59, 48, 0.1);
+  border: 1px solid rgba(255, 59, 48, 0.2);
+}
+
+@media (max-width: 768px) {
+  .scrollArea {
+    padding-left: 0;
+  }
+
+  .notice,
+  .error {
+    margin-right: 12px;
+    margin-left: 12px;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .backdrop {
+    background:
+      linear-gradient(180deg, rgba(20, 20, 22, 0.82), rgba(0, 0, 0, 0.9)),
+      radial-gradient(circle at 20% 0%, rgba(0, 113, 227, 0.22), transparent 34%),
+      radial-gradient(circle at 90% 12%, rgba(52, 199, 89, 0.13), transparent 30%),
+      #050507;
+  }
+
+  .error {
+    color: #ffb4ab;
+    background: rgba(255, 59, 48, 0.14);
+    border-color: rgba(255, 59, 48, 0.24);
+  }
+
+  .success {
+    color: #b8f5c7;
+    background: rgba(52, 199, 89, 0.16);
+    border-color: rgba(52, 199, 89, 0.24);
+  }
+}
