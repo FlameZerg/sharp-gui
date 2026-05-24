@@ -16,8 +16,16 @@
   gap: 16px;
 }
 
+.miniHandle {
+  display: none;
+}
+
 .titleBlock {
   min-width: 0;
+}
+
+.compactTitle {
+  display: none;
 }
 
 .eyebrow {
@@ -98,6 +106,10 @@
   color: #fff;
   background: var(--accent-blue);
   box-shadow: 0 10px 24px rgba(0, 113, 227, 0.2);
+}
+
+.primaryShortLabel {
+  display: none;
 }
 
 .iconBtn {
@@ -320,6 +332,199 @@
 
   .primaryBtn {
     padding: 0 12px;
+  }
+}
+
+@media (max-width: 768px) {
+  .toolbar {
+    top: 62px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    margin: 64px 12px 10px;
+    padding: 12px;
+    gap: 10px;
+    overflow: visible;
+    transition:
+      padding var(--transition-normal),
+      margin var(--transition-normal),
+      border-radius var(--transition-normal),
+      transform var(--transition-normal),
+      opacity var(--transition-normal);
+  }
+
+  .titleBlock {
+    min-width: 92px;
+    padding-top: 2px;
+  }
+
+  .eyebrow {
+    margin-bottom: 2px;
+    font-size: 10px;
+  }
+
+  .titleBlock h1 {
+    font-size: 20px;
+  }
+
+  .titleBlock p {
+    margin-top: 3px;
+    font-size: 11px;
+  }
+
+  .actions {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 7px;
+  }
+
+  .sortMenu {
+    min-width: 116px;
+    max-width: 132px;
+  }
+
+  .textBtn,
+  .primaryBtn,
+  .iconBtn,
+  .densityTrigger {
+    height: 34px;
+    border-radius: 17px;
+  }
+
+  .densityTrigger {
+    width: 48px;
+    min-width: 48px;
+    gap: 4px;
+  }
+
+  .iconBtn {
+    width: 34px;
+    min-width: 34px;
+    flex-basis: 34px;
+  }
+
+  .textBtn {
+    padding: 0 12px;
+  }
+
+  .primaryBtn {
+    padding: 0 13px;
+  }
+
+  .addBtn {
+    order: 7;
+  }
+
+  .compact,
+  .mini {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    margin-top: 56px;
+    padding: 8px 10px;
+    border-radius: 22px;
+  }
+
+  .compact .eyebrow,
+  .compact .titleBlock h1,
+  .compact .titleBlock p,
+  .mini .eyebrow,
+  .mini .titleBlock h1,
+  .mini .titleBlock p {
+    display: none;
+  }
+
+  .compact .compactTitle,
+  .mini .compactTitle {
+    display: block;
+    max-width: 118px;
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .compact .actions,
+  .mini .actions {
+    width: auto;
+    max-width: calc(100vw - 150px);
+    flex-wrap: nowrap;
+    gap: 5px;
+  }
+
+  .compact .sortMenu,
+  .mini .sortMenu {
+    min-width: 42px;
+    max-width: 42px;
+  }
+
+  .compact .refreshBtn,
+  .mini .refreshBtn {
+    display: inline-flex;
+  }
+
+  .compact .selectAction,
+  .compact .addBtn,
+  .mini .selectAction,
+  .mini .addBtn {
+    display: none;
+  }
+
+  .compact .primaryBtn,
+  .mini .primaryBtn {
+    width: 50px;
+    padding: 0 10px;
+    gap: 5px;
+  }
+
+  .compact .primaryLabel,
+  .mini .primaryLabel {
+    display: none;
+  }
+
+  .compact .primaryShortLabel,
+  .mini .primaryShortLabel {
+    display: inline;
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .mini {
+    width: min(278px, calc(100vw - 84px));
+    grid-template-columns: minmax(0, 1fr) auto;
+    margin-right: auto;
+    margin-left: auto;
+    transform: translateY(-6px);
+  }
+
+  .mini .titleBlock {
+    min-width: 0;
+  }
+
+  .mini .compactTitle {
+    max-width: 64px;
+  }
+
+  .mini .miniHandle {
+    position: absolute;
+    top: -30px;
+    left: 50%;
+    width: 44px;
+    height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, 0.72);
+    background: transparent;
+    transform: translateX(-50%);
+    cursor: pointer;
+  }
+
+  .mini .densityControl,
+  .mini .refreshBtn {
+    display: inline-flex;
   }
 }
 

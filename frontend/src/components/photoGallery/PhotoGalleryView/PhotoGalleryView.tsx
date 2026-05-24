@@ -7,6 +7,7 @@ import {
   addPhotoAlbum,
   browseFolder,
   convertPhotosToModels,
+  downloadPhotos,
   fetchPhotoAlbumPhotos,
   fetchPhotoAlbums,
 } from '@/api';
@@ -15,6 +16,7 @@ import { TextInputDialog } from '@/components/common/TextInputDialog';
 import { PhotoMasonryGrid } from '@/components/photoGallery/PhotoMasonryGrid';
 import { PhotoSelectionBar } from '@/components/photoGallery/PhotoSelectionBar';
 import { PhotoToolbar } from '@/components/photoGallery/PhotoToolbar';
+import type { PhotoToolbarMode } from '@/components/photoGallery/PhotoToolbar';
 import { useAppStore } from '@/store';
 import type { PhotoItem } from '@/types';
 
@@ -22,6 +24,7 @@ import styles from './PhotoGalleryView.module.css';
 
 const MIN_GRID_COLUMNS = 1;
 const MAX_GRID_COLUMNS = 8;
+const MOBILE_TOOLBAR_BREAKPOINT = 768;
 
 function getDefaultGridColumns() {
   if (typeof window === 'undefined') {
@@ -55,12 +58,15 @@ export function PhotoGalleryView() {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const hasCustomGridColumns = useRef(false);
   const pinchRef = useRef<{ distance: number; columns: number } | null>(null);
+  const lastScrollTopRef = useRef(0);
   const [sort, setSort] = useState('mtime_desc');
   const [gridColumns, setGridColumns] = useState(getDefaultGridColumns);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isConverting, setIsConverting] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [isAddingAlbum, setIsAddingAlbum] = useState(false);
+  const [toolbarMode, setToolbarMode] = useState<PhotoToolbarMode>('expanded');
   const [error, setError] = useState<string | null>(null);
   const [pathDialogOpen, setPathDialogOpen] = useState(false);
   const [notice, setNotice] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
@@ -113,6 +119,10 @@ export function PhotoGalleryView() {
 
   useEffect(() => {
     const handleResize = () => {
+      if (window.innerWidth > MOBILE_TOOLBAR_BREAKPOINT) {
+        setToolbarMode('expanded');
+      }
+
       if (hasCustomGridColumns.current) {
         setGridColumns((current) => clampGridColumns(current));
         return;
@@ -166,7 +176,32 @@ export function PhotoGalleryView() {
 
   const handleScroll = useCallback(() => {
     const el = scrollRef.current;
-    if (!el || !photoNextCursor || isLoadingMore || isLoading) {
+    if (!el) {
+      return;
+    }
+
+    const scrollTop = el.scrollTop;
+    const delta = scrollTop - lastScrollTopRef.current;
+    lastScrollTopRef.current = scrollTop;
+    if (window.innerWidth <= MOBILE_TOOLBAR_BREAKPOINT) {
+      setToolbarMode((current) => {
+        if (scrollTop < 28) {
+          return current === 'expanded' ? current : 'expanded';
+        }
+        if (delta < -8) {
+          return current === 'compact' ? current : 'compact';
+        }
+        if (scrollTop > 170 && delta > 5) {
+          return current === 'mini' ? current : 'mini';
+        }
+        if (scrollTop > 52 && current === 'expanded') {
+          return 'compact';
+        }
+        return current;
+      });
+    }
+
+    if (!photoNextCursor || isLoadingMore || isLoading) {
       return;
     }
 
@@ -311,6 +346,32 @@ export function PhotoGalleryView() {
     void convertPhotos([photo]);
   }, [convertPhotos]);
 
+  const handleDownloadSelected = useCallback(async () => {
+    if (selectedPhotoIds.length === 0 || isDownloading) {
+      return;
+    }
+
+    try {
+      setIsDownloading(true);
+      const result = await downloadPhotos(selectedPhotoIds);
+      setNotice({
+        tone: result.failed > 0 ? 'error' : 'success',
+        message: result.failed > 0
+          ? t('photoDownloadPartial', { success: result.downloaded, failed: result.failed })
+          : t('photoDownloadReady', { count: result.downloaded }),
+      });
+    } catch (downloadError) {
+      const message = downloadError instanceof Error ? downloadError.message : t('photoDownloadFailed');
+      setNotice({ tone: 'error', message });
+    } finally {
+      setIsDownloading(false);
+    }
+  }, [isDownloading, selectedPhotoIds, t]);
+
+  const effectiveToolbarMode = photoSelectionMode && selectedPhotoIds.length > 0
+    ? 'mini'
+    : toolbarMode;
+
   return (
     <div className={styles.root}>
       <div className={styles.backdrop} />
@@ -335,12 +396,14 @@ export function PhotoGalleryView() {
           gridColumns={gridColumns}
           isLocalAccess={isLocalAccess}
           isLoading={isLoading}
+          mode={effectiveToolbarMode}
           onAddAlbum={handleAddAlbum}
           onRefresh={handleRefresh}
           onSortChange={handleSortChange}
           onGridColumnsChange={handleGridColumnsChange}
           onToggleSelection={() => setPhotoSelectionMode(!photoSelectionMode)}
           onConvertSelected={handleConvertSelected}
+          onRequestExpand={() => setToolbarMode('compact')}
         />
 
         {notice ? (
@@ -374,7 +437,9 @@ export function PhotoGalleryView() {
       <PhotoSelectionBar
         selectedCount={selectedPhotoIds.length}
         isConverting={isConverting}
+        isDownloading={isDownloading}
         onConvert={handleConvertSelected}
+        onDownload={handleDownloadSelected}
         onClear={clearSelectedPhotos}
       />
 

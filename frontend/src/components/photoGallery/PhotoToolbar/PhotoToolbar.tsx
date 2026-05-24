@@ -6,15 +6,19 @@ import { useTranslation } from 'react-i18next';
 import {
   CheckIcon,
   ChevronDownIcon,
+  ChevronUpIcon,
   GridIcon,
   PlusIcon,
   ResetIcon,
+  SortIcon,
   SparklesIcon,
 } from '@/components/common/Icons';
 import { SelectMenu } from '@/components/common/SelectMenu';
 import type { PhotoAlbum } from '@/types';
 
 import styles from './PhotoToolbar.module.css';
+
+export type PhotoToolbarMode = 'expanded' | 'compact' | 'mini';
 
 interface PhotoToolbarProps {
   album: PhotoAlbum | null;
@@ -25,12 +29,14 @@ interface PhotoToolbarProps {
   gridColumns: number;
   isLocalAccess: boolean;
   isLoading: boolean;
+  mode: PhotoToolbarMode;
   onAddAlbum: () => void;
   onRefresh: () => void;
   onSortChange: (sort: string) => void;
   onGridColumnsChange: (columns: number) => void;
   onToggleSelection: () => void;
   onConvertSelected: () => void;
+  onRequestExpand: () => void;
 }
 
 export function PhotoToolbar({
@@ -42,12 +48,14 @@ export function PhotoToolbar({
   gridColumns,
   isLocalAccess,
   isLoading,
+  mode,
   onAddAlbum,
   onRefresh,
   onSortChange,
   onGridColumnsChange,
   onToggleSelection,
   onConvertSelected,
+  onRequestExpand,
 }: PhotoToolbarProps) {
   const { t } = useTranslation();
   const densityControlRef = useRef<HTMLDivElement | null>(null);
@@ -74,6 +82,9 @@ export function PhotoToolbar({
   ];
   const currentDensity = densityOptions.find((option) => option.value === String(gridColumns)) ?? densityOptions[3];
   const densityProgress = `${((gridColumns - 1) / 7) * 100}%`;
+  const title = album?.name ?? t('photoNoAlbumSelected');
+  const subtitle = album ? t('photoTotalCount', { count: total }) : t('photoChooseAlbumHint');
+  const compactTitle = album ? `${album.name} · ${total}` : t('photoNoAlbumSelected');
 
   useEffect(() => {
     if (!densityOpen) {
@@ -101,11 +112,21 @@ export function PhotoToolbar({
   }, [densityOpen]);
 
   return (
-    <header className={styles.toolbar}>
+    <header className={[styles.toolbar, styles[mode]].filter(Boolean).join(' ')}>
+      <button
+        className={styles.miniHandle}
+        onClick={onRequestExpand}
+        type="button"
+        title={t('photoExpandToolbar')}
+        aria-label={t('photoExpandToolbar')}
+      >
+        <ChevronUpIcon width={18} height={18} />
+      </button>
       <div className={styles.titleBlock}>
         <span className={styles.eyebrow}>{t('photoView')}</span>
-        <h1>{album?.name ?? t('photoNoAlbumSelected')}</h1>
-        <p>{album ? t('photoTotalCount', { count: total }) : t('photoChooseAlbumHint')}</p>
+        <h1>{title}</h1>
+        <p>{subtitle}</p>
+        <span className={styles.compactTitle}>{compactTitle}</span>
       </div>
 
       <div className={styles.actions}>
@@ -115,7 +136,9 @@ export function PhotoToolbar({
           options={sortOptions}
           onChange={onSortChange}
           ariaLabel={t('photoSort')}
+          icon={<SortIcon width={14} height={14} />}
           compact
+          showSelectedLabel={mode === 'expanded'}
           disabled={!album}
         />
 
@@ -164,7 +187,7 @@ export function PhotoToolbar({
         </div>
 
         <button
-          className={styles.iconBtn}
+          className={[styles.iconBtn, styles.refreshBtn].join(' ')}
           onClick={onRefresh}
           disabled={!album || isLoading}
           title={t('photoRefresh')}
@@ -175,7 +198,11 @@ export function PhotoToolbar({
         </button>
 
         <button
-          className={[styles.textBtn, selectionMode ? styles.textBtnActive : ''].filter(Boolean).join(' ')}
+          className={[
+            styles.textBtn,
+            styles.selectAction,
+            selectionMode ? styles.textBtnActive : '',
+          ].filter(Boolean).join(' ')}
           onClick={onToggleSelection}
           disabled={!album}
           type="button"
@@ -191,15 +218,16 @@ export function PhotoToolbar({
           type="button"
         >
           <SparklesIcon width={16} height={16} />
-          <span>
+          <span className={styles.primaryLabel}>
             {selectedCount > 0
               ? t('photoConvertSelectedShort', { count: selectedCount })
               : t('photoConvertTo3d')}
           </span>
+          <span className={styles.primaryShortLabel}>3D</span>
         </button>
 
         {isLocalAccess ? (
-          <button className={styles.iconBtn} onClick={onAddAlbum} title={t('photoAddAlbum')} type="button">
+          <button className={[styles.iconBtn, styles.addBtn].join(' ')} onClick={onAddAlbum} title={t('photoAddAlbum')} type="button">
             <PlusIcon width={16} height={16} />
           </button>
         ) : null}

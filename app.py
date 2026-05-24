@@ -17,9 +17,11 @@ import datetime
 import platform
 import traceback
 import hashlib
+import tempfile
+import zipfile
 import numpy as np
 from io import BytesIO
-from flask import Flask, render_template, request, jsonify, send_from_directory, Response
+from flask import Flask, render_template, request, jsonify, send_from_directory, send_file, Response
 from werkzeug.utils import secure_filename
 from PIL import Image, ImageOps
 from plyfile import PlyData
@@ -50,6 +52,7 @@ PHOTO_THUMBNAIL_WIDTH = 480
 PHOTO_DEFAULT_PAGE_SIZE = 60
 PHOTO_MAX_PAGE_SIZE = 120
 PHOTO_MAX_CONVERSION_BATCH = 100
+PHOTO_MAX_DOWNLOAD_BATCH = 200
 
 
 def load_config():
@@ -659,6 +662,26 @@ def make_unique_input_filename(filename):
 
     suffix = uuid.uuid4().hex[:8]
     return f"{name}-{suffix}{ext}"
+
+
+def make_unique_archive_name(filename, used_names):
+    """Create a safe unique filename for files inside the downloaded ZIP."""
+    safe_name = str(filename or 'photo').replace('\\', '_').replace('/', '_').replace('\0', '').strip()
+    if not safe_name:
+        safe_name = 'photo'
+
+    stem, ext = os.path.splitext(safe_name)
+    if not stem:
+        stem = 'photo'
+
+    candidate = f'{stem}{ext}'
+    counter = 2
+    while candidate.casefold() in used_names:
+        candidate = f'{stem} ({counter}){ext}'
+        counter += 1
+
+    used_names.add(candidate.casefold())
+    return candidate
 
 
 def queue_generation_task_from_file(input_path, filename):
@@ -1442,6 +1465,75 @@ def get_photo_original(photo_id):
     )
 
     return response
+
+
+@app.route('/api/photo-downloads', methods=['POST'])
+def download_photos():
+    """Download selected original photos as a ZIP archive."""
+    data = request.get_json() or {}
+    photo_ids = data.get('photo_ids')
+    if not isinstance(photo_ids, list) or not photo_ids:
+        return jsonify({'error': 'photo_ids is required'}), 400
+
+    photo_ids = [str(photo_id) for photo_id in photo_ids[:PHOTO_MAX_DOWNLOAD_BATCH]]
+    os.makedirs(PHOTO_GALLERY_CACHE_FOLDER, exist_ok=True)
+    fd, zip_path = tempfile.mkstemp(
+        prefix='photo-gallery-',
+        suffix='.zip',
+        dir=PHOTO_GALLERY_CACHE_FOLDER,
+    )
+    os.close(fd)
+
+    added_count = 0
+    failed = []
+    used_names = set()
+
+    try:
+        with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_DEFLATED, allowZip64=True) as archive:
+            for photo_id in photo_ids:
+                resolved = resolve_photo_path(photo_id)
+                if not resolved:
+                    failed.append({'id': photo_id, 'error': 'Photo not found'})
+                    continue
+
+                _, full_path, meta = resolved
+                archive_name = make_unique_archive_name(meta.get('name') or os.path.basename(full_path), used_names)
+                archive.write(full_path, archive_name)
+                added_count += 1
+
+        if added_count == 0:
+            try:
+                os.remove(zip_path)
+            except OSError:
+                pass
+            return jsonify({'error': 'No downloadable photos found', 'failed': failed}), 404
+
+        download_name = f"sharp-gui-photos-{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}.zip"
+        response = send_file(
+            zip_path,
+            as_attachment=True,
+            download_name=download_name,
+            mimetype='application/zip',
+            max_age=0,
+            conditional=False,
+        )
+        response.headers['X-Photo-Download-Count'] = str(added_count)
+        response.headers['X-Photo-Download-Failed'] = str(len(failed))
+
+        @response.call_on_close
+        def cleanup_zip():
+            try:
+                os.remove(zip_path)
+            except OSError:
+                pass
+
+        return response
+    except Exception as e:
+        try:
+            os.remove(zip_path)
+        except OSError:
+            pass
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/photo-conversions', methods=['POST'])

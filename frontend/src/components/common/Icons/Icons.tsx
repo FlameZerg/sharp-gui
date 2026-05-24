@@ -210,6 +210,15 @@ export function GridIcon(props: IconProps) {
   );
 }
 
+// Sort icon
+export function SortIcon(props: IconProps) {
+  return (
+    <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h11m-4-3 4 3-4 3M20 17H9m4-3-4 3 4 3" />
+    </svg>
+  );
+}
+
 // Clock icon (waiting)
 export function ClockIcon(props: IconProps) {
   return (

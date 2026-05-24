@@ -77,6 +77,37 @@ export async function apiPost<T>(
   return response.json();
 }
 
+export async function apiPostBlob(
+  url: string,
+  data?: unknown,
+  options?: RequestInit & { timeout?: number }
+): Promise<{ blob: Blob; response: Response }> {
+  const { headers, ...restOptions } = options ?? {};
+  const response = await fetchWithTimeout(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers,
+    },
+    body: data ? JSON.stringify(data) : undefined,
+    ...restOptions,
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => null);
+    throw new ApiError(
+      errorData?.error || `HTTP error! status: ${response.status}`,
+      response.status,
+      errorData
+    );
+  }
+
+  return {
+    blob: await response.blob(),
+    response,
+  };
+}
+
 export async function apiPostFormData<T>(
   url: string,
   formData: FormData

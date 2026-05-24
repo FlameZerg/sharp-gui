@@ -1,4 +1,4 @@
-import { apiDelete, apiGet, apiPost } from './client';
+import { apiDelete, apiGet, apiPost, apiPostBlob } from './client';
 import type {
   AddPhotoAlbumRequest,
   AddPhotoAlbumResponse,
@@ -58,3 +58,42 @@ export async function convertPhotosToModels(
   );
 }
 
+function getDownloadFilename(contentDisposition: string | null): string | null {
+  if (!contentDisposition) {
+    return null;
+  }
+
+  const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    return decodeURIComponent(utf8Match[1]);
+  }
+
+  const plainMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
+  return plainMatch?.[1] ?? null;
+}
+
+export async function downloadPhotos(
+  photoIds: string[],
+): Promise<{ downloaded: number; failed: number; filename: string }> {
+  const { blob, response } = await apiPostBlob(
+    '/api/photo-downloads',
+    { photo_ids: photoIds },
+    { timeout: 300000 },
+  );
+  const filename = getDownloadFilename(response.headers.get('Content-Disposition'))
+    ?? 'sharp-gui-photos.zip';
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+
+  return {
+    downloaded: Number(response.headers.get('X-Photo-Download-Count') ?? photoIds.length),
+    failed: Number(response.headers.get('X-Photo-Download-Failed') ?? 0),
+    filename,
+  };
+}

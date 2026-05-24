@@ -1,20 +1,24 @@
 import { useTranslation } from 'react-i18next';
 
-import { CloseIcon, SparklesIcon } from '@/components/common/Icons';
+import { CloseIcon, DownloadIcon, SparklesIcon } from '@/components/common/Icons';
 
 import styles from './PhotoSelectionBar.module.css';
 
 interface PhotoSelectionBarProps {
   selectedCount: number;
   isConverting: boolean;
+  isDownloading: boolean;
   onConvert: () => void;
+  onDownload: () => void;
   onClear: () => void;
 }
 
 export function PhotoSelectionBar({
   selectedCount,
   isConverting,
+  isDownloading,
   onConvert,
+  onDownload,
   onClear,
 }: PhotoSelectionBarProps) {
   const { t } = useTranslation();
@@ -25,7 +29,10 @@ export function PhotoSelectionBar({
 
   return (
     <div className={styles.bar} role="status" aria-live="polite">
-      <span className={styles.count}>{t('photoSelectedCount', { count: selectedCount })}</span>
+      <span className={styles.count} aria-label={t('photoSelectedCount', { count: selectedCount })}>
+        <strong>{selectedCount}</strong>
+        <span>{t('photoSelectedLabel')}</span>
+      </span>
       <button
         className={styles.primaryBtn}
         onClick={onConvert}
@@ -35,10 +42,19 @@ export function PhotoSelectionBar({
         <SparklesIcon width={16} height={16} />
         <span>{isConverting ? t('converting') : t('photoConvertSelected')}</span>
       </button>
+      <button
+        className={styles.iconBtn}
+        onClick={onDownload}
+        disabled={isDownloading}
+        type="button"
+        title={isDownloading ? t('photoDownloadingSelected') : t('photoDownloadSelected')}
+        aria-label={isDownloading ? t('photoDownloadingSelected') : t('photoDownloadSelected')}
+      >
+        <DownloadIcon width={16} height={16} />
+      </button>
       <button className={styles.clearBtn} onClick={onClear} type="button" aria-label={t('photoClearSelection')}>
         <CloseIcon width={16} height={16} />
       </button>
     </div>
   );
 }
-
