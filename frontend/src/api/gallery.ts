@@ -1,4 +1,4 @@
-import { apiGet, apiDelete } from './client';
+import { ApiError, apiGet, apiDelete } from './client';
 import type { GalleryItem, ModelFormat } from '@/types';
 
 /**
@@ -36,9 +36,10 @@ export interface ExportModelResult {
 }
 
 export async function exportModel(id: string, format: ModelFormat = 'spz'): Promise<ExportModelResult> {
-  const response = await fetch(`/api/export/${id}?format=${format}`);
+  const response = await fetch(`/api/export/${id}?format=${format}`, { credentials: 'same-origin' });
   if (!response.ok) {
-    throw new Error('Export failed');
+    const errorData = await response.json().catch(() => null);
+    throw new ApiError(errorData?.error || 'Export failed', response.status, errorData);
   }
   const blob = await response.blob();
 

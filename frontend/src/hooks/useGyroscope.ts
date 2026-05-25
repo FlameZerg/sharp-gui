@@ -1,13 +1,36 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import type { RefObject } from 'react';
+import type { Vector3 } from 'three';
 import { useAppStore } from '@/store/useAppStore';
 
-interface UseGyroscopeProps {
-    viewerRef: React.MutableRefObject<any>;
+interface ViewerControls {
+    object?: {
+        position: Vector3;
+        lookAt: (target: Vector3) => void;
+    };
+    target: Vector3;
+    update: () => void;
 }
+
+interface GyroscopeViewer {
+    controls?: ViewerControls;
+}
+
+interface UseGyroscopeProps {
+    viewerRef: RefObject<GyroscopeViewer | null>;
+}
+
+const GYRO_CONFIG = {
+    dampingFactor: 0.08,
+    maxTiltAngle: 35,
+    sensitivity: 1.0,
+};
 
 export const useGyroscope = ({ viewerRef }: UseGyroscopeProps) => {
     const { isGyroEnabled, toggleGyro } = useAppStore();
-    const [isSupported, setIsSupported] = useState(false);
+    const [isSupported] = useState(() => (
+        typeof window !== 'undefined' && 'DeviceOrientationEvent' in window
+    ));
     
     // UI Refs
     const indicatorBallRef = useRef<HTMLDivElement>(null);
@@ -28,25 +51,14 @@ export const useGyroscope = ({ viewerRef }: UseGyroscopeProps) => {
 
     const animationRef = useRef<number | null>(null);
 
-    // Configuration
-    const CONFIG = {
-        dampingFactor: 0.08,
-        maxTiltAngle: 35,
-        sensitivity: 1.0,
-    };
-
-    // Check support
-    useEffect(() => {
-        if (typeof window !== 'undefined' && 'DeviceOrientationEvent' in window) {
-            setIsSupported(true);
-        }
-    }, []);
-
     // Request Permission (iOS 13+)
     const requestPermission = async () => {
-        if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
+        const orientationEvent = DeviceOrientationEvent as unknown as {
+            requestPermission?: () => Promise<PermissionState>;
+        };
+        if (typeof orientationEvent.requestPermission === 'function') {
             try {
-                const permission = await (DeviceOrientationEvent as any).requestPermission();
+                const permission = await orientationEvent.requestPermission();
                 return permission === 'granted';
             } catch (e) {
                 console.error('Gyroscope permission error:', e);
@@ -82,7 +94,7 @@ export const useGyroscope = ({ viewerRef }: UseGyroscopeProps) => {
         state.beta = event.beta || 0;
         state.gamma = event.gamma || 0;
 
-        const maxTilt = CONFIG.maxTiltAngle;
+        const maxTilt = GYRO_CONFIG.maxTiltAngle;
 
         // Calibration
         if (state.needsCalibration) {
@@ -101,8 +113,8 @@ export const useGyroscope = ({ viewerRef }: UseGyroscopeProps) => {
         // Map to camera angles
         // Azimuth: ±45 deg
         // Polar: 60 - 120 deg
-        state.targetAzimuth = (normalizedGamma / maxTilt) * (Math.PI / 4) * CONFIG.sensitivity;
-        state.targetPolar = Math.PI / 2 + (normalizedBeta / maxTilt) * (Math.PI / 6) * CONFIG.sensitivity;
+        state.targetAzimuth = (normalizedGamma / maxTilt) * (Math.PI / 4) * GYRO_CONFIG.sensitivity;
+        state.targetPolar = Math.PI / 2 + (normalizedBeta / maxTilt) * (Math.PI / 6) * GYRO_CONFIG.sensitivity;
     }, [isGyroEnabled]);
 
     // Render Loop
@@ -124,8 +136,8 @@ export const useGyroscope = ({ viewerRef }: UseGyroscopeProps) => {
 
             if (c && c.object) {
                 // Smooth interpolation
-                state.smoothAzimuth += (state.targetAzimuth - state.smoothAzimuth) * CONFIG.dampingFactor;
-                state.smoothPolar += (state.targetPolar - state.smoothPolar) * CONFIG.dampingFactor;
+                state.smoothAzimuth += (state.targetAzimuth - state.smoothAzimuth) * GYRO_CONFIG.dampingFactor;
+                state.smoothPolar += (state.targetPolar - state.smoothPolar) * GYRO_CONFIG.dampingFactor;
 
                 // Calculate position
                 const distance = c.object.position.distanceTo(c.target);

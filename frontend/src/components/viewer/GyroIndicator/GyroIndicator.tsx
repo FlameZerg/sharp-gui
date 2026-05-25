@@ -15,12 +15,16 @@ export const GyroIndicator: React.FC<GyroIndicatorProps> = ({ ballRef }) => {
 
     useEffect(() => {
         if (isGyroEnabled) {
-            setShowHint(true);
+            const showTimer = setTimeout(() => setShowHint(true), 0);
             const timer = setTimeout(() => setShowHint(false), 2500);
-            return () => clearTimeout(timer);
-        } else {
-            setShowHint(false);
+            return () => {
+                clearTimeout(showTimer);
+                clearTimeout(timer);
+            };
         }
+
+        const hideTimer = setTimeout(() => setShowHint(false), 0);
+        return () => clearTimeout(hideTimer);
     }, [isGyroEnabled]);
 
     if (!isGyroEnabled) return null;

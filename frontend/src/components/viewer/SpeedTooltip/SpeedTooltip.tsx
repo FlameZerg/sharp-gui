@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '@/store';
 import styles from './SpeedTooltip.module.css';
@@ -13,17 +13,7 @@ export const SpeedTooltip: React.FC<SpeedTooltipProps> = ({ mode }) => {
     const { t } = useTranslation();
     const sidebarCollapsed = useAppStore(state => state.sidebarCollapsed);
     
-    // Keep track of the last non-null mode to prevent content flash during fadeout
-    const lastModeRef = useRef<'fast' | 'precision'>('fast');
-    
-    useEffect(() => {
-        if (mode) {
-            lastModeRef.current = mode;
-        }
-    }, [mode]);
-    
-    // Use current mode if available, otherwise use last mode for fadeout
-    const displayMode = mode || lastModeRef.current;
+    const displayMode = mode ?? 'fast';
     const content = displayMode === 'fast' 
         ? `⚡ ${t('fastMode')}`
         : `🔍 ${t('precisionMode')}`;

@@ -4,10 +4,11 @@ import { useAppStore } from '@/store/useAppStore';
 import { exportModel } from '@/api/gallery';
 import { formatFileSize } from '@/utils';
 import * as Icons from '@/components/common/Icons';
+import type { useViewer } from '@/hooks/useViewer';
 import styles from './ControlsBar.module.css';
 
 interface ControlsBarProps {
-    viewerHook: any; 
+    viewerHook: ReturnType<typeof useViewer>;
 }
 
 export const ControlsBar: React.FC<ControlsBarProps> = ({ viewerHook }) => {

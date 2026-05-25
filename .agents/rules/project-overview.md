@@ -18,7 +18,7 @@ Sharp GUI 采用 **前后端分离 + 双前端模式** 架构：
 │  Flask 后端 (app.py)                              │
 │  ┌────────┴───────┐  ┌────────┴──────────────┐   │
 │  │  REST API 层    │  │  静态文件服务          │   │
-│  │  (JSON 响应)    │  │  (inputs/outputs)     │   │
+│  │  + LAN 门禁     │  │  (inputs/outputs)     │   │
 │  └────────┬───────┘  └───────────────────────┘   │
 │           │                                       │
 │  ┌────────┴───────────────────────────────────┐  │
@@ -49,7 +49,7 @@ Sharp GUI 采用 **前后端分离 + 双前端模式** 架构：
 ```
 sharp-gui/
 ├── app.py                    # Flask 后端 + 任务队列 + 本地照片图库 API（单文件，约 2,000 行）
-├── config.json               # 运行时配置（workspace_folder, photo_gallery_roots）
+├── config.json               # 运行时配置（workspace_folder, photo_gallery_roots, access_control）
 ├── install.sh / install.bat  # 一键安装脚本（Python/Git/CUDA/依赖/模型/证书）
 ├── run.sh / run.bat          # 启动脚本（支持 --legacy）
 ├── build.sh / build.bat      # 前端构建脚本
@@ -59,8 +59,9 @@ sharp-gui/
 ├── frontend/                 # React 前端
 │   ├── src/
 │   │   ├── api/              #   API 层（client.ts + 功能模块，含 photoGallery.ts）
-│   │   ├── components/       #   组件（common/gallery/photoGallery/layout/viewer）
+│   │   ├── components/       #   组件（auth/common/gallery/photoGallery/layout/viewer）
 │   │   │   ├── common/       #     通用 UI：Button, Icons, ImageViewer, Loading, Modal, ConfirmDialog, SelectMenu, TextInputDialog
+│   │   │   ├── auth/         #     局域网门禁：AccessGate, AccessSetupPrompt
 │   │   │   ├── gallery/      #     模型图库：GalleryItem, GalleryList
 │   │   │   ├── photoGallery/ #     本地照片图库：PhotoAlbumList, PhotoGalleryView, PhotoMasonryGrid, PhotoToolbar
 │   │   │   ├── layout/       #     布局：Sidebar, ControlsBar, Help, Settings, TaskQueue
@@ -137,6 +138,7 @@ sharp-gui/
 - 默认端口：**5050**
 - HTTPS：自动检测项目根目录下 `cert.pem` / `key.pem`
 - 开发代理：Vite dev server 将 `/api` 和 `/files` 代理到 `localhost:5050`
+- 服务默认对局域网可达；可选局域网门禁由 `access_control.enabled` 控制。HTTPS 负责传输加密，访问码负责浏览资格；owner-only 写操作仍只接受 localhost。
 
 ## 3D 渲染引擎迁移说明
 
@@ -156,6 +158,8 @@ sharp-gui/
 - 照片列表 API 仅返回分页元数据与缩略图 URL；预览和下载使用 `/api/photo-original/<photo_id>` 加载原图。
 - 照片图库缩略图与索引写入 `{workspace_folder}/.photo-gallery-cache/`，可删除后重建，不影响原始照片。
 - 照片可单张或多选批量加入现有 3D 生成队列，后端会验证 photo id 属于已配置 root 后复制到 `inputs/`。
+- 局域网门禁开启时，模型/照片列表、预览、下载、导出与 `/files/*` 需要访问码会话；门禁关闭时这些读取恢复开放，但设置、删除、目录管理、重启等仍限制 localhost owner。
+- 远程生成/照片转 3D 默认 owner-only；只有门禁开启且 `allow_remote_generation=true` 时，已解锁远程设备才可提交。
 
 ## WebXR 支持
 

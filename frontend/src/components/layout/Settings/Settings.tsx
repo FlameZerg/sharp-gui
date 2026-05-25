@@ -1,8 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '@/store/useAppStore';
-import { fetchSettings, saveSettings, browseFolder, restartServer, convertAllToSpz } from '@/api';
-import type { ModelFormat } from '@/types';
+import {
+    ApiError,
+    fetchAuthStatus,
+    fetchSettings,
+    logoutAccessSession,
+    restartServer,
+    revokeAccessSessions,
+    saveSettings,
+    setAccessCode,
+    browseFolder,
+    convertAllToSpz,
+    updateAuthSettings,
+} from '@/api';
+import type { AuthStatusResponse, ModelFormat } from '@/types';
 import {
     REVEAL_EFFECT_SETTINGS_OPTIONS,
     type RevealEffectPreferenceId,
@@ -51,12 +63,25 @@ export const Settings: React.FC = () => {
         currentModelUrl,
         currentModelFormat: storeModelFormat,
         setCurrentModel,
+        authStatus,
+        setAuthStatus,
     } = useAppStore();
     const [workspaceFolder, setWorkspaceFolder] = useState('');
     const [modelFormat, setModelFormat] = useState<ModelFormat>('spz');
     const [defaultRevealEffect, setDefaultRevealEffect] = useState<RevealEffectPreferenceId>(viewerDefaultRevealEffect);
     const [isSaving, setIsSaving] = useState(false);
     const [isConverting, setIsConverting] = useState(false);
+    const [accessControlEnabled, setAccessControlEnabled] = useState(false);
+    const [savedAccessControlEnabled, setSavedAccessControlEnabled] = useState(false);
+    const [accessCode, setAccessCodeValue] = useState('');
+    const [sessionDays, setSessionDays] = useState(30);
+    const [savedSessionDays, setSavedSessionDays] = useState(30);
+    const [allowRemoteGeneration, setAllowRemoteGeneration] = useState(false);
+    const [savedAllowRemoteGeneration, setSavedAllowRemoteGeneration] = useState(false);
+    const [isAccessSaving, setIsAccessSaving] = useState(false);
+    const [isRevokingSessions, setIsRevokingSessions] = useState(false);
+    const [isLoggingOut, setIsLoggingOut] = useState(false);
+    const [accessMessage, setAccessMessage] = useState<string | null>(null);
 
     // Track if workspace_folder changed (needs restart)
     const [originalWorkspace, setOriginalWorkspace] = useState('');
@@ -86,28 +111,41 @@ export const Settings: React.FC = () => {
         reloadCurrentModel();
     };
 
-    // Load settings when modal opens
-    useEffect(() => {
-        if (settingsModalOpen) {
-            setModelFormat(effectiveModelFormat());
-            setDefaultRevealEffect(viewerDefaultRevealEffect);
-            loadSettings();
-        }
-    }, [settingsModalOpen, effectiveModelFormat, viewerDefaultRevealEffect]);
+    const applyAccessStatus = useCallback((status: AuthStatusResponse) => {
+        setAuthStatus(status);
+        setAccessControlEnabled(status.access_control_enabled);
+        setSavedAccessControlEnabled(status.access_control_enabled);
+        setSessionDays(status.session_days);
+        setSavedSessionDays(status.session_days);
+        setAllowRemoteGeneration(status.allow_remote_generation);
+        setSavedAllowRemoteGeneration(status.allow_remote_generation);
+    }, [setAuthStatus]);
 
-    const loadSettings = async () => {
+    const loadSettings = useCallback(async () => {
         try {
             const data = await fetchSettings();
             if (data.workspace_folder) {
                 setWorkspaceFolder(data.workspace_folder);
                 setOriginalWorkspace(data.workspace_folder);
             }
+            const nextAuthStatus = await fetchAuthStatus();
+            applyAccessStatus(nextAuthStatus);
             // We do not overwrite modelFormat here because effectiveModelFormat() 
             // already handles client-side overrides.
         } catch (error) {
             console.error('Failed to load settings:', error);
         }
-    };
+    }, [applyAccessStatus]);
+
+    // Load settings when modal opens
+    useEffect(() => {
+        if (settingsModalOpen) {
+            setModelFormat(effectiveModelFormat());
+            setDefaultRevealEffect(viewerDefaultRevealEffect);
+            setAccessMessage(null);
+            loadSettings();
+        }
+    }, [settingsModalOpen, effectiveModelFormat, viewerDefaultRevealEffect, loadSettings]);
 
     const handleClose = () => {
         setSettingsModalOpen(false);
@@ -218,6 +256,110 @@ export const Settings: React.FC = () => {
         }
     };
 
+    const getAccessErrorMessage = (error: unknown) => {
+        if (error instanceof ApiError) {
+            if (error.status === 403) {
+                return t('ownerOnlyAction');
+            }
+            if (error.data?.code === 'ACCESS_CODE_TOO_SHORT') {
+                return t('accessCodeTooShort');
+            }
+            return error.message;
+        }
+        return t('accessControlSaveFailed');
+    };
+
+    const hasAccessSettingsChanges =
+        accessControlEnabled !== savedAccessControlEnabled ||
+        sessionDays !== savedSessionDays ||
+        allowRemoteGeneration !== savedAllowRemoteGeneration;
+
+    const accessSettingsStateText = (() => {
+        if (hasAccessSettingsChanges) {
+            return t('accessSettingsUnsaved');
+        }
+        if (!accessControlEnabled) {
+            return t('accessControlSavedOff');
+        }
+        return t(allowRemoteGeneration ? 'remoteGenerationSavedOn' : 'remoteGenerationSavedOff');
+    })();
+
+    const handleAccessControlToggle = (enabled: boolean) => {
+        setAccessControlEnabled(enabled);
+        if (!enabled) {
+            setAllowRemoteGeneration(false);
+        }
+    };
+
+    const handleSaveAccessCode = async () => {
+        if (!isLocalAccess) return;
+        setIsAccessSaving(true);
+        setAccessMessage(null);
+        try {
+            const status = await setAccessCode({
+                password: accessCode,
+                enabled: true,
+                session_days: sessionDays,
+                allow_remote_generation: allowRemoteGeneration,
+            });
+            applyAccessStatus(status);
+            setAccessCodeValue('');
+            setAccessMessage(t('accessCodeSaved'));
+        } catch (error) {
+            setAccessMessage(getAccessErrorMessage(error));
+        } finally {
+            setIsAccessSaving(false);
+        }
+    };
+
+    const handleSaveAccessSettings = async () => {
+        if (!isLocalAccess) return;
+        setIsAccessSaving(true);
+        setAccessMessage(null);
+        try {
+            const status = await updateAuthSettings({
+                enabled: accessControlEnabled,
+                session_days: sessionDays,
+                allow_remote_generation: accessControlEnabled ? allowRemoteGeneration : false,
+            });
+            applyAccessStatus(status);
+            setAccessMessage(t('accessSettingsSaved'));
+        } catch (error) {
+            setAccessMessage(getAccessErrorMessage(error));
+        } finally {
+            setIsAccessSaving(false);
+        }
+    };
+
+    const handleRevokeSessions = async () => {
+        if (!isLocalAccess) return;
+        setIsRevokingSessions(true);
+        setAccessMessage(null);
+        try {
+            const status = await revokeAccessSessions();
+            setAuthStatus(status);
+            setAccessMessage(t('accessSessionsRevoked'));
+        } catch (error) {
+            setAccessMessage(getAccessErrorMessage(error));
+        } finally {
+            setIsRevokingSessions(false);
+        }
+    };
+
+    const handleLogout = async () => {
+        setIsLoggingOut(true);
+        setAccessMessage(null);
+        try {
+            const status = await logoutAccessSession();
+            setAuthStatus(status);
+            setSettingsModalOpen(false);
+        } catch (error) {
+            setAccessMessage(getAccessErrorMessage(error));
+        } finally {
+            setIsLoggingOut(false);
+        }
+    };
+
     return (
         <div
             className={`${styles.modal} ${settingsModalOpen ? styles.visible : ''}`}
@@ -225,6 +367,177 @@ export const Settings: React.FC = () => {
         >
             <div className={styles.panel}>
                 <h3 className={styles.title}>⚙️ {t('settings')}</h3>
+
+                <div className={styles.group}>
+                    <label className={styles.label}>{t('accessControlTitle')}</label>
+
+                    {isLocalAccess ? (
+                        <>
+                            <div className={`${styles.accessToggleCard} ${!accessControlEnabled ? styles.accessToggleWarning : ''}`}>
+                                <div className={styles.accessToggleCopy}>
+                                    <span className={styles.accessToggleTitle}>
+                                        {accessControlEnabled ? t('accessControlEnabled') : t('accessControlDisabled')}
+                                    </span>
+                                    <p>
+                                        {accessControlEnabled ? t('accessControlEnabledHint') : t('accessControlDisabledHint')}
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    className={`${styles.toggleSwitch} ${accessControlEnabled ? styles.toggleSwitchOn : ''}`}
+                                    onClick={() => handleAccessControlToggle(!accessControlEnabled)}
+                                    aria-pressed={accessControlEnabled}
+                                    aria-label={t('accessControlToggleLabel')}
+                                >
+                                    <span className={styles.toggleKnob} />
+                                </button>
+                            </div>
+
+                            <div className={styles.accessDetails}>
+                                {!accessControlEnabled ? (
+                                    <>
+                                        <div className={styles.riskPanel}>
+                                            <span className={styles.riskTitle}>{t('accessControlDisabledWarningTitle')}</span>
+                                            <p>{t('accessControlDisabledWarning')}</p>
+                                        </div>
+
+                                        <p className={`${styles.settingState} ${hasAccessSettingsChanges ? styles.settingStatePending : styles.settingStateSaved}`}>
+                                            {accessSettingsStateText}
+                                        </p>
+
+                                        <div className={styles.securityActions}>
+                                            <button
+                                                type="button"
+                                                className={styles.convertBtn}
+                                                onClick={handleSaveAccessSettings}
+                                                disabled={isAccessSaving || !hasAccessSettingsChanges}
+                                            >
+                                                {isAccessSaving ? t('saving') : t('accessSettingsSave')}
+                                            </button>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className={styles.statusRow}>
+                                            <span className={`${styles.statusPill} ${authStatus?.has_access_code ? styles.statusOk : styles.statusWarn}`}>
+                                                {authStatus?.has_access_code ? t('accessCodeConfigured') : t('accessCodeMissing')}
+                                            </span>
+                                            <span className={styles.statusPill}>
+                                                {t('accessOwnerMode')}
+                                            </span>
+                                        </div>
+                                        {authStatus?.setup_required ? (
+                                            <p className={styles.warning}>{t('accessCodeSetupReminder')}</p>
+                                        ) : (
+                                            <p className={styles.hint}>{t('accessControlHint')}</p>
+                                        )}
+
+                                        <div className={styles.inputWrapper}>
+                                            <input
+                                                type="password"
+                                                className={styles.input}
+                                                value={accessCode}
+                                                onChange={(e) => setAccessCodeValue(e.target.value)}
+                                                placeholder={t('accessCodePlaceholder')}
+                                                autoComplete="new-password"
+                                            />
+                                            <button
+                                                type="button"
+                                                className={styles.saveBtn}
+                                                onClick={handleSaveAccessCode}
+                                                disabled={isAccessSaving || accessCode.length < 8}
+                                            >
+                                                {t('accessCodeSave')}
+                                            </button>
+                                        </div>
+
+                                        <div className={styles.inlineGrid}>
+                                            <div>
+                                                <label className={styles.label}>{t('sessionDaysLabel')}</label>
+                                                <input
+                                                    type="number"
+                                                    min={1}
+                                                    max={365}
+                                                    className={styles.input}
+                                                    value={sessionDays}
+                                                    onChange={(e) => setSessionDays(Number(e.target.value))}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className={styles.label}>{t('remoteGenerationLabel')}</label>
+                                                <div className={styles.segmentedControl}>
+                                                    <button
+                                                        type="button"
+                                                        className={`${styles.segmentBtn} ${!allowRemoteGeneration ? styles.segmentActive : ''}`}
+                                                        onClick={() => setAllowRemoteGeneration(false)}
+                                                    >
+                                                        {t('remoteGenerationOff')}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className={`${styles.segmentBtn} ${allowRemoteGeneration ? styles.segmentActive : ''}`}
+                                                        onClick={() => setAllowRemoteGeneration(true)}
+                                                    >
+                                                        {t('remoteGenerationOn')}
+                                                    </button>
+                                                </div>
+                                                <p className={styles.fieldHint}>{t('remoteGenerationHint')}</p>
+                                            </div>
+                                        </div>
+
+                                        <p className={`${styles.settingState} ${hasAccessSettingsChanges ? styles.settingStatePending : styles.settingStateSaved}`}>
+                                            {accessSettingsStateText}
+                                        </p>
+
+                                        <div className={styles.securityActions}>
+                                            <button
+                                                type="button"
+                                                className={styles.convertBtn}
+                                                onClick={handleSaveAccessSettings}
+                                                disabled={isAccessSaving || !hasAccessSettingsChanges}
+                                            >
+                                                {isAccessSaving ? t('saving') : t('accessSettingsSave')}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className={styles.dangerBtn}
+                                                onClick={handleRevokeSessions}
+                                                disabled={isRevokingSessions}
+                                            >
+                                                {isRevokingSessions ? t('saving') : t('revokeAllSessions')}
+                                            </button>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <div className={styles.statusRow}>
+                                <span className={`${styles.statusPill} ${authStatus?.access_control_enabled ? styles.statusOk : styles.statusWarn}`}>
+                                    {authStatus?.access_control_enabled ? t('accessControlEnabled') : t('accessControlDisabled')}
+                                </span>
+                                <span className={styles.statusPill}>
+                                    {t('accessRemoteMode')}
+                                </span>
+                            </div>
+                            <p className={styles.hint}>
+                                {authStatus?.access_control_enabled ? t('accessControlHint') : t('accessControlRemoteDisabledHint')}
+                            </p>
+                            <div className={styles.securityActions}>
+                                <button
+                                    type="button"
+                                    className={styles.convertBtn}
+                                    onClick={handleLogout}
+                                    disabled={isLoggingOut || !authStatus?.access_control_enabled}
+                                >
+                                    {isLoggingOut ? t('saving') : t('logoutCurrentSession')}
+                                </button>
+                            </div>
+                        </>
+                    )}
+                    {accessMessage ? <p className={styles.message}>{accessMessage}</p> : null}
+                </div>
 
                 {isLocalAccess && (
                     <div className={styles.group}>

@@ -33,6 +33,17 @@
 - 至少一个 1000+ 图片目录验证分页、缩略图缓存和瀑布流滚动性能。
 - Windows、Linux、macOS 或挂载/NAS 路径至少做路径配置与不可用目录错误状态验证。
 
+### 局域网门禁 smoke checklist
+
+门禁涉及隐私边界，若暂不引入测试框架，至少应手动或脚本化验证：
+
+- 缺省 `access_control.enabled=false` 时，局域网读取模型/照片/`/files/*` 恢复旧开放行为，但设置、删除、目录管理、重启、取消任务等 owner-only API 仍拒绝远程请求。
+- 门禁开启且未登录时，远程访问模型列表、照片相册、缩略图、原图、下载、导出和 `/files/*` 返回 401，不泄露元数据或文件内容。
+- 访问码登录成功后，远程设备可浏览、预览、下载和导出；修改访问码或撤销会话后，旧 Cookie 失效。
+- 远程生成默认拒绝；只有 `access_control.enabled=true` 且 `allow_remote_generation=true` 时，已解锁远程设备才可提交 `/api/generate` 与 `/api/photo-conversions`。
+- localhost owner 免访问码进入应用和设置；owner 判断不得信任 `X-Forwarded-For`、`Forwarded`、`X-Real-IP` 等客户端可控头。
+- 本机 owner 在门禁关闭或未设置访问码时应默认看到启动提醒；“稍后”只关闭本次提示，“不再提示”才持久抑制。
+
 ---
 
 ## 推荐框架

@@ -10,6 +10,7 @@ const POLLING_INTERVAL = 3000; // 3 seconds
 export const useTaskQueue = () => {
     const tasks = useAppStore((state) => state.tasks);
     const hasActiveTasks = useAppStore((state) => state.hasActiveTasks);
+    const canUsePrivateApi = useAppStore((state) => state.isAuthenticated || state.isOwnerAccess);
     const { setTasks, setGalleryItems } = useAppStore(
         useShallow((state) => ({
             setTasks: state.setTasks,
@@ -27,6 +28,10 @@ export const useTaskQueue = () => {
 
     // Polling logic
     const poll = useCallback(async () => {
+        if (!canUsePrivateApi) {
+            return;
+        }
+
         try {
             const data = await fetchTasks();
             setTasks(data.tasks, data.has_active);
@@ -39,11 +44,11 @@ export const useTaskQueue = () => {
         } catch (error) {
             console.error('Task polling error:', error);
         }
-    }, [setTasks, setGalleryItems]);
+    }, [canUsePrivateApi, setTasks, setGalleryItems]);
 
     // Start/stop polling based on hasActiveTasks
     useEffect(() => {
-        if (hasActiveTasks) {
+        if (hasActiveTasks && canUsePrivateApi) {
             // Start polling
             if (!pollingRef.current) {
                 pollingRef.current = setInterval(poll, POLLING_INTERVAL);
@@ -62,7 +67,7 @@ export const useTaskQueue = () => {
                 pollingRef.current = null;
             }
         };
-    }, [hasActiveTasks, poll]);
+    }, [canUsePrivateApi, hasActiveTasks, poll]);
 
     // Force refresh
     const forceRefresh = useCallback(async () => {

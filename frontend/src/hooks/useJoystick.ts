@@ -1,8 +1,17 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import type { RefObject } from 'react';
 import * as THREE from 'three';
 
+interface JoystickViewer {
+    camera?: THREE.Camera;
+    controls?: {
+        target?: THREE.Vector3;
+        update?: () => void;
+    };
+}
+
 interface UseJoystickProps {
-    viewerRef: React.MutableRefObject<any>;
+    viewerRef: RefObject<JoystickViewer | null>;
 }
 
 export const useJoystick = ({ viewerRef }: UseJoystickProps) => {
@@ -25,68 +34,53 @@ export const useJoystick = ({ viewerRef }: UseJoystickProps) => {
     const animationRef = useRef<number | null>(null);
     const stickRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const isActiveRef = useRef(false);
 
     const toggleJoystick = useCallback(() => {
         setIsJoystickVisible(prev => !prev);
     }, []);
 
-    // Movement Loop
-    const updateMovement = useCallback(() => {
-        const viewer = viewerRef.current;
-        if (!viewer || !isActive) { // Check isActive from state or ref? State might be stale in loop if not careful.
-            // Actually, we should check a ref for active logic to avoid dependency issues in loop
-            return; 
-        }
-
-        const camera = viewer.camera;
-        const controls = viewer.controls;
-        if (!camera) return;
-
-        const { deltaX, deltaY, maxRadius, moveSpeed } = joystickState.current;
-
-        // Normalize -1 to 1
-        const nx = deltaX / maxRadius;
-        const ny = deltaY / maxRadius;
-
-        if (Math.abs(nx) > 0.1 || Math.abs(ny) > 0.1) {
-            // Get camera direction
-            const forward = new THREE.Vector3();
-            camera.getWorldDirection(forward);
-
-            // Right vector
-            const right = new THREE.Vector3();
-            right.crossVectors(forward, camera.up).normalize();
-
-            // Calculate delta
-            const delta = new THREE.Vector3();
-            
-            // X: Left/Right (Strafe)
-            delta.add(right.clone().multiplyScalar(nx * moveSpeed));
-            
-            // Y: Forward/Backward
-            // ny is negative when dragging up. We want to move forward when dragging up.
-            // So we subtract (or add negative) scaled vector.
-            delta.add(forward.clone().multiplyScalar(-ny * moveSpeed));
-
-            camera.position.add(delta);
-            if (controls && controls.target) {
-                controls.target.add(delta);
-            }
-            if (controls && controls.update) {
-                controls.update();
-            }
-        }
-
-        animationRef.current = requestAnimationFrame(updateMovement);
-    }, [viewerRef, isActive]); // We need isActive here?
-
-    // But if we put isActive in dependency, recreating the function might restart the loop unnecessarily?
-    // Let's use a Ref for active status to be safe in the loop.
-    const isActiveRef = useRef(false);
-
     useEffect(() => {
         isActiveRef.current = isActive;
+    }, [isActive]);
+
+    useEffect(() => {
         if (isActive) {
+            const updateMovement = () => {
+                const viewer = viewerRef.current;
+                if (!viewer || !isActiveRef.current) {
+                    return;
+                }
+
+                const camera = viewer.camera;
+                const controls = viewer.controls;
+                if (!camera) return;
+
+                const { deltaX, deltaY, maxRadius, moveSpeed } = joystickState.current;
+
+                // Normalize -1 to 1
+                const nx = deltaX / maxRadius;
+                const ny = deltaY / maxRadius;
+
+                if (Math.abs(nx) > 0.1 || Math.abs(ny) > 0.1) {
+                    const forward = new THREE.Vector3();
+                    camera.getWorldDirection(forward);
+
+                    const right = new THREE.Vector3();
+                    right.crossVectors(forward, camera.up).normalize();
+
+                    const delta = new THREE.Vector3();
+                    delta.add(right.clone().multiplyScalar(nx * moveSpeed));
+                    delta.add(forward.clone().multiplyScalar(-ny * moveSpeed));
+
+                    camera.position.add(delta);
+                    controls?.target?.add(delta);
+                    controls?.update?.();
+                }
+
+                animationRef.current = requestAnimationFrame(updateMovement);
+            };
+
             animationRef.current = requestAnimationFrame(updateMovement);
         } else {
              if (animationRef.current) {
@@ -94,7 +88,7 @@ export const useJoystick = ({ viewerRef }: UseJoystickProps) => {
                  animationRef.current = null;
              }
         }
-    }, [isActive, updateMovement]);
+    }, [isActive, viewerRef]);
 
 
     // Find the specific touch that belongs to the joystick by identifier

@@ -17,12 +17,18 @@ import datetime
 import platform
 import traceback
 import hashlib
+import hmac
+import ipaddress
+import secrets
+import socket
 import tempfile
 import zipfile
 import numpy as np
 from io import BytesIO
-from flask import Flask, render_template, request, jsonify, send_from_directory, send_file, Response
+from urllib.parse import urlparse
+from flask import Flask, render_template, request, jsonify, send_from_directory, send_file, Response, g
 from werkzeug.utils import secure_filename
+from werkzeug.security import generate_password_hash, check_password_hash
 from PIL import Image, ImageOps
 from plyfile import PlyData
 
@@ -53,6 +59,14 @@ PHOTO_DEFAULT_PAGE_SIZE = 60
 PHOTO_MAX_PAGE_SIZE = 120
 PHOTO_MAX_CONVERSION_BATCH = 100
 PHOTO_MAX_DOWNLOAD_BATCH = 200
+ACCESS_COOKIE_NAME = 'sharp_gui_access'
+ACCESS_PUBLIC = 'public'
+ACCESS_UNLOCKED = 'unlocked'
+ACCESS_OWNER = 'owner'
+LOGIN_FAILURE_WINDOW_SECONDS = 300
+LOGIN_FAILURE_MAX_DELAY_SECONDS = 8
+login_failure_lock = threading.Lock()
+login_failures = {}
 
 
 def load_config():
@@ -89,8 +103,343 @@ def is_local_request():
     return remote_addr in local_ips
 
 
+def get_default_access_control_config():
+    return {
+        'enabled': False,
+        'password_hash': '',
+        'session_secret': '',
+        'session_days': 30,
+        'allow_localhost_bypass': True,
+        'allow_remote_generation': False,
+        'session_version': 1,
+        'lan_bind_enabled': True,
+    }
+
+
+def coerce_bool(value, default=False):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {'1', 'true', 'yes', 'on'}:
+            return True
+        if normalized in {'0', 'false', 'no', 'off'}:
+            return False
+    return default
+
+
+def coerce_int(value, default, minimum=None, maximum=None):
+    try:
+        result = int(value)
+    except (TypeError, ValueError):
+        result = default
+    if minimum is not None:
+        result = max(minimum, result)
+    if maximum is not None:
+        result = min(maximum, result)
+    return result
+
+
+def normalize_access_control_config(current_config):
+    defaults = get_default_access_control_config()
+    raw = current_config.get('access_control')
+    changed = False
+
+    if not isinstance(raw, dict):
+        raw = {}
+        changed = True
+
+    normalized = {
+        'enabled': coerce_bool(raw.get('enabled'), defaults['enabled']),
+        'password_hash': raw.get('password_hash') if isinstance(raw.get('password_hash'), str) else '',
+        'session_secret': raw.get('session_secret') if isinstance(raw.get('session_secret'), str) else '',
+        'session_days': coerce_int(raw.get('session_days'), defaults['session_days'], 1, 365),
+        'allow_localhost_bypass': coerce_bool(raw.get('allow_localhost_bypass'), defaults['allow_localhost_bypass']),
+        'allow_remote_generation': coerce_bool(raw.get('allow_remote_generation'), defaults['allow_remote_generation']),
+        'session_version': coerce_int(raw.get('session_version'), defaults['session_version'], 1),
+        'lan_bind_enabled': coerce_bool(raw.get('lan_bind_enabled'), defaults['lan_bind_enabled']),
+    }
+
+    if not normalized['session_secret']:
+        normalized['session_secret'] = secrets.token_urlsafe(32)
+        changed = True
+
+    for key, value in normalized.items():
+        if raw.get(key) != value:
+            changed = True
+            break
+
+    current_config['access_control'] = normalized
+    return normalized, changed
+
+
+def get_access_control_config(persist_missing=True):
+    current_config = load_config()
+    access_config, changed = normalize_access_control_config(current_config)
+    if changed and persist_missing:
+        save_config(current_config)
+    return access_config
+
+
+def has_access_code(access_config):
+    return bool(access_config.get('password_hash'))
+
+
+def is_access_control_enabled(access_config):
+    return coerce_bool(access_config.get('enabled'), False)
+
+
+def get_request_hostname():
+    host = request.host.split('@')[-1].strip().lower()
+    if host.startswith('['):
+        end = host.find(']')
+        return host[1:end] if end != -1 else host.strip('[]')
+    return host.split(':', 1)[0]
+
+
+def is_loopback_host(hostname):
+    hostname = (hostname or '').strip().strip('[]').lower()
+    if hostname in {'localhost', '127.0.0.1', '::1'}:
+        return True
+    try:
+        return ipaddress.ip_address(hostname).is_loopback
+    except ValueError:
+        return False
+
+
+def is_private_host(hostname):
+    hostname = (hostname or '').strip().strip('[]').lower()
+    if hostname in {'localhost', socket.gethostname().lower()}:
+        return True
+    try:
+        address = ipaddress.ip_address(hostname)
+        return address.is_loopback or address.is_private or address.is_link_local
+    except ValueError:
+        return hostname.endswith('.local')
+
+
+def is_allowed_request_host():
+    hostname = get_request_hostname()
+    if not hostname:
+        return False
+    return is_private_host(hostname)
+
+
+def is_origin_allowed(origin_value):
+    if not origin_value:
+        return True
+    parsed = urlparse(origin_value)
+    origin_host = (parsed.hostname or '').lower()
+    request_host = get_request_hostname()
+    if not origin_host:
+        return False
+    if origin_host == request_host:
+        return True
+    if is_loopback_host(origin_host) and is_loopback_host(request_host):
+        return True
+    if is_local_request() and is_loopback_host(origin_host):
+        return True
+    return False
+
+
+def is_request_origin_allowed():
+    fetch_site = request.headers.get('Sec-Fetch-Site', '').strip().lower()
+    if fetch_site == 'cross-site':
+        return False
+
+    origin = request.headers.get('Origin')
+    if origin and not is_origin_allowed(origin):
+        return False
+
+    referer = request.headers.get('Referer')
+    if referer and not is_origin_allowed(referer):
+        return False
+
+    return True
+
+
+def is_owner_request(access_config=None):
+    access_config = access_config or get_access_control_config(persist_missing=False)
+    if not coerce_bool(access_config.get('allow_localhost_bypass'), True):
+        return False
+    return is_local_request() and is_allowed_request_host()
+
+
+def encode_session_payload(payload):
+    encoded = base64.urlsafe_b64encode(
+        json.dumps(payload, separators=(',', ':')).encode('utf-8')
+    ).decode('ascii').rstrip('=')
+    return encoded
+
+
+def decode_session_payload(encoded):
+    padding = '=' * (-len(encoded) % 4)
+    data = base64.urlsafe_b64decode((encoded + padding).encode('ascii'))
+    return json.loads(data.decode('utf-8'))
+
+
+def sign_session_payload(encoded, secret):
+    return hmac.new(secret.encode('utf-8'), encoded.encode('ascii'), hashlib.sha256).hexdigest()
+
+
+def create_access_session_token(access_config):
+    now = int(time.time())
+    session_days = coerce_int(access_config.get('session_days'), 30, 1, 365)
+    payload = {
+        'v': coerce_int(access_config.get('session_version'), 1, 1),
+        'iat': now,
+        'exp': now + session_days * 86400,
+        'nonce': secrets.token_urlsafe(8),
+    }
+    encoded = encode_session_payload(payload)
+    signature = sign_session_payload(encoded, access_config['session_secret'])
+    return f'{encoded}.{signature}', payload['exp']
+
+
+def verify_access_session_token(token, access_config):
+    if not token or not isinstance(token, str) or '.' not in token:
+        return False
+    encoded, signature = token.rsplit('.', 1)
+    expected_signature = sign_session_payload(encoded, access_config.get('session_secret', ''))
+    if not hmac.compare_digest(signature, expected_signature):
+        return False
+    try:
+        payload = decode_session_payload(encoded)
+    except Exception:
+        return False
+    if coerce_int(payload.get('v'), 0) != coerce_int(access_config.get('session_version'), 1, 1):
+        return False
+    if coerce_int(payload.get('exp'), 0) < int(time.time()):
+        return False
+    return True
+
+
+def is_authenticated_request(access_config=None):
+    access_config = access_config or get_access_control_config(persist_missing=False)
+    if not is_access_control_enabled(access_config):
+        return True
+    if is_owner_request(access_config):
+        return True
+    return verify_access_session_token(request.cookies.get(ACCESS_COOKIE_NAME), access_config)
+
+
+def get_login_failure_key():
+    return request.remote_addr or 'unknown'
+
+
+def prune_login_failures(at_time=None):
+    now = at_time or time.time()
+    cutoff = now - LOGIN_FAILURE_WINDOW_SECONDS
+    for key in list(login_failures.keys()):
+        login_failures[key] = [timestamp for timestamp in login_failures[key] if timestamp >= cutoff]
+        if not login_failures[key]:
+            login_failures.pop(key, None)
+
+
+def get_login_delay_seconds():
+    key = get_login_failure_key()
+    now = time.time()
+    with login_failure_lock:
+        prune_login_failures(now)
+        failure_count = len(login_failures.get(key, []))
+    if failure_count < 3:
+        return 0
+    return min(LOGIN_FAILURE_MAX_DELAY_SECONDS, 2 ** (failure_count - 3))
+
+
+def record_login_failure():
+    key = get_login_failure_key()
+    now = time.time()
+    with login_failure_lock:
+        prune_login_failures(now)
+        login_failures.setdefault(key, []).append(now)
+
+
+def clear_login_failures():
+    with login_failure_lock:
+        login_failures.pop(get_login_failure_key(), None)
+
+
+def get_required_access_level(access_config=None):
+    path = request.path
+    method = request.method.upper()
+
+    if method == 'OPTIONS':
+        return ACCESS_PUBLIC
+
+    if path in {'/', '/api/auth/status', '/api/auth/login'}:
+        return ACCESS_PUBLIC
+    if path.startswith('/assets/'):
+        return ACCESS_PUBLIC
+    if path in {'/favicon.ico', '/favicon.svg', '/favicon-96x96.png',
+                '/apple-touch-icon.png', '/site.webmanifest',
+                '/web-app-manifest-192x192.png', '/web-app-manifest-512x512.png',
+                '/logo.png'}:
+        return ACCESS_PUBLIC
+
+    if path in {'/api/auth/access-code', '/api/auth/revoke', '/api/auth/settings'}:
+        return ACCESS_OWNER
+    if path == '/api/auth/logout':
+        return ACCESS_UNLOCKED
+
+    if path == '/api/settings':
+        return ACCESS_OWNER if method != 'GET' else ACCESS_UNLOCKED
+    if path in {'/api/browse-folder', '/api/restart', '/api/convert-all'}:
+        return ACCESS_OWNER
+    if path.startswith('/api/delete/') or (path.startswith('/api/task/') and path.endswith('/cancel')):
+        return ACCESS_OWNER
+    if path == '/api/photo-albums' and method != 'GET':
+        return ACCESS_OWNER
+    if path.startswith('/api/photo-albums/') and (method == 'DELETE' or path.endswith('/scan')):
+        return ACCESS_OWNER
+    if path in {'/api/generate', '/api/photo-conversions'}:
+        access_config = access_config or get_access_control_config(persist_missing=False)
+        if not is_access_control_enabled(access_config):
+            return ACCESS_OWNER
+        return ACCESS_UNLOCKED if coerce_bool(access_config.get('allow_remote_generation'), False) else ACCESS_OWNER
+
+    if path.startswith('/api/') or path.startswith('/files/'):
+        return ACCESS_UNLOCKED
+
+    return ACCESS_PUBLIC
+
+
+def make_auth_error(message, status_code, code, **extra):
+    payload = {'error': message, 'code': code}
+    payload.update(extra)
+    return jsonify(payload), status_code
+
+
+def build_auth_status(access_config=None, authenticated_override=None):
+    access_config = access_config or get_access_control_config(persist_missing=False)
+    owner = is_owner_request(access_config)
+    authenticated = owner or verify_access_session_token(request.cookies.get(ACCESS_COOKIE_NAME), access_config)
+    if authenticated_override is not None:
+        authenticated = authenticated_override
+    access_control_enabled = is_access_control_enabled(access_config)
+    access_code_configured = has_access_code(access_config)
+    if not access_control_enabled:
+        authenticated = True
+    return {
+        'authenticated': authenticated,
+        'is_owner': owner,
+        'is_local': owner,
+        'access_control_enabled': access_control_enabled,
+        'setup_required': access_control_enabled and not access_code_configured,
+        'setup_recommended': (not access_control_enabled) or (not access_code_configured),
+        'has_access_code': access_code_configured,
+        'session_days': coerce_int(access_config.get('session_days'), 30, 1, 365),
+        'allow_localhost_bypass': coerce_bool(access_config.get('allow_localhost_bypass'), True),
+        'allow_remote_generation': access_control_enabled and coerce_bool(access_config.get('allow_remote_generation'), False),
+        'lan_bind_enabled': coerce_bool(access_config.get('lan_bind_enabled'), True),
+    }
+
+
 # 加载配置
 config = load_config()
+_, access_config_changed = normalize_access_control_config(config)
+if access_config_changed:
+    save_config(config)
 WORKSPACE_FOLDER = config.get('workspace_folder', DEFAULT_WORKSPACE_FOLDER)
 INPUT_FOLDER = os.path.join(WORKSPACE_FOLDER, 'inputs')
 OUTPUT_FOLDER = os.path.join(WORKSPACE_FOLDER, 'outputs')
@@ -1195,12 +1544,183 @@ threading.Thread(target=cleanup_old_tasks, daemon=True).start()
 
 # --- 路由 ---
 
+@app.before_request
+def enforce_lan_access_control():
+    access_config = get_access_control_config()
+    g.access_control = access_config
+    g.is_owner = is_owner_request(access_config)
+    g.is_authenticated = is_authenticated_request(access_config)
+    required_access = get_required_access_level(access_config)
+    g.required_access = required_access
+
+    if not is_allowed_request_host():
+        return make_auth_error('Request Host is not allowed', 400, 'INVALID_HOST')
+
+    if required_access != ACCESS_PUBLIC and not is_request_origin_allowed():
+        return make_auth_error('Cross-origin private request is not allowed', 403, 'ORIGIN_FORBIDDEN')
+
+    if request.path == '/api/auth/login' and request.method.upper() != 'OPTIONS' and not is_request_origin_allowed():
+        return make_auth_error('Cross-origin login request is not allowed', 403, 'ORIGIN_FORBIDDEN')
+
+    if required_access == ACCESS_PUBLIC:
+        return None
+
+    if required_access == ACCESS_OWNER:
+        if not g.is_owner:
+            return make_auth_error('Only localhost can perform this action', 403, 'OWNER_REQUIRED')
+        return None
+
+    if not is_access_control_enabled(access_config):
+        return None
+
+    if not g.is_authenticated:
+        if not has_access_code(access_config):
+            return make_auth_error(
+                'Access code is not configured. Open Settings from localhost first.',
+                401,
+                'ACCESS_SETUP_REQUIRED',
+                setup_required=True,
+            )
+        return make_auth_error('Authentication required', 401, 'AUTH_REQUIRED')
+
+    return None
+
+
 @app.after_request
 def after_request(response):
-    response.headers.add('Access-Control-Allow-Origin', '*')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    origin = request.headers.get('Origin')
+    if origin and is_origin_allowed(origin):
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        response.headers.add('Vary', 'Origin')
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization'
+    response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,OPTIONS'
     return response
+
+
+@app.route('/api/auth/status')
+def auth_status():
+    return jsonify(build_auth_status(g.access_control))
+
+
+@app.route('/api/auth/login', methods=['POST'])
+def auth_login():
+    access_config = g.access_control
+
+    if not is_access_control_enabled(access_config):
+        return jsonify(build_auth_status(access_config, authenticated_override=True))
+
+    if g.is_owner:
+        return jsonify(build_auth_status(access_config, authenticated_override=True))
+
+    if not has_access_code(access_config):
+        return make_auth_error(
+            'Access code is not configured. Open Settings from localhost first.',
+            403,
+            'ACCESS_SETUP_REQUIRED',
+            setup_required=True,
+        )
+
+    delay_seconds = get_login_delay_seconds()
+    if delay_seconds:
+        time.sleep(delay_seconds)
+
+    data = request.get_json(silent=True) or {}
+    password = data.get('password') or data.get('access_code') or data.get('accessCode')
+    if not isinstance(password, str) or not check_password_hash(access_config['password_hash'], password):
+        record_login_failure()
+        return make_auth_error('Invalid access code', 401, 'INVALID_ACCESS_CODE')
+
+    clear_login_failures()
+    token, expires_at = create_access_session_token(access_config)
+    response = jsonify(build_auth_status(access_config, authenticated_override=True))
+    response.set_cookie(
+        ACCESS_COOKIE_NAME,
+        token,
+        max_age=coerce_int(access_config.get('session_days'), 30, 1, 365) * 86400,
+        expires=datetime.datetime.utcfromtimestamp(expires_at),
+        httponly=True,
+        secure=request.is_secure,
+        samesite='Strict',
+        path='/',
+    )
+    return response
+
+
+@app.route('/api/auth/logout', methods=['POST'])
+def auth_logout():
+    response = jsonify(build_auth_status(g.access_control, authenticated_override=g.is_owner))
+    response.delete_cookie(ACCESS_COOKIE_NAME, path='/')
+    return response
+
+
+@app.route('/api/auth/access-code', methods=['POST'])
+def auth_set_access_code():
+    data = request.get_json(silent=True) or {}
+    password = data.get('password') or data.get('access_code') or data.get('accessCode')
+    if not isinstance(password, str) or len(password) < 8:
+        return make_auth_error('Access code must be at least 8 characters', 400, 'ACCESS_CODE_TOO_SHORT')
+
+    current_config = load_config()
+    access_config, _ = normalize_access_control_config(current_config)
+    access_config['enabled'] = True
+    access_config['password_hash'] = generate_password_hash(password)
+    if 'session_days' in data:
+        access_config['session_days'] = coerce_int(data.get('session_days'), access_config['session_days'], 1, 365)
+    if 'allow_remote_generation' in data and access_config['enabled']:
+        access_config['allow_remote_generation'] = coerce_bool(
+            data.get('allow_remote_generation'),
+            access_config['allow_remote_generation'],
+        )
+    if not access_config['enabled']:
+        access_config['allow_remote_generation'] = False
+    access_config['session_version'] = coerce_int(access_config.get('session_version'), 1, 1) + 1
+    current_config['access_control'] = access_config
+    save_config(current_config)
+
+    return jsonify(build_auth_status(access_config, authenticated_override=True))
+
+
+@app.route('/api/auth/revoke', methods=['POST'])
+def auth_revoke_sessions():
+    current_config = load_config()
+    access_config, _ = normalize_access_control_config(current_config)
+    access_config['session_version'] = coerce_int(access_config.get('session_version'), 1, 1) + 1
+    current_config['access_control'] = access_config
+    save_config(current_config)
+    return jsonify(build_auth_status(access_config, authenticated_override=True))
+
+
+@app.route('/api/auth/settings', methods=['POST'])
+def auth_update_settings():
+    data = request.get_json(silent=True) or {}
+    current_config = load_config()
+    access_config, _ = normalize_access_control_config(current_config)
+
+    if 'enabled' in data:
+        access_config['enabled'] = coerce_bool(data.get('enabled'), access_config['enabled'])
+        if not access_config['enabled']:
+            access_config['allow_remote_generation'] = False
+    if 'session_days' in data:
+        access_config['session_days'] = coerce_int(data.get('session_days'), access_config['session_days'], 1, 365)
+    if 'allow_remote_generation' in data and access_config['enabled']:
+        access_config['allow_remote_generation'] = coerce_bool(
+            data.get('allow_remote_generation'),
+            access_config['allow_remote_generation'],
+        )
+    if not access_config['enabled']:
+        access_config['allow_remote_generation'] = False
+    if 'allow_localhost_bypass' in data:
+        next_bypass = coerce_bool(data.get('allow_localhost_bypass'), access_config['allow_localhost_bypass'])
+        if not next_bypass and not has_access_code(access_config):
+            return make_auth_error('Set an access code before disabling localhost bypass', 400, 'ACCESS_CODE_REQUIRED')
+        access_config['allow_localhost_bypass'] = next_bypass
+    if 'lan_bind_enabled' in data:
+        access_config['lan_bind_enabled'] = coerce_bool(data.get('lan_bind_enabled'), access_config['lan_bind_enabled'])
+
+    current_config['access_control'] = access_config
+    save_config(current_config)
+    return jsonify(build_auth_status(access_config, authenticated_override=True))
 
 
 @app.route('/')
@@ -1276,9 +1796,9 @@ def photo_albums():
     """照片相册列表与新增配置。"""
     if request.method == 'GET':
         albums = [build_photo_album_response(album) for album in normalize_photo_album_roots()]
-        return jsonify({'albums': albums, 'is_local': is_local_request()})
+        return jsonify({'albums': albums, 'is_local': g.is_owner})
 
-    if not is_local_request():
+    if not g.is_owner:
         return jsonify({'error': 'Photo albums can only be modified from localhost'}), 403
 
     data = request.get_json() or {}
@@ -1328,7 +1848,7 @@ def photo_albums():
 @app.route('/api/photo-albums/<album_id>', methods=['DELETE'])
 def delete_photo_album(album_id):
     """移除照片相册配置，不删除原始照片。"""
-    if not is_local_request():
+    if not g.is_owner:
         return jsonify({'error': 'Photo albums can only be modified from localhost'}), 403
 
     current_config = load_config()
@@ -1357,7 +1877,7 @@ def delete_photo_album(album_id):
 @app.route('/api/photo-albums/<album_id>/scan', methods=['POST'])
 def scan_photo_album_endpoint(album_id):
     """重新扫描照片相册。"""
-    if not is_local_request():
+    if not g.is_owner:
         return jsonify({'error': 'Photo albums can only be rescanned from localhost'}), 403
 
     album = find_photo_album(album_id)
@@ -1769,7 +2289,7 @@ def get_thumbnail(item_id):
 @app.route('/api/convert-all', methods=['POST'])
 def convert_all_to_spz():
     """批量将所有现有 PLY 模型转换为 SPZ 格式 (仅本机可用)"""
-    if not is_local_request():
+    if not g.is_owner:
         return jsonify({'error': 'Only available from localhost'}), 403
     
     if not os.path.exists(OUTPUT_FOLDER):
@@ -1832,7 +2352,7 @@ def serve_files(filename):
 @app.route('/api/settings', methods=['GET', 'POST'])
 def settings():
     """设置接口 - 仅本机可访问 (model_format 对所有客户端可读)"""
-    is_local = is_local_request()
+    is_local = g.is_owner
     config = load_config()
     
     if request.method == 'GET':
@@ -1880,7 +2400,7 @@ def settings():
 @app.route('/api/restart', methods=['POST'])
 def restart_server():
     """重启服务器 - 仅本机可访问"""
-    if not is_local_request():
+    if not g.is_owner:
         return jsonify({'error': 'Restart can only be triggered from localhost'}), 403
     
     def do_restart():
@@ -1906,7 +2426,7 @@ def browse_folder():
     - macOS: osascript (AppleScript)
     - Windows: PowerShell
     """
-    if not is_local_request():
+    if not g.is_owner:
         return jsonify({'error': 'Only available from localhost'}), 403
     
     import subprocess

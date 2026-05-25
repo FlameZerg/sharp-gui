@@ -9,6 +9,7 @@ import {
 } from '@/utils/viewerRevealEffects';
 import type {
   AppView,
+  AuthStatusResponse,
   GalleryItem,
   ModelFormat,
   PhotoAlbum,
@@ -435,6 +436,11 @@ interface AppState {
 
   // Settings
   isLocalAccess: boolean;
+  authStatus: AuthStatusResponse | null;
+  isAuthenticated: boolean;
+  isOwnerAccess: boolean;
+  authSetupRequired: boolean;
+  authPermissionError: string | null;
 
   // Computed
   /** Effective format: client override > server default */
@@ -506,6 +512,8 @@ interface AppState {
   resetViewerQuickControlsForCurrentModel: () => void;
 
   setLocalAccess: (isLocal: boolean) => void;
+  setAuthStatus: (status: AuthStatusResponse) => void;
+  setAuthPermissionError: (message: string | null) => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -570,6 +578,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   modelViewerOverrides: initialModelViewerOverrides,
 
   isLocalAccess: false,
+  authStatus: null,
+  isAuthenticated: false,
+  isOwnerAccess: false,
+  authSetupRequired: false,
+  authPermissionError: null,
 
   // Computed: client override > server default
   effectiveModelFormat: () => {
@@ -1123,5 +1136,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     };
   }),
 
-  setLocalAccess: (isLocal) => set({ isLocalAccess: isLocal }),
+  setLocalAccess: (isLocal) => set({ isLocalAccess: isLocal, isOwnerAccess: isLocal }),
+  setAuthStatus: (status) => set({
+    authStatus: status,
+    isAuthenticated: status.authenticated,
+    isOwnerAccess: status.is_owner,
+    authSetupRequired: status.setup_required,
+    isLocalAccess: status.is_owner,
+  }),
+  setAuthPermissionError: (message) => set({ authPermissionError: message }),
 }));

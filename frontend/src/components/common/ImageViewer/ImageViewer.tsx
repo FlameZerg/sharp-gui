@@ -279,7 +279,7 @@ export function ImageViewer() {
       const downloadUrl = previewPhoto
         ? previewPhoto.download_url
         : `/api/original/${encodeURIComponent(previewImage?.id ?? '')}?download=1`;
-      const response = await fetch(downloadUrl);
+      const response = await fetch(downloadUrl, { credentials: 'same-origin' });
       if (!response.ok) throw new Error('Download failed');
       
       const blob = await response.blob();

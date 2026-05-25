@@ -34,7 +34,7 @@
 | `frontend/src/App.css` | 页面级布局与场景样式 | 仅放全局页面结构与状态样式 |
 | `frontend/src/components/**/**.module.css` | 组件局部样式 | 不污染全局命名空间 |
 
-照片图库相关控件应优先复用 `components/common/SelectMenu`、`ConfirmDialog`、`TextInputDialog` 等通用玻璃态组件，避免浏览器原生 `select` / `prompt` / `confirm` / `alert` 造成视觉割裂。
+照片图库和局域网门禁相关控件应优先复用 `components/common/SelectMenu`、`ConfirmDialog`、`TextInputDialog` 等通用玻璃态组件，避免浏览器原生 `select` / `prompt` / `confirm` / `alert` 造成视觉割裂。
 
 > `frontend/src/index.css` 中仍有历史遗留变量定义；新增变量不要放在 `index.css`。
 
@@ -158,6 +158,13 @@ font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
 - 排序标签需要同时保留字段名和方向提示，例如 `修改时间↓`、`名称 A-Z`；不要为了极简牺牲可读性。
 - 图库密度控制使用图标触发、滑块调节和当前档位提示；避免多个 `+` / `-` 文本按钮堆在工具栏里。
 - 主要动作如 `转换为 3D` 保持项目蓝色强调；次级图标使用当前文本色，不单独引入割裂的高饱和色。
+
+### 局域网门禁视觉细节
+
+- 门禁页、启动提醒和设置页门禁区域必须延续现有 Apple 玻璃态：柔和半透明背景、清晰层级、克制边框和足够圆角；不要使用浏览器原生弹窗或临时拼装的提示块。
+- 启动提醒应是轻量 modal：标题、风险说明、2-3 个主要动作即可，按钮间距和卡片内边距要匹配现有 Settings / Modal 视觉密度。
+- 设置页门禁关闭时只显示总开关、风险提示和保存动作；开启后再展开访问码、会话天数、远程生成和撤销会话，并用明显留白分隔开关卡片与详细表单。
+- 安全警告可以使用暖色强调，但面积要克制；不要让警告色压过主操作，也不要用大块高饱和纯色破坏整体质感。
 
 ---
 

@@ -1,0 +1,1 @@
+export { AccessSetupPrompt } from './AccessSetupPrompt';

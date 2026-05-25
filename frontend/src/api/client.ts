@@ -6,11 +6,17 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public status: number,
-    public data?: unknown
+    public data?: ApiErrorData | null
   ) {
     super(message);
     this.name = 'ApiError';
   }
+}
+
+export interface ApiErrorData {
+  error?: string;
+  code?: string;
+  [key: string]: unknown;
 }
 
 interface FetchOptions extends RequestInit {
@@ -28,6 +34,7 @@ async function fetchWithTimeout(
 
   try {
     const response = await fetch(url, {
+      credentials: fetchOptions.credentials ?? 'same-origin',
       ...fetchOptions,
       signal: controller.signal,
     });
@@ -37,14 +44,25 @@ async function fetchWithTimeout(
   }
 }
 
+async function readErrorData(response: Response): Promise<ApiErrorData | null> {
+  const errorData = await response.json().catch(() => null);
+  return errorData && typeof errorData === 'object' ? errorData as ApiErrorData : null;
+}
+
+async function throwApiError(response: Response): Promise<never> {
+  const errorData = await readErrorData(response);
+  throw new ApiError(
+    errorData?.error || `HTTP error! status: ${response.status}`,
+    response.status,
+    errorData
+  );
+}
+
 export async function apiGet<T>(url: string): Promise<T> {
   const response = await fetchWithTimeout(url);
   
   if (!response.ok) {
-    throw new ApiError(
-      `HTTP error! status: ${response.status}`,
-      response.status
-    );
+    await throwApiError(response);
   }
   
   return response.json();
@@ -66,12 +84,7 @@ export async function apiPost<T>(
   });
   
   if (!response.ok) {
-    const errorData = await response.json().catch(() => null);
-    throw new ApiError(
-      errorData?.error || `HTTP error! status: ${response.status}`,
-      response.status,
-      errorData
-    );
+    await throwApiError(response);
   }
   
   return response.json();
@@ -94,12 +107,7 @@ export async function apiPostBlob(
   });
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => null);
-    throw new ApiError(
-      errorData?.error || `HTTP error! status: ${response.status}`,
-      response.status,
-      errorData
-    );
+    await throwApiError(response);
   }
 
   return {
@@ -118,12 +126,7 @@ export async function apiPostFormData<T>(
   });
   
   if (!response.ok) {
-    const errorData = await response.json().catch(() => null);
-    throw new ApiError(
-      errorData?.error || `HTTP error! status: ${response.status}`,
-      response.status,
-      errorData
-    );
+    await throwApiError(response);
   }
   
   return response.json();
@@ -135,12 +138,7 @@ export async function apiDelete<T>(url: string): Promise<T> {
   });
   
   if (!response.ok) {
-    const errorData = await response.json().catch(() => null);
-    throw new ApiError(
-      errorData?.error || `HTTP error! status: ${response.status}`,
-      response.status,
-      errorData
-    );
+    await throwApiError(response);
   }
   
   return response.json();

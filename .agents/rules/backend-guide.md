@@ -9,43 +9,60 @@
 3. **任务队列** — `queue.Queue` + 后台 Worker 线程调用 `sharp predict` 推理
 4. **文件管理** — 图片上传、模型存储、缩略图生成、本地照片图库索引/缩略图、PLY→SPZ 自动转换、历史 PLY→Splat 导出兼容
 5. **配置管理** — `config.json` 读写
-6. **安全** — CORS、HTTPS、仅本机可修改设置
+6. **安全** — CORS、HTTPS、局域网门禁、仅本机可修改设置
 
 ---
 
 ## API 端点清单
 
+### LAN access-control tiers
+
+- **Public**: `/`, React assets/root static files, `/api/auth/status`, `/api/auth/login`.
+- **Unlocked**: valid HttpOnly access session or localhost owner. Covers gallery/task reads, model/photo previews, downloads, exports, photo album reads, and `/files/*`.
+- **Owner**: real localhost request with allowed Host. Covers settings writes, folder management, deletes, restart, batch conversion, task cancel, and access-control management.
+- **Conditional**: `/api/generate` and `/api/photo-conversions` are Owner by default; when `access_control.enabled=true` and `access_control.allow_remote_generation=true`, Unlocked remote devices may submit them.
+
+When `access_control.enabled=false`, private read resources fall back to the old open LAN browsing behavior, but Owner endpoints must still enforce real localhost access. Disabling the gate must not make delete, settings, restart, folder management, batch conversion, or task cancellation remote-accessible.
+
+Do not grant owner permissions from `X-Forwarded-For`, `Forwarded`, `X-Real-IP`, or other client-controlled headers. New private endpoints must be added to `get_required_access_level()` in `app.py`; unknown `/api/*` and `/files/*` requests should remain Unlocked by default.
+
 | 方法 | 路径 | 功能 | 权限 |
 |------|------|------|------|
-| GET | `/api/gallery` | 获取作品列表 | 全部 |
-| POST | `/api/generate` | 上传图片生成模型 | 全部 |
-| GET | `/api/tasks` | 获取任务队列状态 | 全部 |
-| POST | `/api/task/<id>/cancel` | 取消任务 | 全部 |
-| DELETE | `/api/delete/<id>` | 删除作品 | 全部 |
-| GET | `/api/download/<id>` | 下载模型文件（支持 `?format=spz|ply`） | 全部 |
-| GET | `/api/original/<id>` | 获取上传原图（inline 预览或附件下载） | 全部 |
-| GET | `/api/thumbnail/<id>` | 获取或按需修复缩略图 | 全部 |
-| POST | `/api/convert-all` | 批量将既有 PLY 转换为 SPZ | 仅 localhost |
-| GET | `/api/settings` | 读取设置 | 全部 |
-| POST | `/api/settings` | 写入设置 | 仅 localhost |
-| POST | `/api/restart` | 重启服务器 | 仅 localhost |
-| POST | `/api/browse-folder` | 原生文件夹选择 | 仅 localhost |
-| GET | `/api/export/<id>` | 导出为 Spark 2.0 独立 HTML（支持 `?format=spz|ply`） | 全部 |
-| GET | `/api/photo-albums` | 获取本地照片相册列表 | 全部 |
-| POST | `/api/photo-albums` | 新增照片相册目录配置 | 仅 localhost |
-| DELETE | `/api/photo-albums/<album_id>` | 移除照片相册配置，不删除原图 | 仅 localhost |
-| POST | `/api/photo-albums/<album_id>/scan` | 重新扫描照片相册 | 仅 localhost |
-| GET | `/api/photo-albums/<album_id>/photos` | 分页获取照片，支持时间/名称/大小排序 | 全部 |
-| GET | `/api/photo-thumbnail/<photo_id>` | 获取或按需生成照片图库缩略图 | 全部 |
-| GET | `/api/photo-original/<photo_id>` | 获取照片原图（inline 或 `?download=1` 附件） | 全部 |
-| POST | `/api/photo-conversions` | 将单张/多张照片加入现有 3D 生成队列 | 全部 |
+| GET | `/api/auth/status` | 认证状态、owner 状态和门禁配置摘要 | Public |
+| POST | `/api/auth/login` | 使用访问码创建 HttpOnly Cookie 会话 | Public |
+| POST | `/api/auth/logout` | 清除当前设备会话 | Unlocked |
+| POST | `/api/auth/access-code` | 设置或修改访问码 | Owner |
+| POST | `/api/auth/revoke` | 撤销所有远程会话 | Owner |
+| POST | `/api/auth/settings` | 更新门禁启用状态、会话天数、远程生成等配置 | Owner |
+| GET | `/api/gallery` | 获取作品列表 | Unlocked |
+| POST | `/api/generate` | 上传图片生成模型 | Owner / Conditional |
+| GET | `/api/tasks` | 获取任务队列状态 | Unlocked |
+| POST | `/api/task/<id>/cancel` | 取消任务 | Owner |
+| DELETE | `/api/delete/<id>` | 删除作品 | Owner |
+| GET | `/api/download/<id>` | 下载模型文件（支持 `?format=spz|ply`） | Unlocked |
+| GET | `/api/original/<id>` | 获取上传原图（inline 预览或附件下载） | Unlocked |
+| GET | `/api/thumbnail/<id>` | 获取或按需修复缩略图 | Unlocked |
+| POST | `/api/convert-all` | 批量将既有 PLY 转换为 SPZ | Owner |
+| GET | `/api/settings` | 读取设置 | Unlocked |
+| POST | `/api/settings` | 写入设置 | Owner |
+| POST | `/api/restart` | 重启服务器 | Owner |
+| POST | `/api/browse-folder` | 原生文件夹选择 | Owner |
+| GET | `/api/export/<id>` | 导出为 Spark 2.0 独立 HTML（支持 `?format=spz|ply`） | Unlocked |
+| GET | `/api/photo-albums` | 获取本地照片相册列表 | Unlocked |
+| POST | `/api/photo-albums` | 新增照片相册目录配置 | Owner |
+| DELETE | `/api/photo-albums/<album_id>` | 移除照片相册配置，不删除原图 | Owner |
+| POST | `/api/photo-albums/<album_id>/scan` | 重新扫描照片相册 | Owner |
+| GET | `/api/photo-albums/<album_id>/photos` | 分页获取照片，支持时间/名称/大小排序 | Unlocked |
+| GET | `/api/photo-thumbnail/<photo_id>` | 获取或按需生成照片图库缩略图 | Unlocked |
+| GET | `/api/photo-original/<photo_id>` | 获取照片原图（inline 或 `?download=1` 附件） | Unlocked |
+| POST | `/api/photo-conversions` | 将单张/多张照片加入现有 3D 生成队列 | Owner / Conditional |
 
 ### 新增端点规则
 
 1. **路由前缀**：必须使用 `/api/` 前缀
 2. **返回格式**：统一返回 JSON（`jsonify()`）
 3. **错误响应**：返回 `{"error": "描述"}` + 对应 HTTP 状态码
-4. **权限控制**：敏感操作（修改配置、重启）需验证 `request.remote_addr` 是否为本机
+4. **权限控制**：在 `get_required_access_level()` 中明确 Public / Unlocked / Owner / Conditional；owner 判断只能使用真实 `request.remote_addr` + 允许的 Host，不能相信转发头
 
 ```python
 # ✅ 标准路由模式
@@ -142,7 +159,12 @@ photo_thumbnail_folder = os.path.join(photo_gallery_cache_folder, 'thumbnails')
       "recursive": true,
       "enabled": true
     }
-  ]
+  ],
+  "access_control": {
+    "enabled": false,
+    "session_days": 30,
+    "allow_remote_generation": false
+  }
 }
 ```
 
@@ -154,18 +176,24 @@ photo_thumbnail_folder = os.path.join(photo_gallery_cache_folder, 'thumbnails')
 
 `photo_gallery_roots` 控制本地照片图库相册目录；缺省时按空数组处理，不影响旧配置启动。
 
+`access_control` 控制可选局域网门禁；缺省或 `enabled=false` 时读取资源保持旧的局域网开放行为，但 owner-only 端点仍必须限制真实 localhost。
+
 ---
 
 ## CORS 处理
 
-通过 `after_request` 钩子手动添加：
+通过 `after_request` 钩子手动添加。启用 Cookie 会话后，不允许继续对凭证请求返回 `Access-Control-Allow-Origin: *`；只能回显通过 `is_origin_allowed()` 校验的 origin，并设置 `Access-Control-Allow-Credentials: true`：
 
 ```python
 @app.after_request
 def after_request(response):
-    response.headers.add('Access-Control-Allow-Origin', '*')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
-    response.headers.add('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')
+    origin = request.headers.get('Origin')
+    if origin and is_origin_allowed(origin):
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        response.headers.add('Vary', 'Origin')
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization'
+    response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,OPTIONS'
     return response
 ```
 
@@ -235,6 +263,8 @@ if not resolved.startswith(os.path.abspath(workspace)):
 ### 其他
 
 - **仅 localhost 可写入**的端点需检查 `request.remote_addr`
+- **局域网门禁**关闭时只放开私有读取资源，不得放开设置、删除、重启、目录管理、取消任务等 owner-only 操作
+- **Owner 判断**只能信任真实连接地址和允许的 Host，不得使用 `X-Forwarded-For`、`Forwarded`、`X-Real-IP` 等客户端可控头
 - **subprocess 调用**使用列表参数（非字符串拼接），避免命令注入
 - **不要**在 JSON 响应中暴露服务器绝对路径或堆栈信息
 

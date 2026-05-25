@@ -416,6 +416,16 @@ After generating, restart and access via `https://`:
 
 First HTTPS access shows certificate warning (self-signed), click "Continue" to proceed.
 
+### LAN Access Gate and Privacy Boundary
+
+Sharp GUI provides optional LAN access control. On first startup, or when the owner has not fully configured access control, the local app shows a reminder to set an access code; the owner can set it up later or stop showing the reminder.
+
+- When access control is on, model lists, thumbnails, original images, photo albums, downloads, exports and `/files/*` workspace resources require LAN devices to enter the access code first; after a successful unlock, the browser keeps an HttpOnly Cookie session.
+- When access control is off, devices on the same LAN that can reach the port may browse and download private content directly; deletion, settings, restart, folder management and other owner-only actions still require `localhost` / `127.0.0.1`.
+- Remote devices with the access code get browsing, preview, download and export access only; generation and photo-to-3D conversion remain owner-only by default.
+- To let unlocked remote devices submit generation jobs, enable Remote Generation in Settings > LAN Access Control; turning access control off also revokes remote generation permission.
+- HTTPS protects transport and browser sensor features; the access code protects authorization. Enable both when sharing the port on your LAN.
+
 ---
 
 ## 🏗️ Architecture

@@ -1,9 +1,10 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
 
-import { fetchGallery, fetchPhotoAlbums, fetchSettings, fetchTasks, generateFromImages } from '@/api';
+import { ApiError, fetchAuthStatus, fetchGallery, fetchPhotoAlbums, fetchSettings, fetchTasks, generateFromImages } from '@/api';
+import { AccessGate, AccessSetupPrompt } from '@/components/auth';
 import { GalleryList } from '@/components/gallery';
 import { ImageViewer, Loading } from '@/components/common';
 import { ParticleBackground } from '@/components/common/ParticleBackground';
@@ -16,8 +17,26 @@ import { ViewerCanvas } from '@/components/viewer/ViewerCanvas/ViewerCanvas';
 
 import './App.css';
 
+const ACCESS_SETUP_PROMPT_SUPPRESSED_KEY = 'sharp-access-setup-prompt-suppressed';
+
+function shouldShowAccessSetupPrompt(status: {
+  is_owner: boolean;
+  setup_recommended: boolean;
+}) {
+  if (!status.is_owner || !status.setup_recommended) {
+    return false;
+  }
+
+  try {
+    return localStorage.getItem(ACCESS_SETUP_PROMPT_SUPPRESSED_KEY) !== '1';
+  } catch {
+    return true;
+  }
+}
+
 function App() {
   const { t } = useTranslation();
+  const [showAccessSetupPrompt, setShowAccessSetupPrompt] = useState(false);
   const { 
     isBooting, 
     bootError,
@@ -26,8 +45,12 @@ function App() {
     loadingProgress,
     sidebarCollapsed,
     activeView,
+    authStatus,
+    isAuthenticated,
+    isOwnerAccess,
     setBootComplete, 
     setBootError,
+    setAuthStatus,
     setGalleryItems,
     setPhotoAlbums,
     setTasks,
@@ -37,6 +60,8 @@ function App() {
     toggleSidebar,
     setServerModelFormat,
     setCurrentModel,
+    setAuthPermissionError,
+    setSettingsModalOpen,
   } = useAppStore(
     useShallow((state) => ({
       isBooting: state.isBooting,
@@ -46,8 +71,12 @@ function App() {
       loadingProgress: state.loadingProgress,
       sidebarCollapsed: state.sidebarCollapsed,
       activeView: state.activeView,
+      authStatus: state.authStatus,
+      isAuthenticated: state.isAuthenticated,
+      isOwnerAccess: state.isOwnerAccess,
       setBootComplete: state.setBootComplete,
       setBootError: state.setBootError,
+      setAuthStatus: state.setAuthStatus,
       setGalleryItems: state.setGalleryItems,
       setPhotoAlbums: state.setPhotoAlbums,
       setTasks: state.setTasks,
@@ -57,39 +86,73 @@ function App() {
       toggleSidebar: state.toggleSidebar,
       setServerModelFormat: state.setServerModelFormat,
       setCurrentModel: state.setCurrentModel,
+      setAuthPermissionError: state.setAuthPermissionError,
+      setSettingsModalOpen: state.setSettingsModalOpen,
     })),
   );
 
-  // Initial data fetch
+  const loadPrivateData = useCallback(async () => {
+    const gallery = await fetchGallery();
+    setGalleryItems(gallery);
+
+    const photoAlbums = await fetchPhotoAlbums();
+    setPhotoAlbums(photoAlbums.albums);
+
+    const tasksData = await fetchTasks();
+    setTasks(tasksData.tasks, tasksData.has_active);
+
+    const settings = await fetchSettings();
+    setLocalAccess(settings.is_local ?? false);
+    if (settings.model_format) {
+      setServerModelFormat(settings.model_format);
+    }
+  }, [setGalleryItems, setPhotoAlbums, setTasks, setLocalAccess, setServerModelFormat]);
+
   useEffect(() => {
     async function init() {
       try {
-        // Fetch gallery
-        const gallery = await fetchGallery()
-        setGalleryItems(gallery)
+        const status = await fetchAuthStatus();
+        setAuthStatus(status);
 
-        const photoAlbums = await fetchPhotoAlbums()
-        setPhotoAlbums(photoAlbums.albums)
-
-        // Fetch tasks
-        const tasksData = await fetchTasks()
-        setTasks(tasksData.tasks, tasksData.has_active)
-
-        // Check local access + server format preference
-        const settings = await fetchSettings()
-        setLocalAccess(settings.is_local ?? false)
-        if (settings.model_format) {
-          setServerModelFormat(settings.model_format)
+        if (!status.authenticated && !status.is_owner) {
+          setBootComplete();
+          return;
         }
 
-        setBootComplete()
+        await loadPrivateData();
+        setShowAccessSetupPrompt(shouldShowAccessSetupPrompt(status));
+        setBootComplete();
       } catch (error) {
+        if (error instanceof ApiError && error.status === 401) {
+          const status = await fetchAuthStatus();
+          setAuthStatus(status);
+          setBootComplete();
+          return;
+        }
         const message = error instanceof Error ? error.message : 'Unknown error';
         setBootError(message);
       }
     }
     init();
-  }, [setBootComplete, setBootError, setGalleryItems, setPhotoAlbums, setTasks, setLocalAccess, setServerModelFormat]);
+  }, [loadPrivateData, setAuthStatus, setBootComplete, setBootError]);
+
+  const dismissAccessSetupPrompt = useCallback(() => {
+    setShowAccessSetupPrompt(false);
+  }, []);
+
+  const suppressAccessSetupPrompt = useCallback(() => {
+    try {
+      localStorage.setItem(ACCESS_SETUP_PROMPT_SUPPRESSED_KEY, '1');
+    } catch {
+      // Ignore storage errors and still dismiss for the current render tree.
+    }
+    setShowAccessSetupPrompt(false);
+  }, []);
+
+  const openAccessSettings = useCallback(() => {
+    dismissAccessSetupPrompt();
+    setSettingsModalOpen(true);
+  }, [dismissAccessSetupPrompt, setSettingsModalOpen]);
 
   // Handle file upload
   const handleUpload = useCallback(async (files: FileList) => {
@@ -104,9 +167,14 @@ function App() {
     } catch (error) {
       setLoading(false);
       const message = error instanceof Error ? error.message : 'Unknown error';
+      if (error instanceof ApiError && error.status === 403) {
+        setAuthPermissionError(t('ownerOnlyAction'));
+        alert(t('ownerOnlyAction'));
+        return;
+      }
       alert(`${t('uploadFailed')}: ${message}`);
     }
-  }, [t, setLoading, setTasks]);
+  }, [t, setAuthPermissionError, setLoading, setTasks]);
 
   // Handle model file drop (.ply / .splat / .spz / .rad) for direct preview
   const handleModelDrop = useCallback((e: React.DragEvent) => {
@@ -169,6 +237,10 @@ function App() {
         </div>
       </div>
     );
+  }
+
+  if (!isAuthenticated && !isOwnerAccess) {
+    return <AccessGate onUnlocked={loadPrivateData} />;
   }
 
   return (
@@ -239,6 +311,13 @@ function App() {
 
       {/* Settings Modal */}
       <Settings />
+
+      <AccessSetupPrompt
+        open={showAccessSetupPrompt && isOwnerAccess && Boolean(authStatus?.setup_recommended)}
+        onDismiss={dismissAccessSetupPrompt}
+        onNeverRemind={suppressAccessSetupPrompt}
+        onOpenSettings={openAccessSettings}
+      />
       
       {/* Help Panel - always visible */}
       <Help />

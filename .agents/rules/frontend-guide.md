@@ -79,6 +79,7 @@ const classes = [
 | 目录 | 用途 | 示例 |
 |------|------|------|
 | `components/common/` | 通用 UI 组件，不含业务逻辑 | Button, Modal, Loading, Icons, ImageViewer, ConfirmDialog, SelectMenu, TextInputDialog |
+| `components/auth/` | 局域网门禁与启动安全提示 | AccessGate, AccessSetupPrompt |
 | `components/gallery/` | 模型图库相关组件 | GalleryItem, GalleryList |
 | `components/photoGallery/` | 本地照片图库业务组件 | PhotoAlbumList, PhotoGalleryView, PhotoMasonryGrid, PhotoSelectionBar, PhotoToolbar |
 | `components/layout/` | 页面布局与导航组件 | Sidebar, ControlsBar, Settings, Help |
@@ -129,6 +130,7 @@ export const useAppStore = create<AppState>((set) => ({
 - `activeView` 在 `models` / `photos` 间切换，Sidebar 与主区域按该状态展示。
 - 模型图库仍使用 `galleryItems`、`selectedModel` 等字段。
 - 照片图库使用 `photoAlbums`、`currentPhotoAlbumId`、`photoItems`、`photoNextCursor`、`photoSelectionMode`、`selectedPhotoIds`、`previewPhoto` 等独立字段，避免影响 3D 查看器状态。
+- 局域网门禁使用 `authStatus`、`isAuthenticated`、`isOwnerAccess`、`authSetupRequired`、`authPermissionError` 等字段；本机 owner 可进入设置，远程未解锁时必须展示门禁页或权限反馈。
 
 ### 使用方式
 
@@ -149,6 +151,7 @@ const isLoading = useAppStore(state => state.isLoading);
 ```
 api/
 ├── client.ts    # 底层 fetch 封装（apiGet, apiPost, apiPostFormData, apiDelete）
+├── auth.ts      # 局域网门禁、访问码、会话与远程生成设置 API
 ├── gallery.ts   # 图库相关 API
 ├── photoGallery.ts # 本地照片相册、照片列表、扫描、转换 API
 ├── tasks.ts     # 任务相关 API
@@ -172,6 +175,7 @@ export async function apiDelete<T>(url: string): Promise<T>;
 - **30 秒超时**（AbortController）
 - **自定义错误类** `ApiError`（携带 `status` 和 `data`）
 - **泛型返回值** `Promise<T>`
+- **同源凭证**：默认携带 same-origin Cookie，门禁会话依赖 HttpOnly Cookie，不要改成无凭证请求
 
 ### 新增 API 规则
 
@@ -179,6 +183,7 @@ export async function apiDelete<T>(url: string): Promise<T>;
 2. 使用泛型指定返回类型：`apiGet<MyResponse>('/api/my-endpoint')`
 3. 在 `api/index.ts` 中确保 `export *` 导出
 4. 对应的类型定义放在 `types/` 目录
+5. 新增私有 API 时必须确认后端 `get_required_access_level()` 已分类，并在前端区分 401（未解锁）与 403（权限不足）
 
 ---
 
@@ -304,6 +309,12 @@ const handleAction = async () => {
   }
 };
 ```
+
+局域网门禁相关错误处理约定：
+
+- 401 表示当前远程设备未解锁，入口层应切换到 `AccessGate`，不要继续渲染私有图库数据。
+- 403 表示已登录但权限不足，通常是远程设备触发 owner-only 操作，应显示本地化权限反馈。
+- 设置页中的门禁开关、访问码、会话天数、远程生成和撤销会话必须调用 `auth.ts`，不要绕过 Store 状态直接假定保存成功。
 
 ### 错误边界（Error Boundary）
 
