@@ -19,7 +19,6 @@ export function ImageViewer() {
     setPreviewImage,
     setPreviewPhoto,
     setTasks,
-    setActiveView,
   } = useAppStore();
   const { t } = useTranslation();
   
@@ -316,6 +315,7 @@ export function ImageViewer() {
 
     try {
       setIsConverting(true);
+      setNotice({ tone: 'success', message: t('photoConvertPreparing') });
       const result = await convertPhotosToModels([previewPhoto.id]);
       if (result.tasks?.length) {
         setTasks(result.tasks, true);
@@ -324,9 +324,6 @@ export function ImageViewer() {
         tone: 'success',
         message: t('photoConvertQueued', { count: result.tasks?.length ?? 0 }),
       });
-      if (result.tasks?.length) {
-        setActiveView('models');
-      }
     } catch (err) {
       const message = err instanceof Error ? err.message : t('photoConvertFailed');
       setNotice({ tone: 'error', message });
@@ -475,6 +472,8 @@ export function ImageViewer() {
             notice.tone === 'success' ? styles.noticeSuccess : styles.noticeError,
           ].join(' ')}
           onClick={(event) => event.stopPropagation()}
+          role="status"
+          aria-live="polite"
         >
           <span>{notice.message}</span>
           <button

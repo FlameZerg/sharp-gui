@@ -326,6 +326,7 @@
   "photoClearSelection": "Clear selection",
   "photoLoadFailed": "Failed to load photos",
   "photoConvertQueued": "Queued {{count}} photo(s) for 3D generation.",
+  "photoConvertPreparing": "Adding to 3D generation queue...",
   "photoConvertPartial": "Queued {{success}} photo(s). {{failed}} failed.",
   "photoConvertFailed": "Failed to convert photos",
   "photoDownload": "Download photo",

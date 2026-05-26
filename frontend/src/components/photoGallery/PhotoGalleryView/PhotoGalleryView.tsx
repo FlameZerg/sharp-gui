@@ -89,7 +89,6 @@ export function PhotoGalleryView() {
     clearSelectedPhotos,
     setPreviewPhoto,
     setTasks,
-    setActiveView,
     setCurrentPhotoAlbum,
   } = useAppStore(
     useShallow((state) => ({
@@ -110,7 +109,6 @@ export function PhotoGalleryView() {
       clearSelectedPhotos: state.clearSelectedPhotos,
       setPreviewPhoto: state.setPreviewPhoto,
       setTasks: state.setTasks,
-      setActiveView: state.setActiveView,
       setCurrentPhotoAlbum: state.setCurrentPhotoAlbum,
     })),
   );
@@ -313,6 +311,7 @@ export function PhotoGalleryView() {
 
     try {
       setIsConverting(true);
+      setNotice({ tone: 'success', message: t('photoConvertPreparing') });
       const result = await convertPhotosToModels(photos.map((photo) => photo.id));
       if (result.tasks?.length) {
         setTasks(result.tasks, true);
@@ -326,16 +325,13 @@ export function PhotoGalleryView() {
           ? t('photoConvertPartial', { success: queuedCount, failed: failedCount })
           : t('photoConvertQueued', { count: queuedCount }),
       });
-      if (queuedCount > 0 && failedCount === 0) {
-        setActiveView('models');
-      }
     } catch (convertError) {
       const message = convertError instanceof Error ? convertError.message : t('photoConvertFailed');
       setNotice({ tone: 'error', message });
     } finally {
       setIsConverting(false);
     }
-  }, [clearSelectedPhotos, isConverting, setActiveView, setTasks, t]);
+  }, [clearSelectedPhotos, isConverting, setTasks, t]);
 
   const handleConvertSelected = useCallback(() => {
     const selected = photoItems.filter((photo) => selectedPhotoIds.includes(photo.id));
@@ -406,20 +402,6 @@ export function PhotoGalleryView() {
           onRequestExpand={() => setToolbarMode('compact')}
         />
 
-        {notice ? (
-          <div className={[styles.notice, styles[notice.tone]].join(' ')}>
-            <span>{notice.message}</span>
-            <button
-              onClick={() => setNotice(null)}
-              type="button"
-              title={t('close')}
-              aria-label={t('close')}
-            >
-              <CloseIcon width={14} height={14} />
-            </button>
-          </div>
-        ) : null}
-
         {error ? <div className={styles.error}>{error}</div> : null}
 
         <PhotoMasonryGrid
@@ -433,6 +415,20 @@ export function PhotoGalleryView() {
           onConvertPhoto={handleConvertOne}
         />
       </div>
+
+      {notice ? (
+        <div className={[styles.notice, styles[notice.tone]].join(' ')} role="status" aria-live="polite">
+          <span>{notice.message}</span>
+          <button
+            onClick={() => setNotice(null)}
+            type="button"
+            title={t('close')}
+            aria-label={t('close')}
+          >
+            <CloseIcon width={14} height={14} />
+          </button>
+        </div>
+      ) : null}
 
       <PhotoSelectionBar
         selectedCount={selectedPhotoIds.length}

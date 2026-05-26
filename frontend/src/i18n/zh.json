@@ -326,6 +326,7 @@
   "photoClearSelection": "清空选择",
   "photoLoadFailed": "加载照片失败",
   "photoConvertQueued": "已加入 {{count}} 张照片到 3D 生成队列。",
+  "photoConvertPreparing": "正在加入 3D 生成队列...",
   "photoConvertPartial": "已加入 {{success}} 张，{{failed}} 张失败。",
   "photoConvertFailed": "照片转换失败",
   "photoDownload": "下载照片",
