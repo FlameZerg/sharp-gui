@@ -18,7 +18,7 @@ Homepage: https://lueluelue12138.github.io/sharp-gui/
 
 The "Spatial Photos" feature in iOS 26 offers an amazing immersive experience, but is currently limited to the Apple ecosystem.
 
-As a Web enthusiast, I built Sharp GUI to bridge this gap. My goal is to let anyone—whether on Android, Windows, Mac or VR device —**[deploy with one click](#-quick-start)** and create and share 3D spatial memories directly via a browser on their local network. This is a hobbyist exploration, built for everyone to enjoy.
+As a Web enthusiast, I built Sharp GUI to bridge this gap. My goal is to let anyone—whether on Android, Windows, Mac or VR device—**[deploy with one click](#-quick-start)** and create and share 3D spatial memories directly via a browser on their local network. This is a hobbyist exploration, built for everyone to enjoy.
 
 <br>
 
@@ -34,16 +34,108 @@ Built on [Apple ml-sharp](https://github.com/apple/ml-sharp). No cloud uploads n
 [Preview](#-preview) •
 [Quick Start](#-quick-start) •
 [Usage](#-usage) •
-[Architecture](#️-architecture)
+[LAN Access Gate](#-lan-access-gate-and-privacy-boundary) •
+[Architecture](#%EF%B8%8F-architecture)
 
 </div>
 
 > [!WARNING]
-> **No content restrictions for local deployment** - Users are fully responsible for generated content. Please comply with local laws and regulations. See [Disclaimer](#⚠️-disclaimer).
+> **No content restrictions for local deployment** - Users are fully responsible for generated content. Please comply with local laws and regulations. See [Disclaimer](#-disclaimer).
 
 ---
 
-## ✨ Why Sharp GUI?
+## 📑 Table of Contents
+
+<table align="center">
+<tr>
+<td width="190" align="center" valign="top">
+
+### 🚀
+
+**Getting Started**
+
+<sub>Up and running in minutes</sub>
+
+<br>
+
+[What's New in v1.1.0](#-whats-new-in-v110)<br>
+[Quick Start](#-quick-start)<br>
+[Usage Guide](#-usage)
+
+</td>
+<td width="190" align="center" valign="top">
+
+### ✨
+
+**Features & Design**
+
+<sub>What Sharp GUI can do</sub>
+
+<br>
+
+[Feature Highlights](#-features)<br>
+[Interface Preview](#-preview)
+
+</td>
+<td width="190" align="center" valign="top">
+
+### ⚙️
+
+**Config & Security**
+
+<sub>Customize and lock down</sub>
+
+<br>
+
+[Configuration](#%EF%B8%8F-configuration)<br>
+[LAN Access Gate](#-lan-access-gate-and-privacy-boundary)
+
+</td>
+<td width="190" align="center" valign="top">
+
+### 🛠️
+
+**Build & Community**
+
+<sub>Hack, ship, and contribute</sub>
+
+<br>
+
+[Architecture](#%EF%B8%8F-architecture)<br>
+[Developer Guide](#%EF%B8%8F-developer-guide)<br>
+[Release History](#-release-history)<br>
+[Contributing](#-contributing) · [Credits](#-acknowledgements)
+
+</td>
+</tr>
+</table>
+
+<div align="center"><sub>📄 <a href="#-license">License</a> &nbsp;·&nbsp; ⚠️ <a href="#-disclaimer">Disclaimer</a></sub></div>
+
+---
+
+## 🆕 What's New in v1.1.0
+
+<details open>
+<summary><b>Click to collapse — the biggest update since 1.0</b></summary>
+
+<br>
+
+**🖼️ Local Photo Gallery** — Configure local, external-drive, mounted, or NAS folders as albums. Browse cached-thumbnail masonry, open originals for preview/download, and convert one or many photos to 3D in a single click.
+
+**🔐 Optional LAN Access Gate** — Remote devices unlock with an access code and persist via an HttpOnly cookie. The local host stays the always-on owner; settings, deletion, and folder management remain local-only.
+
+**🎬 Intro Video & Verbose Logging** — New HyperFrames intro video project plus `run_verbose.bat` / `run_verbose.sh` for one-shot diagnostic logs when reporting issues.
+
+**📦 Windows Full Portable Bundles** — Two flavours, `cu128-rtx50` and `cu126-mainstream`, ship Python + PyTorch + model cache out of the box (downloaded from the cloud-drive link in the Release notes, with matching `.sha256.txt`).
+
+Full release notes → **[v1.1.0 on GitHub](https://github.com/lueluelue12138/sharp-gui/releases/latest)**
+
+</details>
+
+---
+
+## ✨ Features
 
 ### 🏠 Host Once, Access Anywhere
 
@@ -51,59 +143,44 @@ No need to install apps on every device. Run Sharp GUI on one computer, and any 
 
 ### 🚀 Core Features
 
-| Feature                  | Description                                                                                       |
-| ------------------------ | ------------------------------------------------------------------------------------------------- |
-| **📸 Image to 3D**       | Upload any image, AI generates 3D Gaussian Splatting model                                        |
-| **🖼️ Batch Processing**  | Multi-select/drag-drop upload, virtualized gallery, in-app original image viewer, and smart queue scheduling |
-| **🗂️ Local Photo Gallery** | Configure multiple local folders as albums, browse cached thumbnail masonry, open/download originals, and convert one or many photos to 3D |
-| **👁️ Real-time Preview** | High-performance WASM-accelerated viewer with Three.js + Spark 2.0, click-to-focus, quick transform controls, and Reveal Effects |
-| **📱 Mobile Optimized**  | Perfect adaptation for phones/tablets with gyroscope, virtual joystick, and touch gestures         |
-| **🥽 VR/AR Preview**     | WebXR VR mode + AR Passthrough mode, immersive experience on Quest 3/Pro with controller/touch    |
-| **📤 One-Click Share**   | Export as Spark-powered standalone HTML, viewable without server                                  |
-| **🎮 GPU Acceleration** | Auto-detect NVIDIA GPU, smart CUDA version selection (cu118/cu124) for faster inference           |
-| **🔄 Auto-Update**       | One-click update to latest version, supports pre-release channel                                  |
-| **🔐 Security & Privacy** | Fully local data, one-click SSL certificate generation for safer LAN access                       |
-| **🚀 One-Click Deploy**  | Auto-configures Python/Git env, downloads deps, pre-downloads model, generates HTTPS certs        |
+| Feature                    | Description                                                                                                                                                              |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **📸 Image to 3D**         | Upload any image; Apple ML-Sharp generates a 3D Gaussian Splatting model. The ~500MB model is pre-downloaded during install.                                             |
+| **🖼️ Modern Workflow**     | Multi-select / drag-and-drop upload, virtualized gallery, in-app original viewer, smart task queue (2s while active, 10s idle), slide-out delete, cancellable jobs.      |
+| **🗂️ Local Photo Gallery** | Configure multiple folders as albums, browse cached-thumbnail masonry, open/download originals, convert one or many to 3D. Density slider on desktop, pinch on mobile, sort by mtime / ctime / name / size. |
+| **👁️ Real-time Viewer**    | Three.js + Spark 2.0 WASM-accelerated viewer with mouse / touch / keyboard (WASD) / gyroscope controls, click-to-focus with a GPU focus ring, quick transform panel.     |
+| **🎭 Reveal Effects**      | Magic / Spread / Unroll / Twister / Rain entrance animations with replay support.                                                                                        |
+| **📱 Mobile Optimized**    | Phones / tablets get gyroscope controls (iOS-style indicator ball), virtual joystick, touch gestures, and a drawer-style sidebar.                                        |
+| **🥽 VR/AR Preview**       | WebXR VR mode + AR Passthrough on Quest 3/Pro and similar headsets, with controller / touch input.                                                                       |
+| **📤 One-Click Share**     | Export a standalone HTML file powered by Spark 2.0; the compact SPZ payload is embedded by default, double-click to open anywhere.                                       |
+| **🎮 GPU Acceleration**    | Auto-detects NVIDIA GPUs and matches a CUDA-enabled PyTorch (cu118 / cu126 / cu128) for noticeably faster inference.                                                     |
+| **🔄 Auto-Update**         | One-click update to the latest release with a pre-release channel; preserves `inputs/` `outputs/` `config.json` and other user data.                                     |
+| **🔐 Security & Privacy**  | Fully local data, one-click self-signed SSL, optional LAN access gate (HttpOnly cookie + access code + brute-force backoff).                                             |
+| **🚀 One-Click Deploy**    | Auto-configures Python / Git, installs deps, pre-downloads models, generates HTTPS certs, and shows skeleton progress. Ready out of the box.                             |
 
 ### 🎨 Apple-Style UI Design
 
-Built with Apple Human Interface Guidelines for a premium user experience:
+Built with Apple Human Interface Guidelines for a premium feel:
 
-| Element                 | Description                                                   |
-| ----------------------- | ------------------------------------------------------------- |
-| **Glass Morphism**      | Global `backdrop-filter: blur()` with translucent backgrounds |
-| **SF Pro Fonts**        | Apple system font stack for native rendering                  |
-| **Particle Background** | Canvas-drawn floating particles for tech aesthetics           |
-| **Smooth Animations**   | All interactions tuned with `cubic-bezier` easing             |
-| **Dark Mode**           | Adaptive system dark mode support                             |
-
-### 🎯 UX Optimizations
-
-- **Skeleton Loading** - Smooth gradient animation while loading thumbnails
-- **Smart Polling** - 2s polling when active, 10s when idle
-- **Drag & Drop Upload** - Drop images directly into sidebar
-- **Drag & Drop Preview** - Drop .ply/.splat/.spz/.rad models to preview directly
-- **Local Albums** - Add multiple folders in the Photos view; each folder becomes an album
-- **Adjustable Masonry** - Sort by modified time, created time, name, or size; use a density slider on desktop and pinch gestures on mobile
-- **Queue Management** - Cancel/delete pending tasks
-- **Original Image Viewer** - Open the uploaded source image directly from the gallery for comparison
-- **Virtualized Gallery** - Large model lists stay smooth with stable thumbnails
-- **Progress Bar** - Real-time loading percentage
-- **Delete Animation** - Smooth slide-out effect
-- **Collapsible Controls** - Bottom bar can be collapsed for more preview space
-- **Quick Controls** - Per-model scale, position, rotation, interaction direction, and quality adjustments
-- **Reveal Effects** - Magic / Spread / Unroll / Twister / Rain reveal animations with replay
+| Element                  | Description                                                                                              |
+| ------------------------ | -------------------------------------------------------------------------------------------------------- |
+| **🪟 Glass Morphism**    | Global `backdrop-filter: blur(30px)` with translucent panels across control bar, toolbar, and modals     |
+| **🔤 SF Pro Fonts**      | Apple system font stack for native rendering                                                             |
+| **✨ Particle Background** | Canvas floating particles with a soft default fade-in, no harsh first-frame                            |
+| **🎬 Smooth Animations** | All interactions tuned with `cubic-bezier` easing; respects `prefers-reduced-motion`                     |
+| **🌗 Dark Mode**         | Adaptive system dark mode support                                                                        |
+| **🎯 Polished Details**  | Collapsible bottom controls, forward-only progress bar, gradient skeleton loading, slide-out delete, multi-select floating action bar |
 
 ### 🔧 Advanced Features
 
-- **🔒 HTTPS Support** - Auto-generated self-signed certificates for LAN access
+- **🔒 HTTPS Support** - Auto-generated self-signed certificates for safer LAN access (browsers require secure context for sensor APIs)
 - **📦 File Optimization** - Auto-generates compact SPZ models, usually **5-10x smaller** than PLY while preserving the original PLY
-- **🧹 Auto Cleanup** - Completed tasks auto-cleaned after 1 hour
-- **⚙️ Configurable Paths** - Custom workspace folder
+- **🧹 Auto Cleanup** - Completed tasks auto-removed from memory after 1 hour to prevent leaks
+- **⚙️ Configurable Paths** - Custom workspace folder, supports Windows / Linux / macOS
 - **🖥️ Fullscreen Mode** - Immersive 3D preview
-- **🥽 VR/AR Mode** - WebXR VR preview + AR Passthrough mode, supports Quest 3/Pro and other headsets
-- **🎯 Click-to-Focus** - WASM-accelerated raycasting, click anywhere on the model to smoothly focus with GPU-powered focus ring animation
-- **🌐 Internationalization** - Chinese/English bilingual UI, auto-detects browser language, manual toggle
+- **🥽 WebXR** - VR preview + AR Passthrough on Quest 3/Pro and similar headsets
+- **🎯 Click-to-Focus** - WASM-accelerated raycasting + GPU focus ring animation
+- **🌐 i18n** - Chinese/English bilingual UI, auto-detects browser language, manual toggle
 
 ---
 
@@ -123,6 +200,8 @@ Built with Apple Human Interface Guidelines for a premium user experience:
   <img src="docs/images/photo-gallery.png" width="800" alt="Local photo gallery interface">
 </p>
 
+<p align="center"><i>Multi-folder albums, masonry thumbnails, density slider, multi-select to 3D</i></p>
+
 ### Mobile Adaptation
 
 <p align="center">
@@ -134,10 +213,7 @@ Built with Apple Human Interface Guidelines for a premium user experience:
   <i>Left: Mobile drawer sidebar | Right: Tablet split layout</i>
 </p>
 
-### Feature Demos
-
-<!-- <details> -->
-<summary><b>🎬 Camera Movement Controls</b></summary>
+### 🎬 Camera Movement Controls
 
 <p align="center">
   <img src="docs/images/demo-wasd.gif" height="300" alt="WASD Controls">&nbsp;&nbsp;&nbsp;&nbsp;
@@ -148,10 +224,7 @@ Built with Apple Human Interface Guidelines for a premium user experience:
   <i>Left: WASD/QE keyboard movement (Shift for precision) | Right: Mobile virtual joystick</i>
 </p>
 
-<!-- </details> -->
-
-<!-- <details> -->
-<summary><b>🎬 Batch Upload + Queue Processing</b></summary>
+### 🎬 Batch Upload + Queue Processing
 
 <p align="center">
   <img src="docs/images/demo-upload.gif" width="600" alt="Upload Demo">
@@ -159,10 +232,7 @@ Built with Apple Human Interface Guidelines for a premium user experience:
 
 <p align="center"><i>Drag multiple images to sidebar, queue updates in real-time</i></p>
 
-<!-- </details> -->
-
-<!-- <details> -->
-<summary><b>🎬 Gyroscope Control (Mobile)</b></summary>
+### 🎬 Gyroscope Control (Mobile)
 
 <p align="center">
   <img src="docs/images/demo-gyro.gif" height="400" alt="Gyro Demo">
@@ -170,10 +240,7 @@ Built with Apple Human Interface Guidelines for a premium user experience:
 
 <p align="center"><i>Tilt phone to control view, iOS-style real-time indicator ball</i></p>
 
-<!-- </details> -->
-
-<!-- <details> -->
-<summary><b>🎬 One-Click Export & Share</b></summary>
+### 🎬 One-Click Export & Share
 
 <p align="center">
   <img src="docs/images/demo-share.gif" width="600" alt="Share Demo">
@@ -181,37 +248,27 @@ Built with Apple Human Interface Guidelines for a premium user experience:
 
 <p align="center"><i>Click Share to export standalone HTML, double-click to open in any browser</i></p>
 
-<!-- </details> -->
-
----
-
-## 🎨 Design Highlights
-
-- 🪟 **Glass Morphism** - Frosted glass control bar with `backdrop-filter: blur(30px)`
-- ✨ **Dynamic Particles** - Canvas-rendered floating tech-style particles
-- ✨ **Reveal Effects Rail** - Viewer-side effect rail for Magic / Spread / Unroll / Twister / Rain
-- 🧭 **Quick Transform Panel** - Instant model scale, position, rotation, and interaction direction tuning
-- 🎯 **iOS-Style Indicator** - Mobile gyroscope real-time feedback ball
-- 🎬 **Fluid Animations** - All interactions with `cubic-bezier` easing curves
-- 📱 **Responsive Design** - Perfect for desktop/tablet/mobile
-
 ---
 
 ## 🚀 Quick Start
 
 ### System Requirements
 
-| Platform                    | Inference  | Video Rendering | Status        |
-| --------------------------- | ---------- | --------------- | ------------- |
-| **macOS Apple Silicon**     | ✅ MPS     | ❌              | ✅ Verified   |
-| **Windows x86_64**          | ✅ CPU     | ❌              | ✅ Verified   |
-| **Windows x86_64 + NVIDIA** | ✅ CUDA    | ❓              | ✅ Verified   |
-| **Linux x86_64**            | ✅ CPU     | ❌              | ✅ Verified   |
-| **Linux x86_64 + NVIDIA**   | ✅ CUDA   | ✅              | ❓ Unverified |
-| **macOS Intel**             | ✅ CPU     | ❌              | ❓ Unverified |
+| Platform                    | Inference Backend | Status        |
+| --------------------------- | ----------------- | ------------- |
+| **macOS Apple Silicon**     | ✅ MPS            | ✅ Verified   |
+| **Windows x86_64**          | ✅ CPU            | ✅ Verified   |
+| **Windows x86_64 + NVIDIA** | ✅ CUDA           | ✅ Verified   |
+| **Linux x86_64**            | ✅ CPU            | ✅ Verified   |
+| **Linux x86_64 + NVIDIA**   | ✅ CUDA           | ❓ Unverified |
+| **macOS Intel**             | ✅ CPU            | ❓ Unverified |
 
-> 📢 **No GPU? No problem!** 3D model generation works on pure CPU. Only video rendering requires CUDA.  
-> 💡 With NVIDIA GPU, the install script **auto-detects and installs CUDA-enabled PyTorch**, no manual config needed.  
+> 🚀 **NVIDIA GPU recommended**: 3D Gaussian Splatting inference is compute-heavy. CUDA typically delivers **multiple-x to ~10x** speedups over pure CPU, with a noticeably better experience.
+>
+> 💡 **CPU-only still works**: inference runs fine without a GPU, just slower per image. Apple Silicon users get a near-GPU experience via the MPS backend.
+>
+> 🛠️ **Zero manual setup**: when an NVIDIA GPU is present, the install script detects your driver and installs the matching CUDA-enabled PyTorch (cu118 / cu126 / cu128).
+>
 > 👉 Unverified platforms should theoretically work. Report issues on [GitHub Issues](https://github.com/lueluelue12138/sharp-gui/issues).
 
 ### Option 1: Download Pre-built Package (Recommended for Users)
@@ -234,8 +291,11 @@ install.bat       # Windows
 run.bat           # Windows
 ```
 
-> 💡 Pre-built packages include compiled frontend, **no Node.js required**. Ready to use out of the box.  
+> 💡 Pre-built packages include compiled frontend, **no Node.js required**. Ready to use out of the box.
+>
 > 💡 Want latest features? Download [Pre-release](https://github.com/lueluelue12138/sharp-gui/releases) versions (marked as `Pre-release`).
+>
+> 💡 Windows RTX 50 / mainstream NVIDIA GPU users can grab the **full portable bundles** (`cu128-rtx50` or `cu126-mainstream`) from the cloud-drive link in the Release body. They include Python, PyTorch, and the model cache out of the box, with matching `.sha256.txt` for verification.
 
 ### Option 2: Install from Source (Developers / Latest Features)
 
@@ -261,7 +321,7 @@ The install script automatically handles all setup steps, no manual configuratio
 
 - 🐍 **Detect/Install Python** - Auto-finds compatible version (3.10~3.13), auto-installs if missing (Windows)
 - 📦 **Detect/Install Git** - Auto-installs if missing (Windows)
-- 🎮 **Detect NVIDIA GPU** - Auto-installs CUDA-enabled PyTorch with smart cu118/cu124 selection
+- 🎮 **Detect NVIDIA GPU** - Auto-installs the CUDA-enabled PyTorch that matches your driver (cu118 / cu126 / cu128)
 - 🧩 **Install Dependencies** - Creates virtual environment, installs ml-sharp core and GUI deps
 - 📥 **Pre-download Model** - Downloads inference model (~500MB) during install, no wait on first run
 - 🔐 **Generate HTTPS Certificate** - Auto-generates self-signed certificate for secure LAN access
@@ -276,6 +336,8 @@ run.bat           # Windows
 ```
 
 Access **https://127.0.0.1:5050 (recommended)** or **http://127.0.0.1:5050** 🎉
+
+> 🩺 When reporting an issue, run in verbose mode: `./run_verbose.sh` / `run_verbose.bat`. It captures runtime info, command paths, PATH, and full exception traces into `sharp-gui-verbose.log`.
 
 ### Update
 
@@ -343,17 +405,17 @@ rm -rf sharp-gui/
 
 #### Special Modes
 
-| Mode       | Action                  | Description                        |
-| ---------- | ----------------------- | ---------------------------------- |
-| Quick Controls | Tap the gear button | Adjust model scale, position, rotation, interaction direction, and quality |
-| Reveal Effects | Use the right-side effects rail | Switch or replay Magic / Spread / Unroll / Twister / Rain |
-| Gyroscope  | Tap "Gyro" button       | Tilt phone to control view         |
-| Front View | Tap "Front View" button | Lock to front view, tap again free |
-| Reset      | Tap "Reset" button      | Restore initial view               |
-| Fullscreen | Tap "Fullscreen" button | Immersive preview                  |
-| VR Preview | Tap "VR" button         | Enter VR mode (requires VR device) |
-| AR Preview | Tap "AR" button         | AR Passthrough overlay 3D model    |
-| Reset      | Press "R" key           | Quick reset camera to initial view |
+| Mode           | Action                          | Description                                                                |
+| -------------- | ------------------------------- | -------------------------------------------------------------------------- |
+| Quick Controls | Tap the gear button             | Adjust model scale, position, rotation, interaction direction, and quality |
+| Reveal Effects | Use the right-side effects rail | Switch or replay Magic / Spread / Unroll / Twister / Rain                  |
+| Gyroscope      | Tap "Gyro" button               | Tilt phone to control view                                                 |
+| Front View     | Tap "Front View" button         | Lock to front view, tap again free                                         |
+| Reset          | Tap "Reset" button              | Restore initial view                                                       |
+| Fullscreen     | Tap "Fullscreen" button         | Immersive preview                                                          |
+| VR Preview     | Tap "VR" button                 | Enter VR mode (requires VR device)                                         |
+| AR Preview     | Tap "AR" button                 | AR Passthrough overlay 3D model                                            |
+| Reset          | Press "R" key                   | Quick reset camera to initial view                                         |
 
 ### Export & Share
 
@@ -416,15 +478,31 @@ After generating, restart and access via `https://`:
 
 First HTTPS access shows certificate warning (self-signed), click "Continue" to proceed.
 
-### LAN Access Gate and Privacy Boundary
+---
 
-Sharp GUI provides optional LAN access control. On first startup, or when the owner has not fully configured access control, the local app shows a reminder to set an access code; the owner can set it up later or stop showing the reminder.
+## 🔐 LAN Access Gate and Privacy Boundary
 
-- When access control is on, model lists, thumbnails, original images, photo albums, downloads, exports and `/files/*` workspace resources require LAN devices to enter the access code first; after a successful unlock, the browser keeps an HttpOnly Cookie session.
-- When access control is off, devices on the same LAN that can reach the port may browse and download private content directly; deletion, settings, restart, folder management and other owner-only actions still require `localhost` / `127.0.0.1`.
-- Remote devices with the access code get browsing, preview, download and export access only; generation and photo-to-3D conversion remain owner-only by default.
-- To let unlocked remote devices submit generation jobs, enable Remote Generation in Settings > LAN Access Control; turning access control off also revokes remote generation permission.
-- HTTPS protects transport and browser sensor features; the access code protects authorization. Enable both when sharing the port on your LAN.
+Sharp GUI ships an **optional** LAN access gate. On first startup—or whenever the local owner has not finished configuring it—the app shows a gentle reminder to set an access code; you can configure it later or stop showing the reminder. The gate is off by default; existing `config.json` files keep working unchanged.
+
+### Permission Matrix
+
+The table below shows the permission boundaries for each role:
+
+| Action                                   | Public (locked remote) | Unlocked Remote (with access code) | Local Owner (localhost) |
+| ---------------------------------------- | :--------------------: | :--------------------------------: | :---------------------: |
+| Browse models / photos / thumbnails      | ❌ (when gate is on)   |                 ✅                 |           ✅            |
+| Download originals / model files / HTML  | ❌ (when gate is on)   |                 ✅                 |           ✅            |
+| Submit generation / photo-to-3D jobs     |          ❌            |  Only when "Remote Generation" is on |          ✅            |
+| Modify settings / delete model / restart |          ❌            |                 ❌                 |           ✅            |
+| Manage album folders / cancel tasks      |          ❌            |                 ❌                 |           ✅            |
+
+### Key Behaviours
+
+- **When the gate is on**, model lists, thumbnails, originals, photo albums, downloads, exports, and `/files/*` workspace resources require LAN devices to enter the access code first; after a successful unlock, the browser keeps an HttpOnly Cookie session.
+- **When the gate is off**, devices on the same LAN that can reach the port may browse and download private content directly; deletion, settings, restart, folder management and other owner-only actions still require `localhost` / `127.0.0.1`.
+- **Remote generation is off by default**: even with a valid access code, remote devices only get browse / preview / download / export permissions. To allow unlocked remote devices to submit generation jobs, enable Remote Generation in Settings > LAN Access Control; turning the gate off also revokes remote generation permission.
+- **Brute-force resistance**: failed logins back off per client, and the server validates the host allowlist plus real connection address — `X-Forwarded-For` and similar headers can never escalate to owner.
+- **HTTPS vs gate**: HTTPS protects transport and browser sensor capabilities; the access code protects authorization. Enable both when sharing the port on your LAN.
 
 ---
 
@@ -437,6 +515,7 @@ sharp-gui/
 ├── 📄 app.py                 # Flask backend + task queue system
 ├── 📄 install.sh/bat         # One-click install scripts
 ├── 📄 run.sh/bat             # Startup scripts (supports --legacy flag)
+├── 📄 run_verbose.sh/bat     # Verbose entry (writes sharp-gui-verbose.log)
 ├── 📄 build.sh/bat           # Frontend build scripts
 ├── 📄 update.sh/bat          # Auto-update scripts
 ├── 📄 release.sh/bat         # Release packaging scripts
@@ -444,6 +523,7 @@ sharp-gui/
 │   ├── 📄 generate_cert.py   # SSL certificate generator
 │   ├── 📄 download_model.py  # Model downloader
 │   ├── 📄 detect_cuda.py     # CUDA version detection
+│   ├── 📄 install_torch.py   # Smart PyTorch + CUDA installer / verifier
 │   └── 📄 update.py          # Auto-update core logic
 ├── 📁 frontend/              # React modern frontend (v1.0.0+)
 ├── 📁 templates/             # Original single-file frontend (Legacy)
@@ -459,12 +539,12 @@ sharp-gui/
 ```
 frontend/
 ├── 📁 src/
-│   ├── 📁 api/               # API client (gallery, photoGallery, tasks, settings)
+│   ├── 📁 api/               # API client (gallery, photoGallery, tasks, settings, auth)
 │   ├── 📁 components/
 │   │   ├── 📁 common/        # Common components (Button, Modal, Loading, ImageViewer, ParticleBackground)
 │   │   ├── 📁 gallery/       # Gallery components (GalleryList, GalleryItem)
 │   │   ├── 📁 photoGallery/  # Local photo gallery components (AlbumList, MasonryGrid, Toolbar)
-│   │   ├── 📁 layout/        # Layout components (Sidebar, ControlsBar, TaskQueue, Settings)
+│   │   ├── 📁 layout/        # Layout components (Sidebar, ControlsBar, TaskQueue, Settings, AccessGate)
 │   │   └── 📁 viewer/        # Viewer components (ViewerCanvas, QuickControls, ViewerRevealEffectsRail, VirtualJoystick, GyroIndicator)
 │   ├── 📁 hooks/             # Custom Hooks (useViewer, useXR, useGyroscope, useKeyboard, useGalleryVirtualizer)
 │   ├── 📁 i18n/              # Internationalization (zh.json, en.json)
@@ -478,26 +558,26 @@ frontend/
 
 ### Tech Stack
 
-| Layer            | Technology                                          |
-| ---------------- | --------------------------------------------------- |
-| **Frontend**     | React 19 + TypeScript + Vite / Single-file (Legacy) |
-| **State**        | Zustand                                             |
-| **i18n**         | i18next + react-i18next                             |
-| **Styling**      | CSS Modules + Apple Glass Morphism                  |
-| **Backend**      | Python 3.10+, Flask, multi-threaded task queue      |
-| **AI Engine**    | Apple ML-Sharp (PyTorch, gsplat)                    |
-| **3D Rendering** | Three.js + Spark (WASM-accelerated Gaussian Splatting) |
+| Layer            | Technology                                             |
+| ---------------- | ------------------------------------------------------ |
+| **Frontend**     | React 19 + TypeScript + Vite / Single-file (Legacy)    |
+| **State**        | Zustand                                                |
+| **i18n**         | i18next + react-i18next                                |
+| **Styling**      | CSS Modules + Apple Glass Morphism                     |
+| **Backend**      | Python 3.10+, Flask, multi-threaded task queue         |
+| **AI Engine**    | Apple ML-Sharp (PyTorch, gsplat)                       |
+| **3D Rendering** | Three.js + Spark 2.0 (WASM-accelerated Gaussian Splatting) |
 
 ### Performance Optimizations
 
-| Optimization              | Description                                                                      |
-| ------------------------- | -------------------------------------------------------------------------------- |
-| **Code Splitting**        | Vite manualChunks: three.js (~493KB), spark (~487KB), react-vendor (4KB)         |
+| Optimization              | Description                                                                                                                              |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| **Code Splitting**        | Vite manualChunks: three.js (~493KB), spark (~487KB), react-vendor (4KB)                                                                 |
 | **Thumbnail System**      | Model gallery uses 200px JPEG thumbnails; photo gallery creates cached thumbnails on demand and only loads originals for preview/download |
-| **Smart Polling**         | Active 2s polling, idle 10s, saves resources                                     |
-| **Format Conversion**     | Auto-converts generated models to compact SPZ; share export embeds SPZ by default while preserving the legacy PLY/Splat path |
-| **Memory Cleanup**        | Completed tasks auto-removed from memory after 1 hour                            |
-| **Progress Optimization** | Progress bar only moves forward, no visual jumping                               |
+| **Smart Polling**         | Active 2s polling, idle 10s, saves resources                                                                                             |
+| **Format Conversion**     | Auto-converts generated models to compact SPZ; share export embeds SPZ by default while preserving the legacy PLY/Splat path             |
+| **Memory Cleanup**        | Completed tasks auto-removed from memory after 1 hour                                                                                    |
+| **Progress Optimization** | Progress bar only moves forward, no visual jumping                                                                                       |
 
 ---
 
@@ -540,7 +620,7 @@ npm run build
 ## 🤝 Acknowledgements
 
 - [Apple ML-Sharp](https://github.com/apple/ml-sharp) - Core 3D generation model
-- [Spark](https://github.com/nickthetimid/spark) - WASM-accelerated Gaussian Splatting rendering engine
+- [Spark](https://github.com/nickthetimid/spark) - WASM-accelerated Gaussian Splatting rendering engine (Spark 2.0)
 - [Gaussian Splats 3D](https://github.com/mkkellogg/GaussianSplats3D) - Original Three.js Gaussian Splatting renderer (Legacy version)
 - [antimatter15/splat](https://github.com/antimatter15/splat) - Splat format conversion reference
 
@@ -554,6 +634,16 @@ Issues and Pull Requests are welcome!
 - 💡 **Feature Requests** - Discuss new feature ideas via Issues
 - 🔧 **Code Contributions** - Fork the project and submit PRs
 - 🖥️ **Platform Testing** - If you've tested on NVIDIA GPU or other unverified environments, we'd love your feedback!
+
+---
+
+## 📜 Release History
+
+Full release notes, feature evolution, pre-release channel, and download links:
+
+- 📦 **[GitHub Releases](https://github.com/lueluelue12138/sharp-gui/releases)** — every release with notes
+- 🆕 **[Latest](https://github.com/lueluelue12138/sharp-gui/releases/latest)** — current stable release
+- 🧪 **[Pre-release Channel](https://github.com/lueluelue12138/sharp-gui/releases?q=prerelease%3Atrue)** — early access to upcoming features
 
 ---
 
