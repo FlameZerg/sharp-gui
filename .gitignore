@@ -26,6 +26,7 @@ my-video/
 
 # Thumbnails
 .thumbnails/
+.photo-gallery-cache/
 
 # Config
 config.json
