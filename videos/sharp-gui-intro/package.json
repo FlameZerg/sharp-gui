@@ -2,6 +2,8 @@
   "name": "sharp-gui-intro-video",
   "private": true,
   "scripts": {
+    "build": "powershell -ExecutionPolicy Bypass -File ./build.ps1",
+    "captions": "powershell -ExecutionPolicy Bypass -File ./build.ps1 -CaptionsOnly",
     "lint": "hyperframes lint",
     "inspect": "powershell -ExecutionPolicy Bypass -File ./render.ps1 -CheckOnly",
     "check": "powershell -ExecutionPolicy Bypass -File ./render.ps1 -CheckOnly",

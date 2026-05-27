@@ -47,8 +47,10 @@
       }
 
       #scene-2,
+      #scene-photo,
       #scene-3,
       #scene-4,
+      #scene-gate,
       #scene-5,
       #scene-6 {
         opacity: 0;
@@ -59,20 +61,28 @@
         z-index: 2;
       }
 
-      #scene-3 {
+      #scene-photo {
         z-index: 3;
       }
 
-      #scene-4 {
+      #scene-3 {
         z-index: 4;
       }
 
-      #scene-5 {
+      #scene-4 {
         z-index: 5;
       }
 
-      #scene-6 {
+      #scene-gate {
         z-index: 6;
+      }
+
+      #scene-5 {
+        z-index: 7;
+      }
+
+      #scene-6 {
+        z-index: 8;
       }
 
       .scene-content {
@@ -542,6 +552,172 @@
 
       .privacy-chip::before {
         content: "No cloud upload";
+      }
+
+      .photo-layout {
+        flex: 1;
+        display: grid;
+        grid-template-columns: 0.78fr 1.22fr;
+        gap: 58px;
+        align-items: center;
+        padding-bottom: 34px;
+      }
+
+      .photo-copy {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+
+      #scene-photo .scene-heading {
+        max-width: 720px;
+        font-size: 78px;
+      }
+
+      #scene-photo .scene-copy {
+        max-width: 720px;
+      }
+
+      .photo-capability-grid {
+        margin-top: 38px;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .photo-capability {
+        min-height: 118px;
+        padding: 20px 22px;
+        border-radius: 24px;
+      }
+
+      .photo-capability strong {
+        display: block;
+        color: #f5f7fb;
+        font-size: 25px;
+        line-height: 1.1;
+        margin-bottom: 10px;
+      }
+
+      .photo-capability span {
+        color: #b6c0cc;
+        font-size: 18px;
+        line-height: 1.36;
+      }
+
+      .photo-window {
+        position: relative;
+        width: 1050px;
+        border-radius: 34px;
+        padding: 0;
+        overflow: hidden;
+        background: #eaf1f7;
+        transform: perspective(1400px) rotateY(-7deg) rotateX(3deg) rotateZ(0.4deg);
+        transform-origin: center;
+      }
+
+      .photo-window::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: linear-gradient(120deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 26%, rgba(107, 220, 255, 0.08) 74%, rgba(255, 255, 255, 0.05));
+        mix-blend-mode: screen;
+      }
+
+      .photo-window .browser-bar {
+        height: 46px;
+        background: rgba(31, 34, 39, 0.9);
+      }
+
+      .photo-window .url-bar {
+        height: 26px;
+        color: rgba(245, 247, 251, 0.44);
+      }
+
+      .photo-shot {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        overflow: hidden;
+      }
+
+      .photo-shot img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center top;
+        display: block;
+      }
+
+      .photo-floating-bar {
+        position: absolute;
+        left: 50%;
+        bottom: 42px;
+        transform: translateX(-50%);
+        min-height: 54px;
+        padding: 8px 10px 8px 18px;
+        border-radius: 999px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        z-index: 4;
+        color: #0d1822;
+        background: rgba(255, 255, 255, 0.68);
+        border: 1px solid rgba(255, 255, 255, 0.72);
+        backdrop-filter: blur(22px) saturate(170%);
+        box-shadow: 0 20px 60px rgba(3, 8, 14, 0.18);
+      }
+
+      .photo-floating-bar strong {
+        font-size: 18px;
+        font-weight: 850;
+      }
+
+      .photo-floating-bar span {
+        color: rgba(13, 24, 34, 0.58);
+        font-size: 16px;
+        font-weight: 700;
+      }
+
+      .photo-floating-bar .convert-pill {
+        height: 38px;
+        padding: 0 18px;
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        color: #fff;
+        background: #0071e3;
+        font-size: 16px;
+        font-weight: 850;
+        box-shadow: 0 12px 28px rgba(0, 113, 227, 0.26);
+      }
+
+      .photo-side-chip {
+        position: absolute;
+        right: 34px;
+        top: 76px;
+        z-index: 4;
+        min-width: 200px;
+        padding: 18px 20px;
+        border-radius: 24px;
+        color: #f5f7fb;
+        background: rgba(5, 7, 12, 0.58);
+        border: 1px solid rgba(245, 247, 251, 0.18);
+        backdrop-filter: blur(24px) saturate(160%);
+      }
+
+      .photo-side-chip strong {
+        display: block;
+        font-size: 22px;
+        line-height: 1.1;
+        margin-bottom: 8px;
+      }
+
+      .photo-side-chip span {
+        color: #dce5ef;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 15px;
       }
 
       .showcase-layout {
@@ -1112,6 +1288,239 @@
         line-height: 1.35;
       }
 
+      .gate-layout {
+        flex: 1;
+        display: grid;
+        grid-template-columns: 0.9fr 1.1fr;
+        gap: 70px;
+        align-items: center;
+        padding-bottom: 36px;
+      }
+
+      #scene-gate .scene-heading {
+        max-width: 760px;
+        font-size: 78px;
+      }
+
+      #scene-gate .scene-copy {
+        max-width: 760px;
+      }
+
+      .security-grid {
+        margin-top: 38px;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .security-tile {
+        min-height: 112px;
+        padding: 20px 22px;
+        border-radius: 24px;
+      }
+
+      .security-tile strong {
+        display: block;
+        margin-bottom: 9px;
+        color: #f5f7fb;
+        font-size: 24px;
+        line-height: 1.1;
+      }
+
+      .security-tile span {
+        color: #b6c0cc;
+        font-size: 18px;
+        line-height: 1.34;
+      }
+
+      .gate-visual {
+        position: relative;
+        min-height: 610px;
+        display: grid;
+        place-items: center;
+      }
+
+      .access-card {
+        position: relative;
+        width: 520px;
+        min-height: 548px;
+        padding: 42px;
+        border-radius: 36px;
+        overflow: hidden;
+        background: linear-gradient(150deg, rgba(238, 245, 255, 0.18), rgba(18, 31, 42, 0.4) 48%, rgba(5, 7, 12, 0.52));
+        transform: perspective(1300px) rotateY(-10deg) rotateX(3deg);
+        z-index: 4;
+      }
+
+      .access-card::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(circle at 24% 18%, rgba(107, 220, 255, 0.2), rgba(107, 220, 255, 0) 38%),
+          radial-gradient(circle at 74% 84%, rgba(126, 240, 180, 0.14), rgba(126, 240, 180, 0) 44%);
+        z-index: 0;
+      }
+
+      .access-card > * {
+        position: relative;
+        z-index: 1;
+      }
+
+      .lock-orb {
+        width: 78px;
+        height: 78px;
+        border-radius: 28px;
+        border: 1px solid rgba(107, 220, 255, 0.34);
+        background: rgba(0, 113, 227, 0.14);
+        display: grid;
+        place-items: center;
+        box-shadow: 0 0 42px rgba(107, 220, 255, 0.22);
+      }
+
+      .lock-shape {
+        width: 32px;
+        height: 28px;
+        border: 3px solid #6bdcff;
+        border-radius: 8px;
+        position: relative;
+      }
+
+      .lock-shape::before {
+        content: "";
+        position: absolute;
+        width: 22px;
+        height: 18px;
+        left: 50%;
+        top: -20px;
+        transform: translateX(-50%);
+        border: 3px solid #6bdcff;
+        border-bottom: 0;
+        border-radius: 14px 14px 0 0;
+      }
+
+      .access-title {
+        margin: 28px 0 0;
+        color: #f5f7fb;
+        font-size: 42px;
+        line-height: 1.1;
+        font-weight: 900;
+      }
+
+      .access-subtitle {
+        margin: 14px 0 0;
+        color: #dce5ef;
+        font-size: 22px;
+        line-height: 1.42;
+      }
+
+      .access-form {
+        margin-top: 34px;
+        display: grid;
+        gap: 14px;
+      }
+
+      .access-label {
+        color: #f5f7fb;
+        font-size: 17px;
+        font-weight: 800;
+      }
+
+      .code-field {
+        height: 58px;
+        padding: 0 18px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        border-radius: 18px;
+        border: 1px solid rgba(245, 247, 251, 0.22);
+        background: rgba(5, 7, 12, 0.42);
+        color: #dce5ef;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 24px;
+        letter-spacing: 0;
+      }
+
+      .code-field i {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #dce5ef;
+        opacity: 0.88;
+      }
+
+      .unlock-button {
+        height: 60px;
+        border-radius: 18px;
+        display: grid;
+        place-items: center;
+        color: #fff;
+        background: linear-gradient(135deg, #0071e3, rgba(107, 220, 255, 0.78));
+        font-size: 20px;
+        font-weight: 900;
+        box-shadow: 0 18px 52px rgba(0, 113, 227, 0.3);
+      }
+
+      .session-strip {
+        margin-top: 34px;
+        padding: 18px 20px;
+        border-radius: 22px;
+        border: 1px solid rgba(245, 247, 251, 0.12);
+        background: rgba(245, 247, 251, 0.07);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .session-strip strong {
+        color: #7ef0b4;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 17px;
+      }
+
+      .session-strip span {
+        color: #b6c0cc;
+        font-size: 16px;
+      }
+
+      .permission-stack {
+        position: absolute;
+        right: -2px;
+        top: 44px;
+        width: 360px;
+        display: grid;
+        gap: 16px;
+        z-index: 2;
+      }
+
+      .permission-card {
+        padding: 22px 24px;
+        border-radius: 26px;
+        transform: translateX(38px);
+      }
+
+      .permission-card:nth-child(2) {
+        transform: translateX(76px);
+      }
+
+      .permission-card:nth-child(3) {
+        transform: translateX(34px);
+      }
+
+      .permission-card strong {
+        display: block;
+        color: #f5f7fb;
+        font-size: 22px;
+        margin-bottom: 8px;
+      }
+
+      .permission-card span {
+        color: #b6c0cc;
+        font-size: 17px;
+        line-height: 1.34;
+      }
+
       .share-layout {
         flex: 1;
         display: grid;
@@ -1427,8 +1836,9 @@
     </style>
   </head>
   <body>
-    <div id="root" data-composition-id="sharp-gui-intro" data-width="1920" data-height="1080" data-start="0" data-duration="33.5">
-      <audio id="music" data-start="0" data-duration="33.5" data-track-index="10" src="assets/sharp-gui-score-v2.m4a" data-volume="0.82"></audio>
+    <div id="root" data-composition-id="sharp-gui-intro" data-width="1920" data-height="1080" data-start="0" data-duration="44.6">
+      <audio id="music" data-start="0" data-duration="33.5" data-track-index="10" src="assets/sharp-gui-score-v2.m4a" data-volume="0.78"></audio>
+      <audio id="music-tail" data-start="31.5" data-duration="13.1" data-media-start="3.2" data-track-index="11" src="assets/sharp-gui-score-v2.m4a" data-volume="0.46"></audio>
 
       <div id="scene-1" class="scene">
         <div class="backdrop">
@@ -1520,6 +1930,50 @@
         <div class="caption" id="cap-2"><span>上传、推理、压缩、入库，全流程都在你的机器上完成。</span></div>
       </div>
 
+      <div id="scene-photo" class="scene">
+        <div class="backdrop">
+          <div class="glow a" data-layout-ignore></div>
+          <div class="glow b" data-layout-ignore></div>
+          <div class="glow c" data-layout-ignore></div>
+          <div class="noise"></div>
+          <div class="orbital two"></div>
+        </div>
+        <div class="scene-content">
+          <div class="eyebrow" id="sp-eye"><span class="dotmark"></span>LOCAL PHOTO GALLERY</div>
+          <div class="photo-layout">
+            <div class="photo-copy">
+              <h2 class="scene-heading" id="sp-title">本地图库，直达 3D。</h2>
+              <p class="scene-copy" id="sp-copy">电脑、移动硬盘和 NAS 都能配置成相册。缓存缩略图快速浏览，打开时读取原图，选中后直接加入 3D 生成队列。</p>
+              <div class="photo-capability-grid" id="sp-cards">
+                <div class="photo-capability glass-panel"><strong>多目录相册</strong><span>本机、移动硬盘、NAS 都能按目录组织。</span></div>
+                <div class="photo-capability glass-panel"><strong>可调瀑布流</strong><span>按时间、名称、大小排序，密度随屏幕变化。</span></div>
+                <div class="photo-capability glass-panel"><strong>原图预览</strong><span>缩略图负责速度，预览和下载才加载原图。</span></div>
+                <div class="photo-capability glass-panel"><strong>批量转 3D</strong><span>多选照片后，一次加入现有推理队列。</span></div>
+              </div>
+            </div>
+            <div class="photo-window glass-panel" id="sp-window" data-layout-allow-overflow>
+              <div class="browser-bar">
+                <div class="dots"><span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span></div>
+                <div class="url-bar">localhost:5050 / photos</div>
+              </div>
+              <div class="photo-shot" data-layout-allow-overflow>
+                <img src="../../docs/images/photo-gallery.png" alt="Sharp GUI local photo gallery" />
+                <div class="photo-side-chip" id="sp-chip" data-layout-ignore>
+                  <strong>24 photos</strong>
+                  <span>cached thumbnails</span>
+                </div>
+                <div class="photo-floating-bar" id="sp-selection" data-layout-ignore>
+                  <strong>已选 4 张</strong>
+                  <span>originals stay local</span>
+                  <div class="convert-pill">转换为 3D</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="caption" id="cap-photo"><span>本地照片图库把原始照片、预览和 3D 生成串成同一条工作流。</span></div>
+      </div>
+
       <div id="scene-3" class="scene">
         <div class="backdrop">
           <div class="glow b" data-layout-ignore></div>
@@ -1530,7 +1984,7 @@
           <div class="eyebrow" id="s3-eye"><span class="dotmark"></span>REAL-TIME VIEWER</div>
           <div class="showcase-layout">
             <div class="screenshot-stage glass-panel" id="s3-shot">
-              <video id="reveal-effects-video" data-start="10.18" data-duration="5.27" data-track-index="2" src="assets/Reveal_Effects_render_compact.mp4" muted playsinline preload="auto"></video>
+              <video id="reveal-effects-video" data-start="15.53" data-duration="5.27" data-track-index="2" src="assets/Reveal_Effects_render_compact.mp4" muted playsinline preload="auto"></video>
             </div>
             <div class="stats-column">
               <h2 class="scene-heading" id="s3-title">实时预览，完整交互。</h2>
@@ -1627,6 +2081,52 @@
         <div class="caption" id="cap-4"><span>不用每台设备安装 App，只要一个浏览器，就能进入空间预览。</span></div>
       </div>
 
+      <div id="scene-gate" class="scene">
+        <div class="backdrop">
+          <div class="glow a" data-layout-ignore></div>
+          <div class="glow b" data-layout-ignore></div>
+          <div class="glow c" data-layout-ignore></div>
+          <div class="noise"></div>
+        </div>
+        <div class="scene-content">
+          <div class="eyebrow" id="sg-eye"><span class="dotmark"></span>LAN ACCESS GATE</div>
+          <div class="gate-layout">
+            <div>
+              <h2 class="scene-heading" id="sg-title">局域网门禁，先解锁再访问。</h2>
+              <p class="scene-copy" id="sg-copy">访问码保护模型、照片、缩略图、下载、导出和工作区资源。本机仍是 owner，远程设备默认只负责浏览。</p>
+              <div class="security-grid" id="sg-grid">
+                <div class="security-tile glass-panel"><strong>Access code</strong><span>远程设备先解锁，再进入私有图库。</span></div>
+                <div class="security-tile glass-panel"><strong>HttpOnly session</strong><span>图片、模型和下载自然携带会话。</span></div>
+                <div class="security-tile glass-panel"><strong>Owner only</strong><span>设置、删除、目录管理继续只限本机。</span></div>
+                <div class="security-tile glass-panel"><strong>Remote generation</strong><span>需要时再显式允许远程提交任务。</span></div>
+              </div>
+            </div>
+            <div class="gate-visual" id="sg-visual">
+              <div class="access-card glass-panel" id="sg-card">
+                <div class="lock-orb"><div class="lock-shape"></div></div>
+                <h3 class="access-title">输入访问码</h3>
+                <p class="access-subtitle">这台设备需要先解锁，才能查看模型和照片资源。</p>
+                <div class="access-form">
+                  <div class="access-label">访问码</div>
+                  <div class="code-field"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+                  <div class="unlock-button">解锁 Sharp GUI</div>
+                </div>
+                <div class="session-strip">
+                  <strong>SESSION</strong>
+                  <span>HttpOnly · SameSite</span>
+                </div>
+              </div>
+              <div class="permission-stack" id="sg-permissions" data-layout-allow-overflow>
+                <div class="permission-card glass-panel"><strong>Unlocked</strong><span>浏览、预览、下载、导出</span></div>
+                <div class="permission-card glass-panel"><strong>Owner</strong><span>设置门禁、管理目录、撤销会话</span></div>
+                <div class="permission-card glass-panel"><strong>Protected</strong><span>/api/*、/files/*、原图与模型文件</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="caption" id="cap-gate"><span>全屋访问可以打开，私有模型和照片仍然保有边界。</span></div>
+      </div>
+
       <div id="scene-5" class="scene">
         <div class="backdrop">
           <div class="glow a" data-layout-ignore></div>
@@ -1718,13 +2218,13 @@
         tl.from(sel + " span", { y: 22, opacity: 0, scale: 0.98, duration: 0.5, ease: "back.out(1.25)" }, at);
       }
 
-      tl.to(".glow.a", { x: 82, y: 34, scale: 1.08, duration: 8, ease: "sine.inOut", repeat: 3, yoyo: true }, 0);
-      tl.to(".glow.b", { x: -96, y: -42, scale: 1.12, duration: 9, ease: "power1.inOut", repeat: 2, yoyo: true }, 0.2);
-      tl.to(".glow.c", { x: 54, y: -68, scale: 0.92, duration: 7, ease: "sine.inOut", repeat: 3, yoyo: true }, 0.4);
-      tl.to(".scanline", { y: 118, opacity: 0.78, duration: 3.2, ease: "sine.inOut", repeat: 7, yoyo: true }, 0.1);
-      tl.to(".orbital.one", { rotation: 5, duration: 11, ease: "sine.inOut", repeat: 2, yoyo: true }, 0);
-      tl.to(".orbital.two", { rotation: -34, duration: 10, ease: "power1.inOut", repeat: 2, yoyo: true }, 0);
-      tl.to(".point-cloud", { rotation: 14, scale: 1.05, duration: 12, ease: "sine.inOut", repeat: 1, yoyo: true }, 0.2);
+      tl.to(".glow.a", { x: 82, y: 34, scale: 1.08, duration: 8, ease: "sine.inOut", repeat: 5, yoyo: true }, 0);
+      tl.to(".glow.b", { x: -96, y: -42, scale: 1.12, duration: 9, ease: "power1.inOut", repeat: 4, yoyo: true }, 0.2);
+      tl.to(".glow.c", { x: 54, y: -68, scale: 0.92, duration: 7, ease: "sine.inOut", repeat: 5, yoyo: true }, 0.4);
+      tl.to(".scanline", { y: 118, opacity: 0.78, duration: 3.2, ease: "sine.inOut", repeat: 12, yoyo: true }, 0.1);
+      tl.to(".orbital.one", { rotation: 5, duration: 11, ease: "sine.inOut", repeat: 4, yoyo: true }, 0);
+      tl.to(".orbital.two", { rotation: -34, duration: 10, ease: "power1.inOut", repeat: 4, yoyo: true }, 0);
+      tl.to(".point-cloud", { rotation: 14, scale: 1.05, duration: 12, ease: "sine.inOut", repeat: 3, yoyo: true }, 0.2);
 
       tl.from("#s1-eye", { x: -44, opacity: 0, duration: 0.55, ease: "power3.out" }, 0.18);
       tl.from("#s1-title", { y: 76, opacity: 0, scale: 0.96, duration: 0.72, ease: "expo.out" }, 0.38);
@@ -1747,60 +2247,86 @@
       captionIn("#cap-2", 6.84);
       tl.to("#s2-window", { y: -18, rotationY: -5, duration: 3.2, ease: "sine.inOut" }, 6.8);
 
-      blurTransition("#scene-2", "#scene-3", 9.8, 0.62);
-      tl.to("#flash", { opacity: 0.55, duration: 0.12, ease: "power4.out" }, 9.92);
-      tl.to("#flash", { opacity: 0, duration: 0.36, ease: "power2.out" }, 10.04);
+      blurTransition("#scene-2", "#scene-photo", 9.8, 0.66);
 
-      tl.from("#s3-eye", { x: -42, opacity: 0, duration: 0.46, ease: "power3.out" }, 10.48);
-      tl.from("#s3-shot", { x: -58, opacity: 0, scale: 0.96, duration: 0.72, ease: "expo.out" }, 10.62);
-      tl.from("#s3-title", { y: 60, opacity: 0, duration: 0.58, ease: "back.out(1.12)" }, 10.82);
-      tl.from("#s3-copy", { y: 30, opacity: 0, duration: 0.5, ease: "power2.out" }, 11.1);
-      tl.from("#s3-stat-1", { x: 46, opacity: 0, duration: 0.45, ease: "power4.out" }, 11.42);
-      tl.from("#s3-stat-1 .interaction-item", { y: 18, opacity: 0, duration: 0.32, stagger: 0.035, ease: "power3.out" }, 11.6);
-      tl.from("#s3-reveal", { x: 46, opacity: 0, duration: 0.45, ease: "sine.out" }, 11.62);
-      tl.from("#s3-reveal .effect-chip", { y: 18, opacity: 0, duration: 0.28, stagger: 0.05, ease: "back.out(1.25)" }, 11.9);
-      captionIn("#cap-3", 12.0);
-      tl.to("#s3-shot", { y: -14, rotationY: 2, duration: 3.5, ease: "sine.inOut" }, 11.9);
+      tl.from("#sp-eye", { x: -46, opacity: 0, duration: 0.44, ease: "power3.out" }, 10.52);
+      tl.from("#sp-title", { y: 64, opacity: 0, duration: 0.62, ease: "expo.out" }, 10.72);
+      tl.from("#sp-copy", { y: 30, opacity: 0, duration: 0.5, ease: "power2.out" }, 11.02);
+      tl.from("#sp-cards .photo-capability", { y: 36, opacity: 0, scale: 0.96, duration: 0.42, stagger: 0.07, ease: "back.out(1.22)" }, 11.32);
+      tl.from("#sp-window", { x: 86, opacity: 0, rotationY: -18, scale: 0.96, duration: 0.78, ease: "power3.out" }, 10.82);
+      tl.from("#sp-chip", { y: -20, opacity: 0, scale: 0.94, duration: 0.4, ease: "back.out(1.45)" }, 11.62);
+      tl.from("#sp-selection", { y: 34, opacity: 0, scale: 0.94, duration: 0.46, ease: "back.out(1.35)" }, 11.86);
+      tl.to("#sp-selection", { scale: 1.035, duration: 0.46, repeat: 1, yoyo: true, ease: "sine.inOut" }, 12.9);
+      captionIn("#cap-photo", 11.64);
+      tl.to("#sp-window", { y: -16, rotationY: -3, rotationX: 2, duration: 3.2, ease: "sine.inOut" }, 11.72);
 
-      blurTransition("#scene-3", "#scene-4", 15.0, 0.66);
+      blurTransition("#scene-photo", "#scene-3", 15.15, 0.62);
+      tl.to("#flash", { opacity: 0.55, duration: 0.12, ease: "power4.out" }, 15.27);
+      tl.to("#flash", { opacity: 0, duration: 0.36, ease: "power2.out" }, 15.39);
 
-      tl.from("#s4-eye", { x: -48, opacity: 0, duration: 0.44, ease: "power3.out" }, 15.72);
-      tl.from("#s4-title", { y: 74, opacity: 0, duration: 0.64, ease: "expo.out" }, 15.9);
-      tl.from("#s4-copy", { x: -34, opacity: 0, duration: 0.5, ease: "power2.out" }, 16.18);
-      tl.from("#s4-modes .mode-tile", { y: 42, opacity: 0, scale: 0.96, duration: 0.44, stagger: 0.08, ease: "back.out(1.22)" }, 16.52);
-      tl.set("#s4-stack .desktop", { zIndex: 10 }, 15.9);
-      tl.set("#s4-stack .tablet", { zIndex: 30 }, 15.9);
-      tl.set("#s4-stack .mobile", { zIndex: 40 }, 15.9);
-      tl.set("#s4-stack .vr", { zIndex: 50 }, 15.9);
-      tl.from("#s4-stack .desktop", { y: 50, opacity: 0, rotationX: 8, scale: 0.96, force3D: false, duration: 0.68, ease: "power4.out" }, 16.0);
-      tl.from("#s4-stack .tablet", { x: -120, y: 48, opacity: 0, rotation: -6, scale: 0.86, force3D: false, duration: 0.62, ease: "expo.out" }, 16.2);
-      tl.from("#s4-stack .mobile", { x: 110, y: 52, opacity: 0, rotation: 6, scale: 0.82, force3D: false, duration: 0.62, ease: "power3.out" }, 16.34);
-      tl.from("#s4-stack .vr", { y: 120, opacity: 0, scale: 0.72, force3D: false, duration: 0.66, ease: "back.out(1.18)" }, 16.52);
-      captionIn("#cap-4", 17.18);
-      tl.to("#s4-stack", { y: -22, duration: 3.0, ease: "sine.inOut" }, 17.0);
+      tl.from("#s3-eye", { x: -42, opacity: 0, duration: 0.46, ease: "power3.out" }, 15.83);
+      tl.from("#s3-shot", { x: -58, opacity: 0, scale: 0.96, duration: 0.72, ease: "expo.out" }, 15.97);
+      tl.from("#s3-title", { y: 60, opacity: 0, duration: 0.58, ease: "back.out(1.12)" }, 16.17);
+      tl.from("#s3-copy", { y: 30, opacity: 0, duration: 0.5, ease: "power2.out" }, 16.45);
+      tl.from("#s3-stat-1", { x: 46, opacity: 0, duration: 0.45, ease: "power4.out" }, 16.77);
+      tl.from("#s3-stat-1 .interaction-item", { y: 18, opacity: 0, duration: 0.32, stagger: 0.035, ease: "power3.out" }, 16.95);
+      tl.from("#s3-reveal", { x: 46, opacity: 0, duration: 0.45, ease: "sine.out" }, 16.97);
+      tl.from("#s3-reveal .effect-chip", { y: 18, opacity: 0, duration: 0.28, stagger: 0.05, ease: "back.out(1.25)" }, 17.25);
+      captionIn("#cap-3", 17.35);
+      tl.to("#s3-shot", { y: -14, rotationY: 2, duration: 3.0, ease: "sine.inOut" }, 17.25);
 
-      blurTransition("#scene-4", "#scene-5", 20.4, 0.72);
+      blurTransition("#scene-3", "#scene-4", 20.35, 0.66);
 
-      tl.from("#s5-eye", { x: -42, opacity: 0, duration: 0.42, ease: "power3.out" }, 21.18);
-      tl.from("#s5-card", { opacity: 0, filter: "blur(18px)", duration: 0.72, ease: "sine.out" }, 21.3);
-      tl.from(".final-lockup", { y: 26, opacity: 0, duration: 0.44, ease: "power2.out" }, 21.58);
-      tl.from(".export-file", { scale: 0.82, opacity: 0, rotation: -4, duration: 0.58, ease: "back.out(1.45)" }, 21.86);
-      tl.from(".export-route", { x: -32, opacity: 0, duration: 0.44, ease: "sine.out" }, 22.12);
-      tl.from("#s5-title", { y: 72, opacity: 0, duration: 0.66, ease: "power4.out" }, 21.54);
-      tl.from("#s5-copy", { y: 28, opacity: 0, duration: 0.5, ease: "power2.out" }, 21.9);
-      tl.from("#s5-tags .tag", { y: 24, opacity: 0, duration: 0.35, stagger: 0.06, ease: "back.out(1.2)" }, 22.28);
-      captionIn("#cap-5", 23.0);
+      tl.from("#s4-eye", { x: -48, opacity: 0, duration: 0.44, ease: "power3.out" }, 21.07);
+      tl.from("#s4-title", { y: 74, opacity: 0, duration: 0.64, ease: "expo.out" }, 21.25);
+      tl.from("#s4-copy", { x: -34, opacity: 0, duration: 0.5, ease: "power2.out" }, 21.53);
+      tl.from("#s4-modes .mode-tile", { y: 42, opacity: 0, scale: 0.96, duration: 0.44, stagger: 0.08, ease: "back.out(1.22)" }, 21.87);
+      tl.set("#s4-stack .desktop", { zIndex: 10 }, 21.25);
+      tl.set("#s4-stack .tablet", { zIndex: 30 }, 21.25);
+      tl.set("#s4-stack .mobile", { zIndex: 40 }, 21.25);
+      tl.set("#s4-stack .vr", { zIndex: 50 }, 21.25);
+      tl.from("#s4-stack .desktop", { y: 50, opacity: 0, rotationX: 8, scale: 0.96, force3D: false, duration: 0.68, ease: "power4.out" }, 21.35);
+      tl.from("#s4-stack .tablet", { x: -120, y: 48, opacity: 0, rotation: -6, scale: 0.86, force3D: false, duration: 0.62, ease: "expo.out" }, 21.55);
+      tl.from("#s4-stack .mobile", { x: 110, y: 52, opacity: 0, rotation: 6, scale: 0.82, force3D: false, duration: 0.62, ease: "power3.out" }, 21.69);
+      tl.from("#s4-stack .vr", { y: 120, opacity: 0, scale: 0.72, force3D: false, duration: 0.66, ease: "back.out(1.18)" }, 21.87);
+      captionIn("#cap-4", 22.53);
+      tl.to("#s4-stack", { y: -22, duration: 2.9, ease: "sine.inOut" }, 22.35);
 
-      blurTransition("#scene-5", "#scene-6", 26.05, 0.72);
-      tl.from("#s6-card", { opacity: 0, filter: "blur(20px)", scale: 0.985, duration: 0.78, ease: "sine.out" }, 26.72);
-      tl.from("#s6-logo", { y: 26, opacity: 0, scale: 0.82, rotation: -4, duration: 0.58, ease: "back.out(1.35)" }, 27.02);
-      tl.from("#s6-title", { y: 38, opacity: 0, duration: 0.52, ease: "power4.out" }, 27.22);
-      tl.from("#s6-copy", { y: 22, opacity: 0, duration: 0.42, ease: "power2.out" }, 27.48);
-      tl.from("#s6-repo", { y: 26, opacity: 0, scale: 0.98, duration: 0.48, ease: "power3.out" }, 27.84);
-      tl.from("#s6-star", { y: 28, opacity: 0, scale: 0.9, duration: 0.58, ease: "back.out(1.35)" }, 28.28);
-      tl.to("#s6-star", { scale: 1.035, duration: 0.48, repeat: 2, yoyo: true, ease: "sine.inOut" }, 29.25);
-      captionIn("#cap-6", 28.76);
-      tl.to("#scene-6", { opacity: 0, filter: "blur(10px)", duration: 0.7, ease: "sine.inOut" }, 32.72);
+      blurTransition("#scene-4", "#scene-gate", 25.75, 0.68);
+
+      tl.from("#sg-eye", { x: -48, opacity: 0, duration: 0.42, ease: "power3.out" }, 26.48);
+      tl.from("#sg-title", { y: 66, opacity: 0, duration: 0.62, ease: "expo.out" }, 26.66);
+      tl.from("#sg-copy", { y: 30, opacity: 0, duration: 0.5, ease: "power2.out" }, 26.96);
+      tl.from("#sg-grid .security-tile", { y: 34, opacity: 0, scale: 0.96, duration: 0.42, stagger: 0.075, ease: "back.out(1.2)" }, 27.26);
+      tl.from("#sg-card", { x: 74, opacity: 0, filter: "blur(10px)", scale: 0.96, duration: 0.76, ease: "sine.out" }, 26.72);
+      tl.from("#sg-card .lock-orb", { scale: 0.72, opacity: 0, rotation: -8, duration: 0.5, ease: "back.out(1.5)" }, 27.12);
+      tl.from("#sg-card .code-field i", { y: 12, opacity: 0, scale: 0.6, duration: 0.28, stagger: 0.035, ease: "back.out(1.8)" }, 27.42);
+      tl.from("#sg-permissions .permission-card", { x: 58, opacity: 0, scale: 0.96, duration: 0.44, stagger: 0.12, ease: "power3.out" }, 27.18);
+      captionIn("#cap-gate", 27.76);
+      tl.to("#sg-card", { y: -14, rotationY: -6, duration: 2.8, ease: "sine.inOut" }, 28.2);
+
+      blurTransition("#scene-gate", "#scene-5", 31.1, 0.72);
+
+      tl.from("#s5-eye", { x: -42, opacity: 0, duration: 0.42, ease: "power3.out" }, 31.88);
+      tl.from("#s5-card", { opacity: 0, filter: "blur(18px)", duration: 0.72, ease: "sine.out" }, 32.0);
+      tl.from(".final-lockup", { y: 26, opacity: 0, duration: 0.44, ease: "power2.out" }, 32.28);
+      tl.from(".export-file", { scale: 0.82, opacity: 0, rotation: -4, duration: 0.58, ease: "back.out(1.45)" }, 32.56);
+      tl.from(".export-route", { x: -32, opacity: 0, duration: 0.44, ease: "sine.out" }, 32.82);
+      tl.from("#s5-title", { y: 72, opacity: 0, duration: 0.66, ease: "power4.out" }, 32.24);
+      tl.from("#s5-copy", { y: 28, opacity: 0, duration: 0.5, ease: "power2.out" }, 32.6);
+      tl.from("#s5-tags .tag", { y: 24, opacity: 0, duration: 0.35, stagger: 0.06, ease: "back.out(1.2)" }, 32.98);
+      captionIn("#cap-5", 33.7);
+
+      blurTransition("#scene-5", "#scene-6", 36.75, 0.72);
+      tl.from("#s6-card", { opacity: 0, filter: "blur(20px)", scale: 0.985, duration: 0.78, ease: "sine.out" }, 37.42);
+      tl.from("#s6-logo", { y: 26, opacity: 0, scale: 0.82, rotation: -4, duration: 0.58, ease: "back.out(1.35)" }, 37.72);
+      tl.from("#s6-title", { y: 38, opacity: 0, duration: 0.52, ease: "power4.out" }, 37.92);
+      tl.from("#s6-copy", { y: 22, opacity: 0, duration: 0.42, ease: "power2.out" }, 38.18);
+      tl.from("#s6-repo", { y: 26, opacity: 0, scale: 0.98, duration: 0.48, ease: "power3.out" }, 38.54);
+      tl.from("#s6-star", { y: 28, opacity: 0, scale: 0.9, duration: 0.58, ease: "back.out(1.35)" }, 38.98);
+      tl.to("#s6-star", { scale: 1.035, duration: 0.48, repeat: 2, yoyo: true, ease: "sine.inOut" }, 39.95);
+      captionIn("#cap-6", 39.54);
+      tl.to("#scene-6", { opacity: 0, filter: "blur(10px)", duration: 0.7, ease: "sine.inOut" }, 43.88);
 
       window.__timelines["sharp-gui-intro"] = tl;
     </script>

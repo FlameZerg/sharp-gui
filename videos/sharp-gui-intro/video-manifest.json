@@ -1,0 +1,10 @@
+{
+  "currentVersion": "v10",
+  "versions": {
+    "v10": {
+      "captionSource": "captions/sharp-gui-v10-visual-captions.json",
+      "captionOutputDir": "captions",
+      "renderOutput": "renders/sharp-gui-intro-v10-hq-1080p.mp4"
+    }
+  }
+}

@@ -5,7 +5,8 @@ param(
   [string]$VideoBitrate = "30M",
   [int]$Fps = 30,
   [switch]$CheckOnly,
-  [switch]$SkipInspect
+  [switch]$SkipInspect,
+  [switch]$CaptionsOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -79,32 +80,48 @@ if ([string]::IsNullOrWhiteSpace($resolvedOutput)) {
 
 Write-Host "Video version: $($versionConfig.Name)"
 
-$chromePath = Join-Path $env:ProgramFiles "Google\Chrome\Application\chrome.exe"
-if (-not $env:HYPERFRAMES_BROWSER_PATH -and (Test-Path $chromePath)) {
-  $env:HYPERFRAMES_BROWSER_PATH = $chromePath
-}
+Invoke-Checked "powershell" @(
+  "-NoProfile",
+  "-ExecutionPolicy",
+  "Bypass",
+  "-File",
+  (Join-Path $scriptDir "scripts\generate-captions.ps1"),
+  "-Version",
+  $versionConfig.Name,
+  "-Manifest",
+  $Manifest
+)
 
-if (-not (Test-Path "node_modules\.bin\hyperframes.cmd")) {
-  Invoke-Checked "npm" @("install")
-}
-
-if (-not (Test-Path "renders")) {
-  New-Item -ItemType Directory -Path "renders" | Out-Null
-}
-
-Invoke-Checked "npx" @("hyperframes", "lint")
-
-if (-not $SkipInspect) {
-  Invoke-Checked "npx" @("hyperframes", "inspect", "--samples", "18")
-}
-
-if ($CheckOnly) {
+if ($CaptionsOnly) {
   Write-Host ""
-  Write-Host "Checks passed."
+  Write-Host "Captions generated."
   exit 0
 }
 
-Invoke-Checked "npx" @("hyperframes", "render", "--output", $resolvedOutput, "--quality", "high", "--fps", "$Fps", "--video-bitrate", $VideoBitrate, "--strict")
+$renderArgs = @(
+  "-NoProfile",
+  "-ExecutionPolicy",
+  "Bypass",
+  "-File",
+  (Join-Path $scriptDir "render.ps1"),
+  "-Version",
+  $versionConfig.Name,
+  "-Manifest",
+  $Manifest,
+  "-Output",
+  $resolvedOutput,
+  "-VideoBitrate",
+  $VideoBitrate,
+  "-Fps",
+  "$Fps"
+)
 
-Write-Host ""
-Write-Host "Rendered: $((Resolve-Path $resolvedOutput).Path)"
+if ($CheckOnly) {
+  $renderArgs += "-CheckOnly"
+}
+
+if ($SkipInspect) {
+  $renderArgs += "-SkipInspect"
+}
+
+Invoke-Checked "powershell" $renderArgs

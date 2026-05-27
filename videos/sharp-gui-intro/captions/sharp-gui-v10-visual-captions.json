@@ -1,0 +1,49 @@
+{
+  "version": "v10",
+  "language": "zh-CN",
+  "outputBase": "sharp-gui-v10-visual-captions.zh-CN",
+  "render": "renders/sharp-gui-intro-v10-hq-1080p.mp4",
+  "duration": 44.621,
+  "captions": [
+    {
+      "start": 1.42,
+      "end": 4.7,
+      "text": "把一张照片，变成可探索的空间记忆。"
+    },
+    {
+      "start": 6.84,
+      "end": 9.8,
+      "text": "上传、推理、压缩、入库，全流程都在你的机器上完成。"
+    },
+    {
+      "start": 11.64,
+      "end": 15.15,
+      "text": "本地照片图库把原始照片、预览和 3D 生成串成同一条工作流。"
+    },
+    {
+      "start": 17.35,
+      "end": 20.35,
+      "text": "预览画布支持旋转、平移、缩放、点击聚焦和五种登场特效。"
+    },
+    {
+      "start": 22.53,
+      "end": 25.75,
+      "text": "不用每台设备安装 App，只要一个浏览器，就能进入空间预览。"
+    },
+    {
+      "start": 27.76,
+      "end": 31.1,
+      "text": "全屋访问可以打开，私有模型和照片仍然保有边界。"
+    },
+    {
+      "start": 33.7,
+      "end": 36.75,
+      "text": "Sharp GUI，让空间影像离开生态边界，回到你自己的设备里。"
+    },
+    {
+      "start": 39.54,
+      "end": 43.88,
+      "text": "如果 Sharp GUI 对你有帮助，欢迎在 GitHub 点一个 Star。"
+    }
+  ]
+}
