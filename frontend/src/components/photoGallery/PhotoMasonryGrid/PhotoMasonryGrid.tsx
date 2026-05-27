@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import type { CSSProperties } from 'react';
 
 import { useTranslation } from 'react-i18next';
@@ -34,6 +34,14 @@ export const PhotoMasonryGrid = memo(function PhotoMasonryGrid({
   onConvertPhoto,
 }: PhotoMasonryGridProps) {
   const { t } = useTranslation();
+  const columnCount = Math.max(1, Math.floor(columns));
+  const columnItems = useMemo(() => {
+    const nextColumns = Array.from({ length: columnCount }, () => [] as PhotoItem[]);
+    items.forEach((photo, index) => {
+      nextColumns[index % columnCount].push(photo);
+    });
+    return nextColumns;
+  }, [columnCount, items]);
 
   if (!isLoading && items.length === 0) {
     return (
@@ -46,79 +54,87 @@ export const PhotoMasonryGrid = memo(function PhotoMasonryGrid({
   }
 
   const rootStyle = {
-    '--photo-grid-columns': String(columns),
+    '--photo-grid-columns': String(columnCount),
   } as CSSProperties;
 
   return (
     <div className={styles.root} style={rootStyle} aria-label={t('photoGrid')} role="list">
-      {items.map((photo) => {
-        const isSelected = selectedPhotoIds.includes(photo.id);
-        const ratio = photo.width && photo.height
-          ? `${photo.width} / ${photo.height}`
-          : '4 / 3';
+      {columnItems.map((column, columnIndex) => (
+        <div className={styles.column} key={`photo-column-${columnIndex}`} role="presentation">
+          {column.map((photo) => {
+            const isSelected = selectedPhotoIds.includes(photo.id);
+            const ratio = photo.width && photo.height
+              ? `${photo.width} / ${photo.height}`
+              : '4 / 3';
 
-        return (
-          <article
-            key={photo.id}
-            className={[
-              styles.card,
-              isSelected ? styles.selected : '',
-            ].filter(Boolean).join(' ')}
-            style={{ aspectRatio: ratio }}
-            role="listitem"
-          >
-            <button
-              className={styles.imageBtn}
-              onClick={() => selectionMode ? onTogglePhoto(photo.id) : onOpenPhoto(photo)}
-              type="button"
-              aria-label={selectionMode ? t('photoToggleSelection', { name: photo.name }) : t('photoOpen', { name: photo.name })}
-            >
-              {photo.thumb_url ? (
-                <img
-                  src={photo.thumb_url}
-                  alt={photo.name}
-                  loading="lazy"
-                  decoding="async"
-                  draggable={false}
-                />
-              ) : (
-                <span className={styles.fallback}>{t('galleryThumbUnavailableShort')}</span>
-              )}
-            </button>
-
-            <div className={styles.topActions}>
-              <button
+            return (
+              <article
+                key={photo.id}
                 className={[
-                  styles.selectBtn,
-                  isSelected ? styles.selectBtnActive : '',
+                  styles.card,
+                  isSelected ? styles.selected : '',
                 ].filter(Boolean).join(' ')}
-                onClick={() => onTogglePhoto(photo.id)}
-                type="button"
-                title={t('photoSelect')}
-                aria-label={t('photoToggleSelection', { name: photo.name })}
+                style={{ aspectRatio: ratio }}
+                role="listitem"
               >
-                {isSelected ? <CheckIcon width={14} height={14} /> : null}
-              </button>
-            </div>
+                <button
+                  className={styles.imageBtn}
+                  onClick={() => selectionMode ? onTogglePhoto(photo.id) : onOpenPhoto(photo)}
+                  type="button"
+                  aria-label={selectionMode ? t('photoToggleSelection', { name: photo.name }) : t('photoOpen', { name: photo.name })}
+                >
+                  {photo.thumb_url ? (
+                    <img
+                      src={photo.thumb_url}
+                      alt={photo.name}
+                      loading="lazy"
+                      decoding="async"
+                      draggable={false}
+                    />
+                  ) : (
+                    <span className={styles.fallback}>{t('galleryThumbUnavailableShort')}</span>
+                  )}
+                </button>
 
-            <div className={styles.footer}>
-              <span>{photo.name}</span>
-              <button
-                className={styles.convertBtn}
-                onClick={() => onConvertPhoto(photo)}
-                type="button"
-                title={t('photoConvertOne')}
-                aria-label={t('photoConvertOne')}
-              >
-                <SparklesIcon width={14} height={14} />
-              </button>
-            </div>
-          </article>
-        );
-      })}
+                <div className={styles.topActions}>
+                  <button
+                    className={[
+                      styles.selectBtn,
+                      isSelected ? styles.selectBtnActive : '',
+                    ].filter(Boolean).join(' ')}
+                    onClick={() => onTogglePhoto(photo.id)}
+                    type="button"
+                    title={t('photoSelect')}
+                    aria-label={t('photoToggleSelection', { name: photo.name })}
+                  >
+                    {isSelected ? <CheckIcon width={14} height={14} /> : null}
+                  </button>
+                </div>
+
+                <div className={styles.footer}>
+                  <span>{photo.name}</span>
+                  <button
+                    className={styles.convertBtn}
+                    onClick={() => onConvertPhoto(photo)}
+                    type="button"
+                    title={t('photoConvertOne')}
+                    aria-label={t('photoConvertOne')}
+                  >
+                    <SparklesIcon width={14} height={14} />
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      ))}
 
       {isLoading ? (
-        <div className={styles.skeleton} aria-hidden="true" />
+        <div className={styles.loadingRow} aria-hidden="true">
+          {Array.from({ length: Math.min(columnCount, 3) }, (_, index) => (
+            <div className={styles.skeleton} key={`photo-skeleton-${index}`} />
+          ))}
+        </div>
       ) : null}
     </div>
   );
