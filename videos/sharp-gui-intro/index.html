@@ -1984,7 +1984,7 @@
           <div class="eyebrow" id="s3-eye"><span class="dotmark"></span>REAL-TIME VIEWER</div>
           <div class="showcase-layout">
             <div class="screenshot-stage glass-panel" id="s3-shot">
-              <video id="reveal-effects-video" data-start="15.53" data-duration="5.27" data-track-index="2" src="assets/Reveal_Effects_render_compact.mp4" muted playsinline preload="auto"></video>
+              <video id="reveal-effects-video" data-start="5.08" data-duration="5.27" data-track-index="2" src="assets/Reveal_Effects_render_compact.mp4" muted playsinline preload="auto"></video>
             </div>
             <div class="stats-column">
               <h2 class="scene-heading" id="s3-title">实时预览，完整交互。</h2>
@@ -2208,10 +2208,11 @@
       var tl = gsap.timeline({ paused: true });
 
       function blurTransition(oldScene, newScene, at, duration) {
-        tl.set(newScene, { visibility: "visible", opacity: 0, filter: "blur(18px)", scale: 1.016 }, at);
+        tl.set(newScene, { visibility: "visible", opacity: 0, filter: "blur(18px)", scale: 1.016, zIndex: 6 }, at);
+        tl.set(oldScene, { zIndex: 5 }, at);
         tl.to(newScene, { opacity: 1, filter: "blur(0px)", scale: 1, duration: duration, ease: "sine.inOut" }, at);
         tl.to(oldScene, { opacity: 0.2, filter: "blur(18px)", scale: 0.992, duration: duration, ease: "sine.inOut" }, at);
-        tl.set(oldScene, { visibility: "hidden", opacity: 0, filter: "blur(0px)", scale: 1 }, at + duration + 0.01);
+        tl.set(oldScene, { visibility: "hidden", opacity: 0, filter: "blur(0px)", scale: 1, zIndex: 1 }, at + duration + 0.01);
       }
 
       function captionIn(sel, at) {
@@ -2236,76 +2237,82 @@
       tl.from(".point", { opacity: 0, scale: 0, duration: 0.36, stagger: 0.035, ease: "back.out(1.8)" }, 1.0);
       captionIn("#cap-1", 1.42);
 
-      blurTransition("#scene-1", "#scene-2", 4.7, 0.68);
+      // === Slot B (4.7–9.8): 实时预览 / 交互 (scene-3, shift -10.45) ===
+      blurTransition("#scene-1", "#scene-3", 4.7, 0.68);
+      tl.to("#flash", { opacity: 0.55, duration: 0.12, ease: "power4.out" }, 4.82);
+      tl.to("#flash", { opacity: 0, duration: 0.36, ease: "power2.out" }, 4.94);
 
-      tl.from("#s2-eye", { x: -52, opacity: 0, duration: 0.44, ease: "power4.out" }, 5.42);
-      tl.from("#s2-title", { x: -64, opacity: 0, duration: 0.6, ease: "expo.out" }, 5.62);
-      tl.from("#s2-copy", { y: 36, opacity: 0, duration: 0.48, ease: "power2.out" }, 5.92);
-      tl.from("#s2-pipeline .pipe-step", { x: -46, opacity: 0, scale: 0.98, duration: 0.46, stagger: 0.14, ease: "back.out(1.18)" }, 6.18);
-      tl.from("#s2-window", { x: 72, opacity: 0, rotationY: -18, duration: 0.76, ease: "power3.out" }, 5.82);
-      tl.from(".privacy-chip", { y: -18, opacity: 0, scale: 0.94, duration: 0.44, ease: "back.out(1.5)" }, 6.86);
-      captionIn("#cap-2", 6.84);
-      tl.to("#s2-window", { y: -18, rotationY: -5, duration: 3.2, ease: "sine.inOut" }, 6.8);
+      tl.from("#s3-eye", { x: -42, opacity: 0, duration: 0.46, ease: "power3.out" }, 5.38);
+      tl.from("#s3-shot", { x: -58, opacity: 0, scale: 0.96, duration: 0.72, ease: "expo.out" }, 5.52);
+      tl.from("#s3-title", { y: 60, opacity: 0, duration: 0.58, ease: "back.out(1.12)" }, 5.72);
+      tl.from("#s3-copy", { y: 30, opacity: 0, duration: 0.5, ease: "power2.out" }, 6.0);
+      tl.from("#s3-stat-1", { x: 46, opacity: 0, duration: 0.45, ease: "power4.out" }, 6.32);
+      tl.from("#s3-stat-1 .interaction-item", { y: 18, opacity: 0, duration: 0.32, stagger: 0.035, ease: "power3.out" }, 6.5);
+      tl.from("#s3-reveal", { x: 46, opacity: 0, duration: 0.45, ease: "sine.out" }, 6.52);
+      tl.from("#s3-reveal .effect-chip", { y: 18, opacity: 0, duration: 0.28, stagger: 0.05, ease: "back.out(1.25)" }, 6.8);
+      captionIn("#cap-3", 6.9);
+      tl.to("#s3-shot", { y: -14, rotationY: 2, duration: 3.0, ease: "sine.inOut" }, 6.8);
 
-      blurTransition("#scene-2", "#scene-photo", 9.8, 0.66);
+      // === Slot C (9.8–15.15): 多设备访问 (scene-4, shift -10.55) ===
+      blurTransition("#scene-3", "#scene-4", 9.8, 0.66);
 
-      tl.from("#sp-eye", { x: -46, opacity: 0, duration: 0.44, ease: "power3.out" }, 10.52);
-      tl.from("#sp-title", { y: 64, opacity: 0, duration: 0.62, ease: "expo.out" }, 10.72);
-      tl.from("#sp-copy", { y: 30, opacity: 0, duration: 0.5, ease: "power2.out" }, 11.02);
-      tl.from("#sp-cards .photo-capability", { y: 36, opacity: 0, scale: 0.96, duration: 0.42, stagger: 0.07, ease: "back.out(1.22)" }, 11.32);
-      tl.from("#sp-window", { x: 86, opacity: 0, rotationY: -18, scale: 0.96, duration: 0.78, ease: "power3.out" }, 10.82);
-      tl.from("#sp-chip", { y: -20, opacity: 0, scale: 0.94, duration: 0.4, ease: "back.out(1.45)" }, 11.62);
-      tl.from("#sp-selection", { y: 34, opacity: 0, scale: 0.94, duration: 0.46, ease: "back.out(1.35)" }, 11.86);
-      tl.to("#sp-selection", { scale: 1.035, duration: 0.46, repeat: 1, yoyo: true, ease: "sine.inOut" }, 12.9);
-      captionIn("#cap-photo", 11.64);
-      tl.to("#sp-window", { y: -16, rotationY: -3, rotationX: 2, duration: 3.2, ease: "sine.inOut" }, 11.72);
+      tl.from("#s4-eye", { x: -48, opacity: 0, duration: 0.44, ease: "power3.out" }, 10.52);
+      tl.from("#s4-title", { y: 74, opacity: 0, duration: 0.64, ease: "expo.out" }, 10.7);
+      tl.from("#s4-copy", { x: -34, opacity: 0, duration: 0.5, ease: "power2.out" }, 10.98);
+      tl.from("#s4-modes .mode-tile", { y: 42, opacity: 0, scale: 0.96, duration: 0.44, stagger: 0.08, ease: "back.out(1.22)" }, 11.32);
+      tl.set("#s4-stack .desktop", { zIndex: 10 }, 10.7);
+      tl.set("#s4-stack .tablet", { zIndex: 30 }, 10.7);
+      tl.set("#s4-stack .mobile", { zIndex: 40 }, 10.7);
+      tl.set("#s4-stack .vr", { zIndex: 50 }, 10.7);
+      tl.from("#s4-stack .desktop", { y: 50, opacity: 0, rotationX: 8, scale: 0.96, force3D: false, duration: 0.68, ease: "power4.out" }, 10.8);
+      tl.from("#s4-stack .tablet", { x: -120, y: 48, opacity: 0, rotation: -6, scale: 0.86, force3D: false, duration: 0.62, ease: "expo.out" }, 11.0);
+      tl.from("#s4-stack .mobile", { x: 110, y: 52, opacity: 0, rotation: 6, scale: 0.82, force3D: false, duration: 0.62, ease: "power3.out" }, 11.14);
+      tl.from("#s4-stack .vr", { y: 120, opacity: 0, scale: 0.72, force3D: false, duration: 0.66, ease: "back.out(1.18)" }, 11.32);
+      captionIn("#cap-4", 11.98);
+      tl.to("#s4-stack", { y: -22, duration: 2.9, ease: "sine.inOut" }, 11.8);
 
-      blurTransition("#scene-photo", "#scene-3", 15.15, 0.62);
-      tl.to("#flash", { opacity: 0.55, duration: 0.12, ease: "power4.out" }, 15.27);
-      tl.to("#flash", { opacity: 0, duration: 0.36, ease: "power2.out" }, 15.39);
+      // === Slot D (15.15–20.35): 本地照片图库 (scene-photo, shift +5.35) ===
+      blurTransition("#scene-4", "#scene-photo", 15.15, 0.62);
 
-      tl.from("#s3-eye", { x: -42, opacity: 0, duration: 0.46, ease: "power3.out" }, 15.83);
-      tl.from("#s3-shot", { x: -58, opacity: 0, scale: 0.96, duration: 0.72, ease: "expo.out" }, 15.97);
-      tl.from("#s3-title", { y: 60, opacity: 0, duration: 0.58, ease: "back.out(1.12)" }, 16.17);
-      tl.from("#s3-copy", { y: 30, opacity: 0, duration: 0.5, ease: "power2.out" }, 16.45);
-      tl.from("#s3-stat-1", { x: 46, opacity: 0, duration: 0.45, ease: "power4.out" }, 16.77);
-      tl.from("#s3-stat-1 .interaction-item", { y: 18, opacity: 0, duration: 0.32, stagger: 0.035, ease: "power3.out" }, 16.95);
-      tl.from("#s3-reveal", { x: 46, opacity: 0, duration: 0.45, ease: "sine.out" }, 16.97);
-      tl.from("#s3-reveal .effect-chip", { y: 18, opacity: 0, duration: 0.28, stagger: 0.05, ease: "back.out(1.25)" }, 17.25);
-      captionIn("#cap-3", 17.35);
-      tl.to("#s3-shot", { y: -14, rotationY: 2, duration: 3.0, ease: "sine.inOut" }, 17.25);
+      tl.from("#sp-eye", { x: -46, opacity: 0, duration: 0.44, ease: "power3.out" }, 15.87);
+      tl.from("#sp-title", { y: 64, opacity: 0, duration: 0.62, ease: "expo.out" }, 16.07);
+      tl.from("#sp-copy", { y: 30, opacity: 0, duration: 0.5, ease: "power2.out" }, 16.37);
+      tl.from("#sp-cards .photo-capability", { y: 36, opacity: 0, scale: 0.96, duration: 0.42, stagger: 0.07, ease: "back.out(1.22)" }, 16.67);
+      tl.from("#sp-window", { x: 86, opacity: 0, rotationY: -18, scale: 0.96, duration: 0.78, ease: "power3.out" }, 16.17);
+      tl.from("#sp-chip", { y: -20, opacity: 0, scale: 0.94, duration: 0.4, ease: "back.out(1.45)" }, 16.97);
+      tl.from("#sp-selection", { y: 34, opacity: 0, scale: 0.94, duration: 0.46, ease: "back.out(1.35)" }, 17.21);
+      tl.to("#sp-selection", { scale: 1.035, duration: 0.46, repeat: 1, yoyo: true, ease: "sine.inOut" }, 18.25);
+      captionIn("#cap-photo", 16.99);
+      tl.to("#sp-window", { y: -16, rotationY: -3, rotationX: 2, duration: 3.2, ease: "sine.inOut" }, 17.07);
 
-      blurTransition("#scene-3", "#scene-4", 20.35, 0.66);
+      // === Slot E (20.35–25.75): 局域网门禁 / 安全 (scene-gate, shift -5.4) ===
+      blurTransition("#scene-photo", "#scene-gate", 20.35, 0.66);
 
-      tl.from("#s4-eye", { x: -48, opacity: 0, duration: 0.44, ease: "power3.out" }, 21.07);
-      tl.from("#s4-title", { y: 74, opacity: 0, duration: 0.64, ease: "expo.out" }, 21.25);
-      tl.from("#s4-copy", { x: -34, opacity: 0, duration: 0.5, ease: "power2.out" }, 21.53);
-      tl.from("#s4-modes .mode-tile", { y: 42, opacity: 0, scale: 0.96, duration: 0.44, stagger: 0.08, ease: "back.out(1.22)" }, 21.87);
-      tl.set("#s4-stack .desktop", { zIndex: 10 }, 21.25);
-      tl.set("#s4-stack .tablet", { zIndex: 30 }, 21.25);
-      tl.set("#s4-stack .mobile", { zIndex: 40 }, 21.25);
-      tl.set("#s4-stack .vr", { zIndex: 50 }, 21.25);
-      tl.from("#s4-stack .desktop", { y: 50, opacity: 0, rotationX: 8, scale: 0.96, force3D: false, duration: 0.68, ease: "power4.out" }, 21.35);
-      tl.from("#s4-stack .tablet", { x: -120, y: 48, opacity: 0, rotation: -6, scale: 0.86, force3D: false, duration: 0.62, ease: "expo.out" }, 21.55);
-      tl.from("#s4-stack .mobile", { x: 110, y: 52, opacity: 0, rotation: 6, scale: 0.82, force3D: false, duration: 0.62, ease: "power3.out" }, 21.69);
-      tl.from("#s4-stack .vr", { y: 120, opacity: 0, scale: 0.72, force3D: false, duration: 0.66, ease: "back.out(1.18)" }, 21.87);
-      captionIn("#cap-4", 22.53);
-      tl.to("#s4-stack", { y: -22, duration: 2.9, ease: "sine.inOut" }, 22.35);
+      tl.from("#sg-eye", { x: -48, opacity: 0, duration: 0.42, ease: "power3.out" }, 21.08);
+      tl.from("#sg-title", { y: 66, opacity: 0, duration: 0.62, ease: "expo.out" }, 21.26);
+      tl.from("#sg-copy", { y: 30, opacity: 0, duration: 0.5, ease: "power2.out" }, 21.56);
+      tl.from("#sg-grid .security-tile", { y: 34, opacity: 0, scale: 0.96, duration: 0.42, stagger: 0.075, ease: "back.out(1.2)" }, 21.86);
+      tl.from("#sg-card", { x: 74, opacity: 0, filter: "blur(10px)", scale: 0.96, duration: 0.76, ease: "sine.out" }, 21.32);
+      tl.from("#sg-card .lock-orb", { scale: 0.72, opacity: 0, rotation: -8, duration: 0.5, ease: "back.out(1.5)" }, 21.72);
+      tl.from("#sg-card .code-field i", { y: 12, opacity: 0, scale: 0.6, duration: 0.28, stagger: 0.035, ease: "back.out(1.8)" }, 22.02);
+      tl.from("#sg-permissions .permission-card", { x: 58, opacity: 0, scale: 0.96, duration: 0.44, stagger: 0.12, ease: "power3.out" }, 21.78);
+      captionIn("#cap-gate", 22.36);
+      tl.to("#sg-card", { y: -14, rotationY: -6, duration: 2.8, ease: "sine.inOut" }, 22.8);
 
-      blurTransition("#scene-4", "#scene-gate", 25.75, 0.68);
+      // === Slot F (25.75–31.1): 队列上传 / 本地流水线 (scene-2, shift +21.05) ===
+      blurTransition("#scene-gate", "#scene-2", 25.75, 0.68);
 
-      tl.from("#sg-eye", { x: -48, opacity: 0, duration: 0.42, ease: "power3.out" }, 26.48);
-      tl.from("#sg-title", { y: 66, opacity: 0, duration: 0.62, ease: "expo.out" }, 26.66);
-      tl.from("#sg-copy", { y: 30, opacity: 0, duration: 0.5, ease: "power2.out" }, 26.96);
-      tl.from("#sg-grid .security-tile", { y: 34, opacity: 0, scale: 0.96, duration: 0.42, stagger: 0.075, ease: "back.out(1.2)" }, 27.26);
-      tl.from("#sg-card", { x: 74, opacity: 0, filter: "blur(10px)", scale: 0.96, duration: 0.76, ease: "sine.out" }, 26.72);
-      tl.from("#sg-card .lock-orb", { scale: 0.72, opacity: 0, rotation: -8, duration: 0.5, ease: "back.out(1.5)" }, 27.12);
-      tl.from("#sg-card .code-field i", { y: 12, opacity: 0, scale: 0.6, duration: 0.28, stagger: 0.035, ease: "back.out(1.8)" }, 27.42);
-      tl.from("#sg-permissions .permission-card", { x: 58, opacity: 0, scale: 0.96, duration: 0.44, stagger: 0.12, ease: "power3.out" }, 27.18);
-      captionIn("#cap-gate", 27.76);
-      tl.to("#sg-card", { y: -14, rotationY: -6, duration: 2.8, ease: "sine.inOut" }, 28.2);
+      tl.from("#s2-eye", { x: -52, opacity: 0, duration: 0.44, ease: "power4.out" }, 26.47);
+      tl.from("#s2-title", { x: -64, opacity: 0, duration: 0.6, ease: "expo.out" }, 26.67);
+      tl.from("#s2-copy", { y: 36, opacity: 0, duration: 0.48, ease: "power2.out" }, 26.97);
+      tl.from("#s2-pipeline .pipe-step", { x: -46, opacity: 0, scale: 0.98, duration: 0.46, stagger: 0.14, ease: "back.out(1.18)" }, 27.23);
+      tl.from("#s2-window", { x: 72, opacity: 0, rotationY: -18, duration: 0.76, ease: "power3.out" }, 26.87);
+      tl.from(".privacy-chip", { y: -18, opacity: 0, scale: 0.94, duration: 0.44, ease: "back.out(1.5)" }, 27.91);
+      captionIn("#cap-2", 27.89);
+      tl.to("#s2-window", { y: -18, rotationY: -5, duration: 3.2, ease: "sine.inOut" }, 27.85);
 
-      blurTransition("#scene-gate", "#scene-5", 31.1, 0.72);
+      // === Slot G (31.1–36.75): 导出分享 (scene-5, unchanged) ===
+      blurTransition("#scene-2", "#scene-5", 31.1, 0.72);
 
       tl.from("#s5-eye", { x: -42, opacity: 0, duration: 0.42, ease: "power3.out" }, 31.88);
       tl.from("#s5-card", { opacity: 0, filter: "blur(18px)", duration: 0.72, ease: "sine.out" }, 32.0);
