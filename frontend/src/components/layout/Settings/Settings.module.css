@@ -163,25 +163,24 @@
     align-items: center;
     justify-content: space-between;
     gap: 16px;
-    padding: 16px;
-    border: 1px solid rgba(0, 113, 227, 0.18);
+    padding: 14px 16px;
+    border: 1px solid var(--glass-border, rgba(0, 0, 0, 0.08));
     border-radius: var(--radius-lg);
-    background:
-        linear-gradient(135deg, rgba(0, 113, 227, 0.1), rgba(52, 199, 89, 0.08)),
-        rgba(255, 255, 255, 0.28);
+    background: rgba(255, 255, 255, 0.4);
 }
 
 .accessDetails {
-    margin-top: 18px;
+    margin-top: 14px;
     padding-top: 16px;
-    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
 }
 
 .accessToggleWarning {
-    border-color: rgba(240, 173, 78, 0.28);
-    background:
-        linear-gradient(135deg, rgba(240, 173, 78, 0.16), rgba(255, 255, 255, 0.2)),
-        rgba(255, 255, 255, 0.22);
+    border-color: rgba(240, 173, 78, 0.32);
+    background: rgba(240, 173, 78, 0.08);
 }
 
 .accessToggleCopy {
@@ -201,6 +200,30 @@
     color: var(--text-secondary);
     font-size: 12px;
     line-height: 1.5;
+}
+
+.accessRiskNote {
+    margin-top: 8px !important;
+    padding-top: 8px;
+    border-top: 1px dashed rgba(240, 173, 78, 0.4);
+    color: var(--warning-color) !important;
+}
+
+.accessForm {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.accessSaveRow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
 }
 
 .toggleSwitch {
@@ -237,46 +260,23 @@
     transform: translateX(20px);
 }
 
-.riskPanel {
-    margin-top: 0;
-    padding: 12px 14px;
-    border: 1px solid rgba(240, 173, 78, 0.32);
-    border-radius: var(--radius-md);
-    background: rgba(240, 173, 78, 0.12);
-}
-
-.riskTitle {
-    display: block;
-    margin-bottom: 4px;
-    color: var(--warning-color);
-    font-size: 12px;
-    font-weight: 700;
-}
-
-.riskPanel p {
-    margin: 0;
-    color: var(--text-secondary);
-    font-size: 12px;
-    line-height: 1.55;
-}
-
 @media (prefers-color-scheme: dark) {
     .accessDetails {
         border-top-color: rgba(255, 255, 255, 0.1);
     }
 
+    .accessSaveRow {
+        border-top-color: rgba(255, 255, 255, 0.1);
+    }
+
     .accessToggleCard {
-        border-color: rgba(10, 132, 255, 0.22);
-        background:
-            linear-gradient(135deg, rgba(10, 132, 255, 0.14), rgba(52, 199, 89, 0.08)),
-            rgba(255, 255, 255, 0.055);
+        border-color: rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.05);
     }
 
     .accessToggleWarning {
         border-color: rgba(240, 173, 78, 0.32);
-        background:
-            linear-gradient(135deg, rgba(240, 173, 78, 0.16), rgba(255, 255, 255, 0.04)),
-            rgba(255, 255, 255, 0.045);
+        background: rgba(240, 173, 78, 0.1);
     }
 
     .toggleSwitch {
@@ -287,11 +287,6 @@
     .toggleSwitchOn {
         border-color: rgba(77, 163, 255, 0.42);
         background: linear-gradient(135deg, var(--accent-blue), #4da3ff);
-    }
-
-    .riskPanel {
-        border-color: rgba(240, 173, 78, 0.3);
-        background: rgba(240, 173, 78, 0.1);
     }
 }
 

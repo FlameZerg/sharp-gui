@@ -26,7 +26,7 @@ import zipfile
 import numpy as np
 from io import BytesIO
 from urllib.parse import urlparse
-from flask import Flask, render_template, request, jsonify, send_from_directory, send_file, Response, g
+from flask import Flask, render_template, request, jsonify, send_from_directory, send_file, Response, g, abort
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 from PIL import Image, ImageOps
@@ -43,6 +43,9 @@ REACT_BUILD_DIR = os.path.join(BASE_DIR, 'frontend', 'dist')
 SHARP_VERBOSE = os.environ.get('SHARP_VERBOSE', '').strip().lower() in {'1', 'true', 'yes', 'on', 'debug', 'verbose'}
 SHARP_LOG_LEVEL = os.environ.get('SHARP_LOG_LEVEL', 'DEBUG' if SHARP_VERBOSE else 'INFO').strip().upper()
 SHARP_LOG_FILE = os.environ.get('SHARP_LOG_FILE', os.path.join(BASE_DIR, 'sharp-gui-verbose.log'))
+# 调试模式默认关闭：debug=True 会向客户端泄露堆栈并暴露 Werkzeug 交互式调试器（潜在 RCE）。
+# 仅供本机排障时通过 SHARP_DEBUG=1 显式开启，绝不在局域网共享场景默认开启。
+SHARP_DEBUG = os.environ.get('SHARP_DEBUG', '').strip().lower() in {'1', 'true', 'yes', 'on', 'debug'}
 
 # 默认文件夹
 DEFAULT_WORKSPACE_FOLDER = BASE_DIR  # 工作目录默认为应用根目录
@@ -460,6 +463,67 @@ app.config['OUTPUT_FOLDER'] = OUTPUT_FOLDER
 app.config['THUMBNAIL_FOLDER'] = THUMBNAIL_FOLDER
 app.config['PHOTO_GALLERY_CACHE_FOLDER'] = PHOTO_GALLERY_CACHE_FOLDER
 app.config['PHOTO_THUMBNAIL_FOLDER'] = PHOTO_THUMBNAIL_FOLDER
+
+# /files/* 静态服务白名单根目录。
+# 历史上 serve_files 以 BASE_DIR 为默认根，会把 config.json / key.pem / app.py
+# 等敏感文件暴露给任何能访问端口的客户端。这里收敛为仅服务模型输出与历史缩略图，
+# 其余路径一律拒绝（404），即便门禁关闭也不放行。
+ALLOWED_FILE_SERVE_ROOTS = (
+    OUTPUT_FOLDER,
+    THUMBNAIL_FOLDER,
+)
+
+# 敏感文件拒绝清单（纵深防御第二层）：即使某文件碰巧落在服务根内，
+# 命中以下文件名或扩展名也一律拒绝，避免密钥/配置/源码泄露。
+SENSITIVE_FILE_NAMES = frozenset({
+    'config.json',
+    'app.py',
+    'cert.pem',
+    'key.pem',
+    '.env',
+})
+SENSITIVE_FILE_EXTENSIONS = frozenset({
+    '.pem',
+    '.key',
+    '.crt',
+    '.p12',
+    '.pfx',
+    '.env',
+})
+
+
+def is_sensitive_served_file(abs_path):
+    """判断目标文件是否属于敏感类型，命中则不应通过任何静态路由服务。"""
+    name = os.path.basename(abs_path)
+    if name.lower() in SENSITIVE_FILE_NAMES:
+        return True
+    _, ext = os.path.splitext(name)
+    return ext.lower() in SENSITIVE_FILE_EXTENSIONS
+
+
+def resolve_served_file_path(served_root, served_filename):
+    """将 /files 请求解析为绝对路径，并强制约束在白名单服务根内。
+
+    返回通过校验的绝对路径；任何越界（相对穿越、绝对路径、符号链接逃逸）、
+    落在白名单之外或命中敏感清单的请求都返回 None，由调用方统一回 404。
+    """
+    if not served_filename or os.path.isabs(served_filename):
+        return None
+
+    candidate = os.path.realpath(os.path.join(served_root, served_filename))
+
+    # 必须落在某个白名单服务根内（基于 realpath，防符号链接逃逸）。
+    if not any(is_real_path_inside(candidate, root) for root in ALLOWED_FILE_SERVE_ROOTS):
+        return None
+
+    if is_sensitive_served_file(candidate):
+        return None
+
+    if not os.path.isfile(candidate):
+        return None
+
+    return candidate
+
 
 photo_index_lock = threading.Lock()
 
@@ -2334,16 +2398,23 @@ def convert_all_to_spz():
 def serve_files(filename):
     normalized_filename = filename.replace('\\', '/')
     served_root = BASE_DIR
-    served_filename = filename
+    served_filename = normalized_filename
     if normalized_filename.startswith(WORKSPACE_FILES_PREFIX):
         served_root = WORKSPACE_FOLDER
         served_filename = normalized_filename[len(WORKSPACE_FILES_PREFIX):]
 
+    # 收敛到白名单服务根 + 敏感文件拒绝清单：越界、白名单外或敏感文件统一 404，
+    # 不区分“不存在”与“被禁止”，避免泄露文件是否存在的信息。该校验独立于门禁开关，
+    # 门禁关闭时同样生效。
+    resolved_path = resolve_served_file_path(served_root, served_filename)
+    if not resolved_path:
+        abort(404)
+
     thumbnail_prefix = get_relative_files_path(THUMBNAIL_FOLDER) + '/'
     cache_timeout = THUMBNAIL_CACHE_SECONDS if normalized_filename.startswith(thumbnail_prefix) else DEFAULT_FILE_CACHE_SECONDS
     return send_from_directory(
-        served_root,
-        served_filename,
+        os.path.dirname(resolved_path),
+        os.path.basename(resolved_path),
         conditional=True,
         max_age=cache_timeout,
     )
@@ -2697,15 +2768,33 @@ if __name__ == '__main__':
     else:
         protocol = 'http'
         ssl_ctx = None
-    
+
+    # 监听地址：由 access_control.lan_bind_enabled 决定。
+    # True  -> 0.0.0.0（局域网共享，可被同网段设备访问）
+    # False -> 127.0.0.1（仅本机，外部设备无法连接）
+    # 环境变量 SHARP_BIND_HOST 可显式覆盖以兼容特殊部署。
+    startup_access_config = get_access_control_config(persist_missing=False)
+    lan_bind_enabled = coerce_bool(startup_access_config.get('lan_bind_enabled'), True)
+    bind_host = os.environ.get('SHARP_BIND_HOST', '').strip() or ('0.0.0.0' if lan_bind_enabled else '127.0.0.1')
+
     # 输出简洁的启动信息（只在 reloader 子进程中输出，避免重复）
-    if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+    if os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or not SHARP_DEBUG:
         print(f' * Running on {protocol}://127.0.0.1:5050')
-        print(f' * Running on {protocol}://{local_ip}:5050')
+        if lan_bind_enabled and bind_host != '127.0.0.1':
+            print(f' * Running on {protocol}://{local_ip}:5050')
+        else:
+            print(' * 仅本机访问（局域网绑定已关闭）/ Localhost only (LAN bind disabled)')
+        if protocol == 'http':
+            print(' * ⚠️ 当前为 HTTP，访问码与会话将明文传输，局域网共享建议先生成证书启用 HTTPS')
+            print('   / HTTP mode: access code and session travel unencrypted; enable HTTPS for LAN sharing')
+        if bind_host == '0.0.0.0':
+            print(' * ⚠️ 若在本机前置反向代理（nginx/frp 等），所有请求会被判为 owner；')
+            print('   如需强制访问码，请在设置中关闭“本机免登录”(allow_localhost_bypass)')
+            print('   / Behind a local reverse proxy every client is treated as owner; disable localhost bypass to force the access code')
         print('Press CTRL+C to quit')
         print_runtime_diagnostics(protocol, local_ip)
-    
+
     if ssl_ctx:
-        app.run(debug=True, port=5050, host='0.0.0.0', ssl_context=ssl_ctx)
+        app.run(debug=SHARP_DEBUG, port=5050, host=bind_host, ssl_context=ssl_ctx)
     else:
-        app.run(debug=True, port=5050, host='0.0.0.0')
+        app.run(debug=SHARP_DEBUG, port=5050, host=bind_host)

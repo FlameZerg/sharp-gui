@@ -43,6 +43,11 @@
 - 远程生成默认拒绝；只有 `access_control.enabled=true` 且 `allow_remote_generation=true` 时，已解锁远程设备才可提交 `/api/generate` 与 `/api/photo-conversions`。
 - localhost owner 免访问码进入应用和设置；owner 判断不得信任 `X-Forwarded-For`、`Forwarded`、`X-Real-IP` 等客户端可控头。
 - 本机 owner 在门禁关闭或未设置访问码时应默认看到启动提醒；“稍后”只关闭本次提示，“不再提示”才持久抑制。
+- 敏感文件不可下载：门禁开/关两种状态下，`/files/config.json`、`/files/key.pem`、`/files/cert.pem`、`/files/app.py` 以及相对穿越/绝对路径/符号链接逃逸（如 `/files/../config.json`）都应返回 404，不泄露内容；模型下载、缩略图、原图、导出 HTML、照片缩略图/原图/打包下载仍正常。
+- 仅本机绑定生效：`access_control.lan_bind_enabled=false` 重启后，服务仅监听 `127.0.0.1`，局域网 IP 连接被拒；`true` 时局域网可连。设置页切换该开关应提示需重启并触发重启。
+- 调试关闭：默认（未设 `SHARP_DEBUG`）触发后端异常时响应不含堆栈，Werkzeug 交互式调试器端点不可达。
+- 反向代理须知：在本机前置反向代理时，所有请求会被判为 owner；需要强制访问码时应能通过关闭 `allow_localhost_bypass`（需先设访问码）实现。
+- HTTP 模式下访问码登录页应显示明文传输安全提示，HTTPS 模式下不显示。
 
 ---
 

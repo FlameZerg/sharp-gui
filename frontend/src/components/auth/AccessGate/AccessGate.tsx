@@ -29,6 +29,13 @@ export function AccessGate({ onUnlocked }: AccessGateProps) {
 
   const setupRequired = authStatus?.setup_required ?? false;
 
+  // HTTP（非加密）模式下访问码与会话明文传输，对局域网/远程访问者给出安全提示。
+  // 本机 loopback 访问无明文嗅探风险，不打扰。
+  const isInsecureConnection =
+    typeof window !== 'undefined' &&
+    window.location.protocol !== 'https:' &&
+    !['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (setupRequired || isSubmitting) {
@@ -65,6 +72,10 @@ export function AccessGate({ onUnlocked }: AccessGateProps) {
         <p className={styles.subtitle}>
           {setupRequired ? t('accessGateSetupRequired') : t('accessGateSubtitle')}
         </p>
+
+        {!setupRequired && isInsecureConnection ? (
+          <p className={styles.insecureNotice}>{t('accessGateHttpWarning')}</p>
+        ) : null}
 
         {!setupRequired && (
           <form className={styles.form} onSubmit={handleSubmit}>

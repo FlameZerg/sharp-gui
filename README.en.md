@@ -504,6 +504,14 @@ The table below shows the permission boundaries for each role:
 - **Brute-force resistance**: failed logins back off per client, and the server validates the host allowlist plus real connection address — `X-Forwarded-For` and similar headers can never escalate to owner.
 - **HTTPS vs gate**: HTTPS protects transport and browser sensor capabilities; the access code protects authorization. Enable both when sharing the port on your LAN.
 
+### Privacy & Deployment Notes
+
+- **Sensitive files stay private**: `/files/*` serves only `outputs/` models and legacy thumbnails. `config.json` (session secret and access-code hash), `cert.pem`/`key.pem` (TLS private key), and `app.py` source **can never** be downloaded through that route, whether the gate is on or off.
+- **LAN bind toggle is real**: Settings > LAN Access Control lets you switch the listening bind. On listens on `0.0.0.0` (LAN sharing); off listens on `127.0.0.1` only (localhost-only, other devices cannot connect). A restart is required after changing it; `SHARP_BIND_HOST` can override.
+- **Debug mode off by default**: the server runs without the framework debugger, so errors never leak stack traces and no interactive debugger is exposed. Set `SHARP_DEBUG=1` only for local troubleshooting, never when sharing on a LAN or the internet.
+- **Reverse proxy caveat**: if you front the server with a local reverse proxy (nginx / frp, etc.), every request appears to come from `127.0.0.1`, so **every visitor is treated as owner**. To force the access code behind a proxy, disable localhost bypass (`allow_localhost_bypass`, requires an access code first) in Settings. The project never trusts spoofable forwarding headers such as `X-Forwarded-For`.
+- **Public exposure warning**: this service is designed for LAN use. Before port-forwarding to the internet, enable the gate, set a strong access code, turn on HTTPS, and assess the risk yourself.
+
 ---
 
 ## 🏗️ Architecture

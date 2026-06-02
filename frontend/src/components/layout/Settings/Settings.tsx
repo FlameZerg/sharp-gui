@@ -78,6 +78,8 @@ export const Settings: React.FC = () => {
     const [savedSessionDays, setSavedSessionDays] = useState(30);
     const [allowRemoteGeneration, setAllowRemoteGeneration] = useState(false);
     const [savedAllowRemoteGeneration, setSavedAllowRemoteGeneration] = useState(false);
+    const [lanBindEnabled, setLanBindEnabled] = useState(true);
+    const [savedLanBindEnabled, setSavedLanBindEnabled] = useState(true);
     const [isAccessSaving, setIsAccessSaving] = useState(false);
     const [isRevokingSessions, setIsRevokingSessions] = useState(false);
     const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -119,6 +121,8 @@ export const Settings: React.FC = () => {
         setSavedSessionDays(status.session_days);
         setAllowRemoteGeneration(status.allow_remote_generation);
         setSavedAllowRemoteGeneration(status.allow_remote_generation);
+        setLanBindEnabled(status.lan_bind_enabled);
+        setSavedLanBindEnabled(status.lan_bind_enabled);
     }, [setAuthStatus]);
 
     const loadSettings = useCallback(async () => {
@@ -272,7 +276,8 @@ export const Settings: React.FC = () => {
     const hasAccessSettingsChanges =
         accessControlEnabled !== savedAccessControlEnabled ||
         sessionDays !== savedSessionDays ||
-        allowRemoteGeneration !== savedAllowRemoteGeneration;
+        allowRemoteGeneration !== savedAllowRemoteGeneration ||
+        lanBindEnabled !== savedLanBindEnabled;
 
     const accessSettingsStateText = (() => {
         if (hasAccessSettingsChanges) {
@@ -316,13 +321,30 @@ export const Settings: React.FC = () => {
         if (!isLocalAccess) return;
         setIsAccessSaving(true);
         setAccessMessage(null);
+        const bindChanged = lanBindEnabled !== savedLanBindEnabled;
         try {
             const status = await updateAuthSettings({
                 enabled: accessControlEnabled,
                 session_days: sessionDays,
                 allow_remote_generation: accessControlEnabled ? allowRemoteGeneration : false,
+                lan_bind_enabled: lanBindEnabled,
             });
             applyAccessStatus(status);
+            // 监听地址变更需要重启服务才能生效（Werkzeug 不支持热切换绑定地址）。
+            if (bindChanged) {
+                setAccessMessage(t('lanBindRestarting'));
+                setSettingsModalOpen(false);
+                setLoading(true, t('lanBindRestarting'));
+                try {
+                    await restartServer();
+                } catch {
+                    // 重启会断开连接，属预期行为
+                }
+                setTimeout(() => {
+                    window.location.reload();
+                }, 3000);
+                return;
+            }
             setAccessMessage(t('accessSettingsSaved'));
         } catch (error) {
             setAccessMessage(getAccessErrorMessage(error));
@@ -373,142 +395,155 @@ export const Settings: React.FC = () => {
 
                     {isLocalAccess ? (
                         <>
-                            <div className={`${styles.accessToggleCard} ${!accessControlEnabled ? styles.accessToggleWarning : ''}`}>
+                            {/* 局域网可访问：主开关，置顶。关闭后隐藏全部门禁选项。 */}
+                            <div className={styles.accessToggleCard}>
                                 <div className={styles.accessToggleCopy}>
                                     <span className={styles.accessToggleTitle}>
-                                        {accessControlEnabled ? t('accessControlEnabled') : t('accessControlDisabled')}
+                                        {lanBindEnabled ? t('lanBindEnabled') : t('lanBindDisabled')}
                                     </span>
                                     <p>
-                                        {accessControlEnabled ? t('accessControlEnabledHint') : t('accessControlDisabledHint')}
+                                        {lanBindEnabled ? t('lanBindEnabledHint') : t('lanBindDisabledHint')}
                                     </p>
+                                    <p className={styles.fieldHint}>{t('lanBindRestartHint')}</p>
                                 </div>
                                 <button
                                     type="button"
-                                    className={`${styles.toggleSwitch} ${accessControlEnabled ? styles.toggleSwitchOn : ''}`}
-                                    onClick={() => handleAccessControlToggle(!accessControlEnabled)}
-                                    aria-pressed={accessControlEnabled}
-                                    aria-label={t('accessControlToggleLabel')}
+                                    className={`${styles.toggleSwitch} ${lanBindEnabled ? styles.toggleSwitchOn : ''}`}
+                                    onClick={() => setLanBindEnabled(!lanBindEnabled)}
+                                    aria-pressed={lanBindEnabled}
+                                    aria-label={t('lanBindToggleLabel')}
                                 >
                                     <span className={styles.toggleKnob} />
                                 </button>
                             </div>
 
-                            <div className={styles.accessDetails}>
-                                {!accessControlEnabled ? (
-                                    <>
-                                        <div className={styles.riskPanel}>
-                                            <span className={styles.riskTitle}>{t('accessControlDisabledWarningTitle')}</span>
-                                            <p>{t('accessControlDisabledWarning')}</p>
-                                        </div>
-
-                                        <p className={`${styles.settingState} ${hasAccessSettingsChanges ? styles.settingStatePending : styles.settingStateSaved}`}>
-                                            {accessSettingsStateText}
-                                        </p>
-
-                                        <div className={styles.securityActions}>
-                                            <button
-                                                type="button"
-                                                className={styles.convertBtn}
-                                                onClick={handleSaveAccessSettings}
-                                                disabled={isAccessSaving || !hasAccessSettingsChanges}
-                                            >
-                                                {isAccessSaving ? t('saving') : t('accessSettingsSave')}
-                                            </button>
-                                        </div>
-                                    </>
-                                ) : (
-                                    <>
-                                        <div className={styles.statusRow}>
-                                            <span className={`${styles.statusPill} ${authStatus?.has_access_code ? styles.statusOk : styles.statusWarn}`}>
-                                                {authStatus?.has_access_code ? t('accessCodeConfigured') : t('accessCodeMissing')}
+                            {/* 门禁相关设置：仅在局域网可访问时展示 */}
+                            {lanBindEnabled && (
+                                <div className={styles.accessDetails}>
+                                    {/* 门禁开关，隐私风险提示合并进卡片内 */}
+                                    <div className={`${styles.accessToggleCard} ${!accessControlEnabled ? styles.accessToggleWarning : ''}`}>
+                                        <div className={styles.accessToggleCopy}>
+                                            <span className={styles.accessToggleTitle}>
+                                                {accessControlEnabled ? t('accessControlEnabled') : t('accessControlDisabled')}
                                             </span>
-                                            <span className={styles.statusPill}>
-                                                {t('accessOwnerMode')}
-                                            </span>
+                                            <p>
+                                                {accessControlEnabled ? t('accessControlEnabledHint') : t('accessControlDisabledHint')}
+                                            </p>
+                                            {!accessControlEnabled && (
+                                                <p className={styles.accessRiskNote}>{t('accessControlDisabledWarning')}</p>
+                                            )}
                                         </div>
-                                        {authStatus?.setup_required ? (
-                                            <p className={styles.warning}>{t('accessCodeSetupReminder')}</p>
-                                        ) : (
-                                            <p className={styles.hint}>{t('accessControlHint')}</p>
-                                        )}
+                                        <button
+                                            type="button"
+                                            className={`${styles.toggleSwitch} ${accessControlEnabled ? styles.toggleSwitchOn : ''}`}
+                                            onClick={() => handleAccessControlToggle(!accessControlEnabled)}
+                                            aria-pressed={accessControlEnabled}
+                                            aria-label={t('accessControlToggleLabel')}
+                                        >
+                                            <span className={styles.toggleKnob} />
+                                        </button>
+                                    </div>
 
-                                        <div className={styles.inputWrapper}>
-                                            <input
-                                                type="password"
-                                                className={styles.input}
-                                                value={accessCode}
-                                                onChange={(e) => setAccessCodeValue(e.target.value)}
-                                                placeholder={t('accessCodePlaceholder')}
-                                                autoComplete="new-password"
-                                            />
-                                            <button
-                                                type="button"
-                                                className={styles.saveBtn}
-                                                onClick={handleSaveAccessCode}
-                                                disabled={isAccessSaving || accessCode.length < 8}
-                                            >
-                                                {t('accessCodeSave')}
-                                            </button>
-                                        </div>
+                                    {/* 门禁开启后的访问码与会话设置 */}
+                                    {accessControlEnabled && (
+                                        <div className={styles.accessForm}>
+                                            <div className={styles.statusRow}>
+                                                <span className={`${styles.statusPill} ${authStatus?.has_access_code ? styles.statusOk : styles.statusWarn}`}>
+                                                    {authStatus?.has_access_code ? t('accessCodeConfigured') : t('accessCodeMissing')}
+                                                </span>
+                                                <span className={styles.statusPill}>
+                                                    {t('accessOwnerMode')}
+                                                </span>
+                                            </div>
+                                            {authStatus?.setup_required ? (
+                                                <p className={styles.warning}>{t('accessCodeSetupReminder')}</p>
+                                            ) : (
+                                                <p className={styles.hint}>{t('accessControlHint')}</p>
+                                            )}
 
-                                        <div className={styles.inlineGrid}>
-                                            <div>
-                                                <label className={styles.label}>{t('sessionDaysLabel')}</label>
+                                            <div className={styles.inputWrapper}>
                                                 <input
-                                                    type="number"
-                                                    min={1}
-                                                    max={365}
+                                                    type="password"
                                                     className={styles.input}
-                                                    value={sessionDays}
-                                                    onChange={(e) => setSessionDays(Number(e.target.value))}
+                                                    value={accessCode}
+                                                    onChange={(e) => setAccessCodeValue(e.target.value)}
+                                                    placeholder={t('accessCodePlaceholder')}
+                                                    autoComplete="new-password"
                                                 />
+                                                <button
+                                                    type="button"
+                                                    className={styles.saveBtn}
+                                                    onClick={handleSaveAccessCode}
+                                                    disabled={isAccessSaving || accessCode.length < 8}
+                                                >
+                                                    {t('accessCodeSave')}
+                                                </button>
                                             </div>
-                                            <div>
-                                                <label className={styles.label}>{t('remoteGenerationLabel')}</label>
-                                                <div className={styles.segmentedControl}>
-                                                    <button
-                                                        type="button"
-                                                        className={`${styles.segmentBtn} ${!allowRemoteGeneration ? styles.segmentActive : ''}`}
-                                                        onClick={() => setAllowRemoteGeneration(false)}
-                                                    >
-                                                        {t('remoteGenerationOff')}
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        className={`${styles.segmentBtn} ${allowRemoteGeneration ? styles.segmentActive : ''}`}
-                                                        onClick={() => setAllowRemoteGeneration(true)}
-                                                    >
-                                                        {t('remoteGenerationOn')}
-                                                    </button>
+
+                                            <div className={styles.inlineGrid}>
+                                                <div>
+                                                    <label className={styles.label}>{t('sessionDaysLabel')}</label>
+                                                    <input
+                                                        type="number"
+                                                        min={1}
+                                                        max={365}
+                                                        className={styles.input}
+                                                        value={sessionDays}
+                                                        onChange={(e) => setSessionDays(Number(e.target.value))}
+                                                    />
                                                 </div>
-                                                <p className={styles.fieldHint}>{t('remoteGenerationHint')}</p>
+                                                <div>
+                                                    <label className={styles.label}>{t('remoteGenerationLabel')}</label>
+                                                    <div className={styles.segmentedControl}>
+                                                        <button
+                                                            type="button"
+                                                            className={`${styles.segmentBtn} ${!allowRemoteGeneration ? styles.segmentActive : ''}`}
+                                                            onClick={() => setAllowRemoteGeneration(false)}
+                                                        >
+                                                            {t('remoteGenerationOff')}
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className={`${styles.segmentBtn} ${allowRemoteGeneration ? styles.segmentActive : ''}`}
+                                                            onClick={() => setAllowRemoteGeneration(true)}
+                                                        >
+                                                            {t('remoteGenerationOn')}
+                                                        </button>
+                                                    </div>
+                                                    <p className={styles.fieldHint}>{t('remoteGenerationHint')}</p>
+                                                </div>
+                                            </div>
+
+                                            <div className={styles.securityActions}>
+                                                <button
+                                                    type="button"
+                                                    className={styles.dangerBtn}
+                                                    onClick={handleRevokeSessions}
+                                                    disabled={isRevokingSessions}
+                                                >
+                                                    {isRevokingSessions ? t('saving') : t('revokeAllSessions')}
+                                                </button>
                                             </div>
                                         </div>
+                                    )}
+                                </div>
+                            )}
 
-                                        <p className={`${styles.settingState} ${hasAccessSettingsChanges ? styles.settingStatePending : styles.settingStateSaved}`}>
-                                            {accessSettingsStateText}
-                                        </p>
-
-                                        <div className={styles.securityActions}>
-                                            <button
-                                                type="button"
-                                                className={styles.convertBtn}
-                                                onClick={handleSaveAccessSettings}
-                                                disabled={isAccessSaving || !hasAccessSettingsChanges}
-                                            >
-                                                {isAccessSaving ? t('saving') : t('accessSettingsSave')}
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className={styles.dangerBtn}
-                                                onClick={handleRevokeSessions}
-                                                disabled={isRevokingSessions}
-                                            >
-                                                {isRevokingSessions ? t('saving') : t('revokeAllSessions')}
-                                            </button>
-                                        </div>
-                                    </>
-                                )}
+                            {/* 门禁设置保存提示与保存按钮（保持不变） */}
+                            <div className={styles.accessSaveRow}>
+                                <p className={`${styles.settingState} ${hasAccessSettingsChanges ? styles.settingStatePending : styles.settingStateSaved}`}>
+                                    {accessSettingsStateText}
+                                </p>
+                                <div className={styles.securityActions}>
+                                    <button
+                                        type="button"
+                                        className={styles.convertBtn}
+                                        onClick={handleSaveAccessSettings}
+                                        disabled={isAccessSaving || !hasAccessSettingsChanges}
+                                    >
+                                        {isAccessSaving ? t('saving') : t('accessSettingsSave')}
+                                    </button>
+                                </div>
                             </div>
                         </>
                     ) : (
