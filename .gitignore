@@ -58,3 +58,6 @@ portable-dist/
 # Backup files
 *.bak
 *.zip
+
+# Agents
+.kiro
