@@ -652,7 +652,10 @@ export const Settings: React.FC = () => {
                                     className={`${styles.segmentBtn} ${!isLodEnabled ? styles.segmentActive : ''}`}
                                     onClick={() => {
                                         if (isLodEnabled) {
-                                            applyManualChange(() => toggleLod());
+                                            applyManualChange(() => {
+                                                toggleLod();
+                                                reloadCurrentModel();
+                                            });
                                         }
                                     }}
                                 >
@@ -662,7 +665,10 @@ export const Settings: React.FC = () => {
                                     className={`${styles.segmentBtn} ${isLodEnabled ? styles.segmentActive : ''}`}
                                     onClick={() => {
                                         if (!isLodEnabled) {
-                                            applyManualChange(() => toggleLod());
+                                            applyManualChange(() => {
+                                                toggleLod();
+                                                reloadCurrentModel();
+                                            });
                                         }
                                     }}
                                 >

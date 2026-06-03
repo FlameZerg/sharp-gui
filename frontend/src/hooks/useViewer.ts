@@ -356,8 +356,10 @@ export const useViewer = (
             activeMesh
             && isRevealEffectEnabled(revealEffectRuntimeRef.current.activeEffect)
           ) {
-            updateRevealEffectPlayback(revealEffectRuntimeRef.current, performance.now());
-            activeMesh.updateVersion();
+            const revealUpdated = updateRevealEffectPlayback(revealEffectRuntimeRef.current, performance.now());
+            if (revealUpdated) {
+              activeMesh.updateVersion();
+            }
           }
           controls.update();
           renderer.render(scene, camera);

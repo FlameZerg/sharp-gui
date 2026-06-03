@@ -306,7 +306,7 @@ interface QuickPresetState {
 function getQuickPresetState(mode: LodPresetKey): QuickPresetState {
   if (mode === 'performance') {
     return {
-      isLodEnabled: true,
+      isLodEnabled: false,
       lodPreset: 'performance',
       lodCompareMode: 'lod',
       radModeEnabled: false,
@@ -318,7 +318,7 @@ function getQuickPresetState(mode: LodPresetKey): QuickPresetState {
 
   if (mode === 'balanced') {
     return {
-      isLodEnabled: true,
+      isLodEnabled: false,
       lodPreset: 'balanced',
       lodCompareMode: 'lod',
       radModeEnabled: false,
@@ -329,7 +329,7 @@ function getQuickPresetState(mode: LodPresetKey): QuickPresetState {
   }
 
   return {
-    isLodEnabled: true,
+    isLodEnabled: false,
     lodPreset: 'detail',
     lodCompareMode: 'lod',
     radModeEnabled: false,

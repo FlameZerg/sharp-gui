@@ -42,9 +42,42 @@ const REVEAL_EFFECT_TYPES: Record<Exclude<ActiveRevealEffectId, 'default'>, numb
   rain: 5,
 };
 
+const REVEAL_EFFECT_DURATIONS: Record<ActiveRevealEffectId, number> = {
+  default: 1,
+  magic: 5,
+  spread: 5,
+  unroll: 4,
+  twister: 5,
+  rain: 5,
+};
+
+const REVEAL_EFFECT_START_OFFSETS: Record<ActiveRevealEffectId, number> = {
+  default: 0,
+  magic: 3.4,
+  spread: 1.0,
+  unroll: 1.2,
+  twister: 5.2,
+  rain: 2.8,
+};
+
 function getRevealEffectType(effectId: RevealEffectId): number {
   if (effectId === 'none' || effectId === 'default') return 0;
   return REVEAL_EFFECT_TYPES[effectId];
+}
+
+function getRevealEffectDuration(effectId: RevealEffectId): number {
+  if (!isRevealEffectEnabled(effectId)) return 0;
+  return REVEAL_EFFECT_DURATIONS[effectId];
+}
+
+function getRevealEffectStartOffset(effectId: RevealEffectId): number {
+  if (!isRevealEffectEnabled(effectId)) return 0;
+  return REVEAL_EFFECT_START_OFFSETS[effectId];
+}
+
+function syncRevealEffectTimeUniform(runtime: RevealEffectRuntime): void {
+  runtime.timeUniform.value = getRevealEffectStartOffset(runtime.activeEffect)
+    + runtime.playbackTime;
 }
 
 export function isRevealEffectEnabled(
@@ -96,7 +129,7 @@ export interface RevealEffectRuntime {
 function resetRevealEffectPlayback(runtime: RevealEffectRuntime): void {
   runtime.playbackTime = 0;
   runtime.lastFrameAt = null;
-  runtime.timeUniform.value = 0;
+  syncRevealEffectTimeUniform(runtime);
 }
 
 function createRevealEffectModifier(runtime: RevealEffectRuntime): GsplatModifier {
@@ -167,7 +200,6 @@ function createRevealEffectModifier(runtime: RevealEffectRuntime): GsplatModifie
             float originalY = pos.y;
             pos.y = min(-3.0 + reveal * 5.0, pos.y);
             pos.xz = mix(pos.xz * 0.2, pos.xz, reveal);
-            pos.xz *= rot(t * 0.18);
             return vec4(pos, smoothstep(-3.0, originalY, pos.y));
           }
         `),
@@ -221,11 +253,11 @@ function createRevealEffectModifier(runtime: RevealEffectRuntime): GsplatModifie
         } else if (${inputs.effectType} == 4) {
           vec4 effectResult = twister(localPos, t);
           ${outputs.gsplat}.center = vec3(effectResult.x * radius, effectResult.y * halfHeight, effectResult.z * radius) + center;
-          ${outputs.gsplat}.scales = mix(vec3(minScale), scales, pow(effectResult.w, 8.0));
+          ${outputs.gsplat}.scales = mix(vec3(minScale), scales, pow(effectResult.w, 5.0));
         } else if (${inputs.effectType} == 5) {
           vec4 effectResult = rain(localPos, t);
           ${outputs.gsplat}.center = vec3(effectResult.x * radius, effectResult.y * halfHeight, effectResult.z * radius) + center;
-          ${outputs.gsplat}.scales = mix(vec3(minScale), scales, pow(effectResult.w, 12.0));
+          ${outputs.gsplat}.scales = mix(vec3(minScale), scales, pow(effectResult.w, 4.0));
           ${outputs.gsplat}.rgba = ${inputs.gsplat}.rgba * clamp(effectResult.w + 0.15, 0.0, 1.0);
         }
       `),
@@ -284,17 +316,23 @@ export function syncRevealEffectSelection(
 export function updateRevealEffectPlayback(
   runtime: RevealEffectRuntime,
   nowMs: number,
-): void {
+): boolean {
+  const duration = getRevealEffectDuration(runtime.activeEffect);
+  if (duration <= 0 || runtime.playbackTime >= duration) {
+    return false;
+  }
+
   if (runtime.lastFrameAt === null) {
     runtime.lastFrameAt = nowMs;
-    runtime.timeUniform.value = runtime.playbackTime;
-    return;
+    syncRevealEffectTimeUniform(runtime);
+    return true;
   }
 
   const deltaSeconds = Math.min((nowMs - runtime.lastFrameAt) / 1000, 0.05);
   runtime.lastFrameAt = nowMs;
-  runtime.playbackTime += deltaSeconds;
-  runtime.timeUniform.value = runtime.playbackTime;
+  runtime.playbackTime = Math.min(runtime.playbackTime + deltaSeconds, duration);
+  syncRevealEffectTimeUniform(runtime);
+  return true;
 }
 
 export function updateRevealEffectBounds(
