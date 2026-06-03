@@ -2477,8 +2477,16 @@ def restart_server():
     def do_restart():
         time.sleep(1)  # 等待响应发送完成
         print("🔄 Restarting server...")
+        # os.execv 会替换进程映像，但默认会继承已打开的文件描述符——包括正在监听的 socket。
+        # 若不释放，重启后的新映像用新配置（如切换局域网绑定）重新 bind 时会撞上仍被占用的旧端口，
+        # 报 "Address already in use" 导致重启失败、绑定“假生效”。
+        # 这里把除标准流外的所有 FD 标记为 close-on-exec，确保 execv 时内核释放监听端口。
+        try:
+            os.closerange(3, _max_open_fds())
+        except Exception:
+            pass
         os.execv(sys.executable, [sys.executable] + sys.argv)
-    
+
     # 在后台线程中执行重启，确保响应能先返回
     threading.Thread(target=do_restart, daemon=True).start()
     
@@ -2486,6 +2494,18 @@ def restart_server():
         'success': True,
         'message': 'Server will restart in 1 second...'
     })
+
+
+def _max_open_fds():
+    """返回可安全关闭的最大文件描述符上限。"""
+    try:
+        import resource
+        soft, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
+        if soft and soft != resource.RLIM_INFINITY:
+            return min(soft, 65536)
+    except Exception:
+        pass
+    return 4096
 
 
 @app.route('/api/browse-folder', methods=['POST'])
@@ -2777,7 +2797,8 @@ if __name__ == '__main__':
     lan_bind_enabled = coerce_bool(startup_access_config.get('lan_bind_enabled'), True)
     bind_host = os.environ.get('SHARP_BIND_HOST', '').strip() or ('0.0.0.0' if lan_bind_enabled else '127.0.0.1')
 
-    # 输出简洁的启动信息（只在 reloader 子进程中输出，避免重复）
+    # 输出简洁的启动信息（reloader 开启时只在子进程输出，避免父进程重复打印；
+    # reloader 关闭时直接输出）
     if os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or not SHARP_DEBUG:
         print(f' * Running on {protocol}://127.0.0.1:5050')
         if lan_bind_enabled and bind_host != '127.0.0.1':
@@ -2794,7 +2815,19 @@ if __name__ == '__main__':
         print('Press CTRL+C to quit')
         print_runtime_diagnostics(protocol, local_ip)
 
+    # 安全与开发体验解耦：
+    # - use_debugger 默认关闭：不向客户端泄露堆栈、不暴露交互式调试器（潜在 RCE），仅 SHARP_DEBUG=1 时开启。
+    # - use_reloader 默认关闭：Werkzeug 自动重载会通过 WERKZEUG_SERVER_FD 把旧地址的监听 socket
+    #   传给子进程；此时 /api/restart 的 os.execv 会继承旧 socket，导致切换局域网绑定后重启“假生效”
+    #   （日志显示新地址，实际仍监听旧地址）。关闭 reloader 后，os.execv 会以新配置重新绑定，切换才真正生效。
+    #   开发期如需源码热重载，可设 SHARP_DEBUG=1 开启。
+    run_kwargs = {
+        'port': 5050,
+        'host': bind_host,
+        'debug': SHARP_DEBUG,
+        'use_debugger': SHARP_DEBUG,
+        'use_reloader': SHARP_DEBUG,
+    }
     if ssl_ctx:
-        app.run(debug=SHARP_DEBUG, port=5050, host=bind_host, ssl_context=ssl_ctx)
-    else:
-        app.run(debug=SHARP_DEBUG, port=5050, host=bind_host)
+        run_kwargs['ssl_context'] = ssl_ctx
+    app.run(**run_kwargs)

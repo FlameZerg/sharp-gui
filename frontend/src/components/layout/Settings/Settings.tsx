@@ -199,37 +199,55 @@ export const Settings: React.FC = () => {
                 payload.workspace_folder = workspaceFolder;
             }
 
-            // If nothing changed, just close
-            if (Object.keys(payload).length === 0) {
+            // 切换局域网监听绑定需要重启服务才能生效（与工作目录一致的体验）
+            const bindChanged = lanBindEnabled !== savedLanBindEnabled;
+
+            // 没有任何变更直接关闭
+            if (Object.keys(payload).length === 0 && !hasAccessSettingsChanges) {
                 handleClose();
                 return;
             }
 
-            const result = await saveSettings(payload);
-            if (result.success) {
-                // Update store with new format
+            // 先持久化门禁相关设置（启用状态、会话天数、远程生成、局域网绑定）
+            if (hasAccessSettingsChanges) {
+                const status = await updateAuthSettings({
+                    enabled: accessControlEnabled,
+                    session_days: sessionDays,
+                    allow_remote_generation: accessControlEnabled ? allowRemoteGeneration : false,
+                    lan_bind_enabled: lanBindEnabled,
+                });
+                applyAccessStatus(status);
+            }
+
+            // 再保存通用设置（模型格式、工作目录）
+            let needsServerRestart = bindChanged;
+            if (Object.keys(payload).length > 0) {
+                const result = await saveSettings(payload);
+                if (!result.success) {
+                    alert('Error: ' + (result.error || 'Unknown error'));
+                    return;
+                }
                 if (payload.model_format) {
                     setServerModelFormat(modelFormat);
-                    // Local user changing global default, so we can clear their local override
                     setLocalModelFormat(null);
                 }
+                needsServerRestart = needsServerRestart || Boolean(result.needs_restart);
+            }
 
-                if (result.needs_restart) {
-                    handleClose();
-                    setLoading(true, 'Restarting server...');
-                    try {
-                        await restartServer();
-                    } catch {
-                        // Restart will close connection, this is expected
-                    }
-                    setTimeout(() => {
-                        window.location.reload();
-                    }, 3000);
-                } else {
-                    handleClose();
+            // 工作目录或局域网绑定变更都需要重启服务，统一自动重启
+            if (needsServerRestart) {
+                handleClose();
+                setLoading(true, t('lanBindRestarting'));
+                try {
+                    await restartServer();
+                } catch {
+                    // 重启会断开连接，属预期行为
                 }
+                setTimeout(() => {
+                    window.location.reload();
+                }, 3000);
             } else {
-                alert('Error: ' + (result.error || 'Unknown error'));
+                handleClose();
             }
         } catch (error) {
             console.error('Failed to save settings:', error);
@@ -317,42 +335,6 @@ export const Settings: React.FC = () => {
         }
     };
 
-    const handleSaveAccessSettings = async () => {
-        if (!isLocalAccess) return;
-        setIsAccessSaving(true);
-        setAccessMessage(null);
-        const bindChanged = lanBindEnabled !== savedLanBindEnabled;
-        try {
-            const status = await updateAuthSettings({
-                enabled: accessControlEnabled,
-                session_days: sessionDays,
-                allow_remote_generation: accessControlEnabled ? allowRemoteGeneration : false,
-                lan_bind_enabled: lanBindEnabled,
-            });
-            applyAccessStatus(status);
-            // 监听地址变更需要重启服务才能生效（Werkzeug 不支持热切换绑定地址）。
-            if (bindChanged) {
-                setAccessMessage(t('lanBindRestarting'));
-                setSettingsModalOpen(false);
-                setLoading(true, t('lanBindRestarting'));
-                try {
-                    await restartServer();
-                } catch {
-                    // 重启会断开连接，属预期行为
-                }
-                setTimeout(() => {
-                    window.location.reload();
-                }, 3000);
-                return;
-            }
-            setAccessMessage(t('accessSettingsSaved'));
-        } catch (error) {
-            setAccessMessage(getAccessErrorMessage(error));
-        } finally {
-            setIsAccessSaving(false);
-        }
-    };
-
     const handleRevokeSessions = async () => {
         if (!isLocalAccess) return;
         setIsRevokingSessions(true);
@@ -390,6 +372,7 @@ export const Settings: React.FC = () => {
             <div className={styles.panel}>
                 <h3 className={styles.title}>⚙️ {t('settings')}</h3>
 
+                <div className={styles.body}>
                 <div className={styles.group}>
                     <label className={styles.label}>{t('accessControlTitle')}</label>
 
@@ -399,7 +382,10 @@ export const Settings: React.FC = () => {
                             <div className={styles.accessToggleCard}>
                                 <div className={styles.accessToggleCopy}>
                                     <span className={styles.accessToggleTitle}>
-                                        {lanBindEnabled ? t('lanBindEnabled') : t('lanBindDisabled')}
+                                        {t('lanBindTitle')}
+                                        <span className={`${styles.toggleStateTag} ${lanBindEnabled ? styles.toggleStateOn : styles.toggleStateOff}`}>
+                                            {lanBindEnabled ? t('toggleStateOn') : t('toggleStateOff')}
+                                        </span>
                                     </span>
                                     <p>
                                         {lanBindEnabled ? t('lanBindEnabledHint') : t('lanBindDisabledHint')}
@@ -424,7 +410,10 @@ export const Settings: React.FC = () => {
                                     <div className={`${styles.accessToggleCard} ${!accessControlEnabled ? styles.accessToggleWarning : ''}`}>
                                         <div className={styles.accessToggleCopy}>
                                             <span className={styles.accessToggleTitle}>
-                                                {accessControlEnabled ? t('accessControlEnabled') : t('accessControlDisabled')}
+                                                {t('accessControlSwitchTitle')}
+                                                <span className={`${styles.toggleStateTag} ${accessControlEnabled ? styles.toggleStateOn : styles.toggleStateOff}`}>
+                                                    {accessControlEnabled ? t('toggleStateOn') : t('toggleStateOff')}
+                                                </span>
                                             </span>
                                             <p>
                                                 {accessControlEnabled ? t('accessControlEnabledHint') : t('accessControlDisabledHint')}
@@ -529,22 +518,10 @@ export const Settings: React.FC = () => {
                                 </div>
                             )}
 
-                            {/* 门禁设置保存提示与保存按钮（保持不变） */}
-                            <div className={styles.accessSaveRow}>
-                                <p className={`${styles.settingState} ${hasAccessSettingsChanges ? styles.settingStatePending : styles.settingStateSaved}`}>
-                                    {accessSettingsStateText}
-                                </p>
-                                <div className={styles.securityActions}>
-                                    <button
-                                        type="button"
-                                        className={styles.convertBtn}
-                                        onClick={handleSaveAccessSettings}
-                                        disabled={isAccessSaving || !hasAccessSettingsChanges}
-                                    >
-                                        {isAccessSaving ? t('saving') : t('accessSettingsSave')}
-                                    </button>
-                                </div>
-                            </div>
+                            {/* 门禁设置保存状态提示（保存动作统一由底部“保存”按钮触发） */}
+                            <p className={`${styles.settingState} ${styles.accessStateRow} ${hasAccessSettingsChanges ? styles.settingStatePending : styles.settingStateSaved}`}>
+                                {accessSettingsStateText}
+                            </p>
                         </>
                     ) : (
                         <>
@@ -939,6 +916,8 @@ export const Settings: React.FC = () => {
                         ⚠️ {t('settingsRestartWarning') || '修改工作目录后需重启服务器生效'}
                     </p>
                 )}
+
+                </div>
 
                 <div className={styles.actions}>
                     <button className={styles.cancelBtn} onClick={handleClose}>

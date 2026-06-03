@@ -615,7 +615,25 @@ npm run build
 ```bash
 ./run.sh           # 使用 React 现代版本 (默认)
 ./run.sh --legacy  # 使用原始单文件版本
+./run.sh --verbose # 开启详细诊断日志 (写入 sharp-gui-verbose.log)
 ```
+
+### 环境变量
+
+后端 `app.py` 支持以下环境变量，普通用户无需设置，开发与排障时可按需使用：
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `SHARP_FRONTEND_MODE` | `react` | 前端模式：`react`（构建版）或 `legacy`（单文件版）。`run.sh --legacy` 会设为 `legacy`。 |
+| `SHARP_DEBUG` | 关闭 | 设为 `1`/`true` 开启 Flask 调试器（向浏览器返回堆栈、启用交互式调试器）。**有安全风险，仅本机排障使用，切勿在局域网/公网开启。** |
+| `SHARP_VERBOSE` | 关闭 | 设为 `1`/`true` 开启详细诊断日志（werkzeug 提升到 DEBUG、打印每条请求并写日志文件）。`run.sh --verbose` 会设置它。 |
+| `SHARP_LOG_LEVEL` | `INFO`（verbose 时 `DEBUG`） | 应用日志级别。 |
+| `SHARP_LOG_FILE` | `sharp-gui-verbose.log` | 详细诊断日志的输出文件路径。 |
+| `SHARP_BIND_HOST` | 跟随门禁设置 | 覆盖监听地址。不设时由「局域网门禁」中的局域网绑定开关决定（开 `0.0.0.0` / 关 `127.0.0.1`）。 |
+| `SHARP_LAN_IP` | 自动探测 | 启动信息中显示的局域网 IP，`run.sh` 会自动注入。 |
+| `SHARP_DEVICE` | 自动选择 | 推理设备：`cpu` / `cuda` / `mps`，留空则自动检测可用设备。 |
+
+> `SHARP_DEBUG` 同时控制调试器、堆栈泄露与源码热重载，三者默认全部关闭。设为 `1` 后全部开启，仅供本机排障使用。（热重载与调试器绑定是因为 Werkzeug reloader 开启时会通过 socket 继承干扰 `/api/restart` 的地址重新绑定。）
 
 ### 创建发布包
 

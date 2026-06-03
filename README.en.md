@@ -612,7 +612,25 @@ npm run build
 ```bash
 ./run.sh           # Use React modern version (default)
 ./run.sh --legacy  # Use original single-file version
+./run.sh --verbose # Enable detailed diagnostics log (written to sharp-gui-verbose.log)
 ```
+
+### Environment Variables
+
+The `app.py` backend honors the following environment variables. Regular users don't need to set any; they're handy for development and troubleshooting:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SHARP_FRONTEND_MODE` | `react` | Frontend mode: `react` (built) or `legacy` (single-file). `run.sh --legacy` sets it to `legacy`. |
+| `SHARP_DEBUG` | off | Set `1`/`true` to enable the Flask debugger (returns stack traces to the browser, enables the interactive debugger). **Security risk — local troubleshooting only, never enable on a LAN/public network.** |
+| `SHARP_VERBOSE` | off | Set `1`/`true` for detailed diagnostics (werkzeug raised to DEBUG, logs every request and writes a log file). `run.sh --verbose` sets it. |
+| `SHARP_LOG_LEVEL` | `INFO` (`DEBUG` when verbose) | Application log level. |
+| `SHARP_LOG_FILE` | `sharp-gui-verbose.log` | Output path for the detailed diagnostics log. |
+| `SHARP_BIND_HOST` | follows the gate setting | Overrides the listen address. When unset it follows the "LAN access" toggle in Settings (on → `0.0.0.0` / off → `127.0.0.1`). |
+| `SHARP_LAN_IP` | auto-detected | LAN IP shown in the startup banner; injected automatically by `run.sh`. |
+| `SHARP_DEVICE` | auto-selected | Inference device: `cpu` / `cuda` / `mps`; leave empty to auto-detect. |
+
+> `SHARP_DEBUG` controls the debugger, stack trace exposure, and source hot-reload together — all three are off by default. Set to `1` to enable all, for local troubleshooting only. (Hot-reload is coupled to the debugger because the Werkzeug reloader inherits the listening socket in a way that breaks `/api/restart`'s address rebind.)
 
 ### Create Release Package
 

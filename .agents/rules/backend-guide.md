@@ -163,7 +163,8 @@ photo_thumbnail_folder = os.path.join(photo_gallery_cache_folder, 'thumbnails')
   "access_control": {
     "enabled": false,
     "session_days": 30,
-    "allow_remote_generation": false
+    "allow_remote_generation": false,
+    "lan_bind_enabled": true
   }
 }
 ```
@@ -176,7 +177,7 @@ photo_thumbnail_folder = os.path.join(photo_gallery_cache_folder, 'thumbnails')
 
 `photo_gallery_roots` 控制本地照片图库相册目录；缺省时按空数组处理，不影响旧配置启动。
 
-`access_control` 控制可选局域网门禁；缺省或 `enabled=false` 时读取资源保持旧的局域网开放行为，但 owner-only 端点仍必须限制真实 localhost。
+`access_control` 控制可选局域网门禁；缺省或 `enabled=false` 时读取资源保持旧的局域网开放行为，但 owner-only 端点仍必须限制真实 localhost。`lan_bind_enabled`（缺省 `true`）决定服务监听 `0.0.0.0`（局域网共享）还是 `127.0.0.1`（仅本机），修改后需重启生效。
 
 ---
 
@@ -201,11 +202,24 @@ def after_request(response):
 
 ---
 
-## HTTPS
+## HTTPS 与监听绑定
 
 - 自动检测项目根目录下的 `cert.pem` / `key.pem`
-- 有证书时使用 `ssl_context`；无证书时 fallback 到 HTTP
+- 有证书时使用 `ssl_context`；无证书时 fallback 到 HTTP（此时访问码/会话明文传输，前端会提示）
 - 证书由 `tools/generate_cert.py` 生成
+- **监听地址**由 `access_control.lan_bind_enabled` 决定：`true` → `0.0.0.0`（局域网共享），`false` → `127.0.0.1`（仅本机）。环境变量 `SHARP_BIND_HOST` 可覆盖。修改该开关需重启服务生效（前端保存后自动重启）。
+- **调试模式默认关闭**：`app.run` 默认 `debug=False`、`use_debugger=False`、`use_reloader=False`，避免向客户端泄露堆栈与 RCE 风险，并防止 Werkzeug reloader 的 socket 继承机制干扰 `/api/restart` 的重新绑定（见下方重启说明）。仅 `SHARP_DEBUG=1` 时三者同时开启，且只应在本机排障使用。
+- **`/api/restart` 的重新绑定机制**：`do_restart` 使用 `os.execv` 替换进程映像来实现重启，这样可以读取最新的 `config.json`（包括切换后的 `lan_bind_enabled`）。重启前必须调用 `os.closerange(3, max_fds)` 关闭所有继承的 FD（尤其是监听 socket），否则 execv 后新映像尝试重新 bind 时会遇到 `Address already in use` 而崩溃，导致绑定"假切换"。`use_reloader=False` 也是必要条件：reloader 开启时父进程持有 socket 并通过 `WERKZEUG_SERVER_FD` 传给子进程，无法通过 `closerange` 干净释放。
+
+## 静态文件服务（/files/*）
+
+`/files/<path>` 由 `serve_files` 提供，**收敛到白名单服务根**，不再以 `BASE_DIR` 为默认根：
+
+- 仅允许 `ALLOWED_FILE_SERVE_ROOTS`（`outputs/` 模型与 `inputs/.thumbnails/` 历史缩略图）内的文件。
+- 解析后的真实路径用 `is_real_path_inside` 校验（基于 `realpath` + `commonpath`），落在白名单外、相对穿越、绝对路径或符号链接逃逸一律 404。
+- 命中敏感清单（`config.json`、`*.pem`、`*.key`、`app.py`、`.env` 等）一律 404，**不区分“不存在”与“被禁”**以避免信息泄露。
+- 该校验独立于门禁开关：即便 `access_control.enabled=false`，敏感系统文件也不会通过 `/files/*` 暴露。
+- 新增需要对外提供的静态目录时，必须显式加入 `ALLOWED_FILE_SERVE_ROOTS`，不要放宽回 `BASE_DIR`。
 
 ---
 
@@ -265,6 +279,9 @@ if not resolved.startswith(os.path.abspath(workspace)):
 - **仅 localhost 可写入**的端点需检查 `request.remote_addr`
 - **局域网门禁**关闭时只放开私有读取资源，不得放开设置、删除、重启、目录管理、取消任务等 owner-only 操作
 - **Owner 判断**只能信任真实连接地址和允许的 Host，不得使用 `X-Forwarded-For`、`Forwarded`、`X-Real-IP` 等客户端可控头
+- **静态文件服务**只能从 `ALLOWED_FILE_SERVE_ROOTS` 白名单根提供，敏感文件（`config.json`、证书私钥、`app.py` 等）必须拒绝；该限制不随门禁开关放宽
+- **调试模式**默认关闭，不向客户端返回堆栈、不暴露交互式调试器；仅 `SHARP_DEBUG=1` 本机排障时开启
+- **反向代理**：若本机前置反向代理，所有请求 `remote_addr` 会变成 `127.0.0.1` 导致全员被判 owner；文档需提示用户在反代场景关闭 `allow_localhost_bypass`（需先设访问码）
 - **subprocess 调用**使用列表参数（非字符串拼接），避免命令注入
 - **不要**在 JSON 响应中暴露服务器绝对路径或堆栈信息
 

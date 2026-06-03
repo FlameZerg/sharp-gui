@@ -130,15 +130,25 @@ sharp-gui/
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `SHARP_FRONTEND_MODE` | `react` | 前端模式：`react` 或 `legacy` |
+| `SHARP_DEBUG` | 关闭 | 设为 `1` 开启 Flask 调试器 + 源码热重载（向客户端返回堆栈、暴露交互式调试器、改 `.py` 自动重启）。有安全风险，仅本机排障使用 |
+| `SHARP_VERBOSE` | 关闭 | 设为 `1` 开启详细诊断日志（werkzeug 提升到 DEBUG 并写日志文件），`run.sh --verbose` 会设置 |
+| `SHARP_LOG_LEVEL` | `INFO`（verbose 时 `DEBUG`） | 应用日志级别 |
+| `SHARP_LOG_FILE` | `sharp-gui-verbose.log` | 详细诊断日志输出路径 |
+| `SHARP_BIND_HOST` | 跟随门禁设置 | 覆盖监听地址；不设时由 `lan_bind_enabled` 决定（开 `0.0.0.0` / 关 `127.0.0.1`） |
 | `SHARP_LAN_IP` | 自动检测 | 局域网访问 IP |
+| `SHARP_DEVICE` | 自动选择 | 推理设备：`cpu` / `cuda` / `mps` |
 | `PYTHONHTTPSVERIFY` | `0`（安装时） | 绕过 SSL 验证（企业/学校网络） |
+
+> `SHARP_DEBUG` 同时控制调试器、堆栈泄露与源码热重载（三者都需要 reloader 关闭才能让 `/api/restart` 正确重新绑定监听地址，详见 backend-guide）。默认全部关闭；`SHARP_DEBUG=1` 时全部开启，仅本机排障使用。
 
 ## 端口与协议
 
 - 默认端口：**5050**
 - HTTPS：自动检测项目根目录下 `cert.pem` / `key.pem`
 - 开发代理：Vite dev server 将 `/api` 和 `/files` 代理到 `localhost:5050`
-- 服务默认对局域网可达；可选局域网门禁由 `access_control.enabled` 控制。HTTPS 负责传输加密，访问码负责浏览资格；owner-only 写操作仍只接受 localhost。
+- 监听地址由 `access_control.lan_bind_enabled` 决定：`true` → `0.0.0.0`（局域网可达），`false` → `127.0.0.1`（仅本机）；`SHARP_BIND_HOST` 可覆盖。
+- 可选局域网门禁由 `access_control.enabled` 控制。HTTPS 负责传输加密，访问码负责浏览资格；owner-only 写操作仍只接受 localhost。
+- `/files/*` 静态服务仅限白名单根（`outputs/` 与历史缩略图），敏感文件（`config.json`、证书私钥、`app.py`）一律拒绝，且不随门禁开关放宽。
 
 ## 3D 渲染引擎迁移说明
 
