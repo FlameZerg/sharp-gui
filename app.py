@@ -62,6 +62,7 @@ PHOTO_DEFAULT_PAGE_SIZE = 60
 PHOTO_MAX_PAGE_SIZE = 120
 PHOTO_MAX_CONVERSION_BATCH = 100
 PHOTO_MAX_DOWNLOAD_BATCH = 200
+PHOTO_MAX_UPLOAD_BATCH = 100
 ACCESS_COOKIE_NAME = 'sharp_gui_access'
 ACCESS_PUBLIC = 'public'
 ACCESS_UNLOCKED = 'unlocked'
@@ -395,6 +396,9 @@ def get_required_access_level(access_config=None):
         return ACCESS_OWNER
     if path.startswith('/api/photo-albums/') and (method == 'DELETE' or path.endswith('/scan')):
         return ACCESS_OWNER
+    if path.startswith('/api/photo-albums/') and path.endswith('/uploads'):
+        access_config = access_config or get_access_control_config(persist_missing=False)
+        return ACCESS_UNLOCKED if is_access_control_enabled(access_config) else ACCESS_OWNER
     if path in {'/api/generate', '/api/photo-conversions'}:
         access_config = access_config or get_access_control_config(persist_missing=False)
         if not is_access_control_enabled(access_config):
@@ -691,7 +695,7 @@ def normalize_photo_album_roots(config_data=None):
     source_config = config_data or load_config()
     raw_roots = source_config.get('photo_gallery_roots', [])
     if not isinstance(raw_roots, list):
-        return []
+        raw_roots = []
 
     albums = []
     seen_ids = set()
@@ -1055,6 +1059,39 @@ def build_photo_album_response(album):
         'updated_at': updated_at,
         'error': error,
     }
+
+
+def make_unique_photo_upload_filename(filename, target_folder):
+    """为上传到照片图库的文件生成安全且不冲突的文件名。"""
+    safe_name = secure_filename(filename)
+    name, ext = os.path.splitext(safe_name)
+    if not ext:
+        _, ext = os.path.splitext(filename)
+
+    ext = ext.lower()
+    if ext not in {'.jpg', '.jpeg', '.png', '.webp'}:
+        return None
+
+    if not name:
+        name = 'photo'
+
+    candidate = f'{name}{ext}'
+    candidate_path = os.path.join(target_folder, candidate)
+    if not os.path.exists(candidate_path):
+        return candidate
+
+    suffix = uuid.uuid4().hex[:8]
+    return f'{name}-{suffix}{ext}'
+
+
+def is_valid_uploaded_photo(path):
+    """验证上传文件是否为 Pillow 可识别的图片。"""
+    try:
+        with Image.open(path) as img:
+            img.verify()
+        return True
+    except Exception:
+        return False
 
 
 def make_unique_input_filename(filename):
@@ -2049,6 +2086,77 @@ def get_photo_original(photo_id):
     )
 
     return response
+
+
+@app.route('/api/photo-albums/<album_id>/uploads', methods=['POST'])
+def upload_photos_to_album(album_id):
+    """上传图片到当前照片相册，供局域网设备添加照片。"""
+    album = find_photo_album(album_id)
+    if not album:
+        return jsonify({'error': 'Album not found'}), 404
+    if not album.get('enabled', True):
+        return jsonify({'error': 'Album is disabled'}), 400
+
+    album_root = os.path.realpath(os.path.abspath(album['path']))
+    if not os.path.isdir(album_root):
+        return jsonify({'error': 'Album folder is unavailable'}), 400
+
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+
+    files = request.files.getlist('file')
+    if not files or files[0].filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+
+    uploaded = 0
+    failed = []
+
+    for uploaded_file in files[:PHOTO_MAX_UPLOAD_BATCH]:
+        original_name = uploaded_file.filename or 'photo'
+        filename = make_unique_photo_upload_filename(original_name, album_root)
+        if not filename:
+            failed.append({'name': original_name, 'error': 'Unsupported image format'})
+            continue
+
+        target_path = os.path.realpath(os.path.join(album_root, filename))
+        if not is_real_path_inside(target_path, album_root):
+            failed.append({'name': original_name, 'error': 'Unsafe upload path'})
+            continue
+
+        try:
+            uploaded_file.save(target_path)
+            if not is_valid_uploaded_photo(target_path):
+                try:
+                    os.remove(target_path)
+                except OSError:
+                    pass
+                failed.append({'name': original_name, 'error': 'Invalid image file'})
+                continue
+
+            uploaded += 1
+        except Exception as e:
+            try:
+                if os.path.exists(target_path):
+                    os.remove(target_path)
+            except OSError:
+                pass
+            failed.append({'name': original_name, 'error': str(e)})
+
+    if uploaded == 0:
+        return jsonify({
+            'success': False,
+            'uploaded': uploaded,
+            'failed': failed,
+            'error': 'No valid photos uploaded',
+        }), 400
+
+    scan_photo_album(album)
+    return jsonify({
+        'success': True,
+        'uploaded': uploaded,
+        'failed': failed,
+        'album': build_photo_album_response(album),
+    })
 
 
 @app.route('/api/photo-downloads', methods=['POST'])

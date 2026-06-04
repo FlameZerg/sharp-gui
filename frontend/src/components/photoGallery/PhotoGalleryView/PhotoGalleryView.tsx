@@ -4,12 +4,14 @@ import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
 
 import {
+  ApiError,
   addPhotoAlbum,
   browseFolder,
   convertPhotosToModels,
   downloadPhotos,
   fetchPhotoAlbumPhotos,
   fetchPhotoAlbums,
+  uploadPhotosToGallery,
 } from '@/api';
 import { CloseIcon } from '@/components/common/Icons';
 import { TextInputDialog } from '@/components/common/TextInputDialog';
@@ -25,6 +27,8 @@ import styles from './PhotoGalleryView.module.css';
 const MIN_GRID_COLUMNS = 1;
 const MAX_GRID_COLUMNS = 8;
 const MOBILE_TOOLBAR_BREAKPOINT = 768;
+const NOTICE_SUCCESS_AUTO_DISMISS_MS = 3200;
+const NOTICE_ERROR_AUTO_DISMISS_MS = 5200;
 
 function getDefaultGridColumns() {
   if (typeof window === 'undefined') {
@@ -66,6 +70,8 @@ export function PhotoGalleryView() {
   const [isConverting, setIsConverting] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isAddingAlbum, setIsAddingAlbum] = useState(false);
+  const [isUploadingPhotos, setIsUploadingPhotos] = useState(false);
+  const [uploadingPhotoCount, setUploadingPhotoCount] = useState(0);
   const [toolbarMode, setToolbarMode] = useState<PhotoToolbarMode>('expanded');
   const [error, setError] = useState<string | null>(null);
   const [pathDialogOpen, setPathDialogOpen] = useState(false);
@@ -80,6 +86,7 @@ export function PhotoGalleryView() {
     photoSelectionMode,
     selectedPhotoIds,
     isLocalAccess,
+    authStatus,
     sidebarCollapsed,
     setPhotoAlbums,
     setPhotoItems,
@@ -100,6 +107,7 @@ export function PhotoGalleryView() {
       photoSelectionMode: state.photoSelectionMode,
       selectedPhotoIds: state.selectedPhotoIds,
       isLocalAccess: state.isLocalAccess,
+      authStatus: state.authStatus,
       sidebarCollapsed: state.sidebarCollapsed,
       setPhotoAlbums: state.setPhotoAlbums,
       setPhotoItems: state.setPhotoItems,
@@ -114,6 +122,9 @@ export function PhotoGalleryView() {
   );
 
   const currentAlbum = photoAlbums.find((album) => album.id === currentPhotoAlbumId) ?? null;
+  const canUploadPhotos = Boolean(currentAlbum) && (
+    isLocalAccess || Boolean(authStatus?.access_control_enabled)
+  );
 
   useEffect(() => {
     const handleResize = () => {
@@ -132,13 +143,29 @@ export function PhotoGalleryView() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  useEffect(() => {
+    if (!notice || isUploadingPhotos) {
+      return;
+    }
+
+    const timeout = window.setTimeout(
+      () => setNotice(null),
+      notice.tone === 'success' ? NOTICE_SUCCESS_AUTO_DISMISS_MS : NOTICE_ERROR_AUTO_DISMISS_MS,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [isUploadingPhotos, notice]);
+
   const refreshAlbums = useCallback(async () => {
     const response = await fetchPhotoAlbums();
     setPhotoAlbums(response.albums);
   }, [setPhotoAlbums]);
 
-  const loadPhotos = useCallback(async (cursor: string | null, append: boolean) => {
-    if (!currentPhotoAlbumId) {
+  const loadPhotos = useCallback(async (
+    cursor: string | null,
+    append: boolean,
+    albumId = currentPhotoAlbumId,
+  ) => {
+    if (!albumId) {
       clearPhotoItems();
       return;
     }
@@ -151,7 +178,7 @@ export function PhotoGalleryView() {
       }
       setError(null);
 
-      const response = await fetchPhotoAlbumPhotos(currentPhotoAlbumId, cursor, 60, sort);
+      const response = await fetchPhotoAlbumPhotos(albumId, cursor, 60, sort);
       setPhotoItems(response.items, response.next_cursor, response.total, append);
       if (response.error) {
         setError(response.error);
@@ -256,6 +283,55 @@ export function PhotoGalleryView() {
     await refreshAlbums();
     await loadPhotos(null, false);
   }, [loadPhotos, refreshAlbums]);
+
+  const handleUploadPhotos = useCallback(async (files: FileList | File[]) => {
+    if (!currentAlbum) {
+      return;
+    }
+
+    const imageFiles = Array.from(files).filter((file) =>
+      file.type.startsWith('image/') || /\.(jpe?g|png|webp)$/i.test(file.name),
+    );
+
+    if (imageFiles.length === 0) {
+      setNotice({ tone: 'error', message: t('selectImageFiles') });
+      return;
+    }
+
+    if (isUploadingPhotos) {
+      return;
+    }
+
+    const targetAlbumId = currentAlbum.id;
+
+    try {
+      setIsUploadingPhotos(true);
+      setUploadingPhotoCount(imageFiles.length);
+      setNotice({ tone: 'success', message: t('photoUploadPreparing') });
+
+      const result = await uploadPhotosToGallery(targetAlbumId, imageFiles);
+      await refreshAlbums();
+      await loadPhotos(null, false, targetAlbumId);
+
+      const failedCount = result.failed?.length ?? 0;
+      setNotice({
+        tone: failedCount > 0 ? 'error' : 'success',
+        message: failedCount > 0
+          ? t('photoUploadPartial', { success: result.uploaded, failed: failedCount })
+          : t('photoUploadComplete', { count: result.uploaded }),
+      });
+    } catch (uploadError) {
+      const message = uploadError instanceof ApiError && uploadError.status === 403
+        ? t('photoUploadAccessDenied')
+        : uploadError instanceof Error
+          ? uploadError.message
+          : t('photoUploadFailed');
+      setNotice({ tone: 'error', message });
+    } finally {
+      setIsUploadingPhotos(false);
+      setUploadingPhotoCount(0);
+    }
+  }, [currentAlbum, isUploadingPhotos, loadPhotos, refreshAlbums, t]);
 
   const handleSortChange = useCallback((nextSort: string) => {
     setSort(nextSort);
@@ -392,8 +468,12 @@ export function PhotoGalleryView() {
           gridColumns={gridColumns}
           isLocalAccess={isLocalAccess}
           isLoading={isLoading}
+          canUploadPhotos={canUploadPhotos}
+          isUploadingPhotos={isUploadingPhotos}
+          uploadingPhotoCount={uploadingPhotoCount}
           mode={effectiveToolbarMode}
           onAddAlbum={handleAddAlbum}
+          onUploadPhotos={handleUploadPhotos}
           onRefresh={handleRefresh}
           onSortChange={handleSortChange}
           onGridColumnsChange={handleGridColumnsChange}

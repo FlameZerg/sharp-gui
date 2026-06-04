@@ -118,11 +118,15 @@ export async function apiPostBlob(
 
 export async function apiPostFormData<T>(
   url: string,
-  formData: FormData
+  formData: FormData,
+  options?: RequestInit & { timeout?: number }
 ): Promise<T> {
+  const { headers, ...restOptions } = options ?? {};
   const response = await fetchWithTimeout(url, {
     method: 'POST',
     body: formData,
+    headers,
+    ...restOptions,
   });
   
   if (!response.ok) {

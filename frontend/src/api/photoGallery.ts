@@ -1,10 +1,11 @@
-import { apiDelete, apiGet, apiPost, apiPostBlob } from './client';
+import { apiDelete, apiGet, apiPost, apiPostBlob, apiPostFormData } from './client';
 import type {
   AddPhotoAlbumRequest,
   AddPhotoAlbumResponse,
   PhotoAlbumsResponse,
   PhotoConversionResponse,
   PhotoListResponse,
+  PhotoUploadResponse,
 } from '@/types';
 
 export async function fetchPhotoAlbums(): Promise<PhotoAlbumsResponse> {
@@ -54,6 +55,25 @@ export async function convertPhotosToModels(
   return apiPost<PhotoConversionResponse>(
     '/api/photo-conversions',
     { photo_ids: photoIds },
+    { timeout: 300000 },
+  );
+}
+
+export async function uploadPhotosToGallery(
+  albumId: string,
+  files: FileList | File[],
+): Promise<PhotoUploadResponse> {
+  const formData = new FormData();
+
+  for (const file of files) {
+    if (file.type.startsWith('image/') || /\.(jpe?g|png|webp)$/i.test(file.name)) {
+      formData.append('file', file);
+    }
+  }
+
+  return apiPostFormData<PhotoUploadResponse>(
+    `/api/photo-albums/${encodeURIComponent(albumId)}/uploads`,
+    formData,
     { timeout: 300000 },
   );
 }

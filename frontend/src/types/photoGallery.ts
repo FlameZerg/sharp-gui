@@ -64,3 +64,14 @@ export interface PhotoConversionResponse {
   }>;
   error?: string;
 }
+
+export interface PhotoUploadResponse {
+  success: boolean;
+  uploaded: number;
+  album: PhotoAlbum;
+  failed?: Array<{
+    name: string;
+    error: string;
+  }>;
+  error?: string;
+}

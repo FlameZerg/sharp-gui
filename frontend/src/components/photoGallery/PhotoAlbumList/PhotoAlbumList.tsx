@@ -287,7 +287,9 @@ export function PhotoAlbumList() {
       <ConfirmDialog
         isOpen={Boolean(deleteTarget)}
         title={t('photoRemoveAlbum')}
-        message={deleteTarget ? t('photoAlbumDeleteConfirm', { name: deleteTarget.name }) : ''}
+        message={deleteTarget ? t('photoAlbumDeleteConfirm', {
+          name: deleteTarget.name,
+        }) : ''}
         confirmLabel={t('photoRemoveAlbum')}
         isBusy={isBusy}
         danger

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, DragEvent } from 'react';
 
 import { useTranslation } from 'react-i18next';
 
@@ -7,6 +7,7 @@ import {
   CheckIcon,
   ChevronDownIcon,
   ChevronUpIcon,
+  CloudUploadIcon,
   GridIcon,
   PlusIcon,
   ResetIcon,
@@ -29,8 +30,12 @@ interface PhotoToolbarProps {
   gridColumns: number;
   isLocalAccess: boolean;
   isLoading: boolean;
+  canUploadPhotos: boolean;
+  isUploadingPhotos: boolean;
+  uploadingPhotoCount: number;
   mode: PhotoToolbarMode;
   onAddAlbum: () => void;
+  onUploadPhotos: (files: FileList | File[]) => Promise<void> | void;
   onRefresh: () => void;
   onSortChange: (sort: string) => void;
   onGridColumnsChange: (columns: number) => void;
@@ -48,8 +53,12 @@ export function PhotoToolbar({
   gridColumns,
   isLocalAccess,
   isLoading,
+  canUploadPhotos,
+  isUploadingPhotos,
+  uploadingPhotoCount,
   mode,
   onAddAlbum,
+  onUploadPhotos,
   onRefresh,
   onSortChange,
   onGridColumnsChange,
@@ -59,7 +68,11 @@ export function PhotoToolbar({
 }: PhotoToolbarProps) {
   const { t } = useTranslation();
   const densityControlRef = useRef<HTMLDivElement | null>(null);
+  const uploadControlRef = useRef<HTMLDivElement | null>(null);
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const [densityOpen, setDensityOpen] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [isUploadDragActive, setIsUploadDragActive] = useState(false);
   const sortOptions = [
     { value: 'mtime_desc', label: t('photoSortModifiedNewest') },
     { value: 'mtime_asc', label: t('photoSortModifiedOldest') },
@@ -85,6 +98,7 @@ export function PhotoToolbar({
   const title = album?.name ?? t('photoNoAlbumSelected');
   const subtitle = album ? t('photoTotalCount', { count: total }) : t('photoChooseAlbumHint');
   const compactTitle = album ? `${album.name} · ${total}` : t('photoNoAlbumSelected');
+  const uploadDisabled = !album || !canUploadPhotos || isUploadingPhotos;
 
   useEffect(() => {
     if (!densityOpen) {
@@ -110,6 +124,51 @@ export function PhotoToolbar({
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [densityOpen]);
+
+  useEffect(() => {
+    if (!uploadOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!uploadControlRef.current?.contains(event.target as Node)) {
+        setUploadOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setUploadOpen(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [uploadOpen]);
+
+  const handleUploadFiles = (files: FileList | File[] | null) => {
+    if (!files || files.length === 0 || uploadDisabled) {
+      return;
+    }
+
+    void Promise.resolve(onUploadPhotos(files)).finally(() => {
+      setUploadOpen(false);
+      setIsUploadDragActive(false);
+      if (uploadInputRef.current) {
+        uploadInputRef.current.value = '';
+      }
+    });
+  };
+
+  const handleUploadDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsUploadDragActive(false);
+    handleUploadFiles(event.dataTransfer.files);
+  };
 
   return (
     <header className={[styles.toolbar, styles[mode]].filter(Boolean).join(' ')}>
@@ -196,6 +255,77 @@ export function PhotoToolbar({
         >
           <ResetIcon width={16} height={16} />
         </button>
+
+        {canUploadPhotos ? (
+          <div ref={uploadControlRef} className={styles.uploadControl}>
+            <button
+              className={[
+                styles.textBtn,
+                styles.uploadBtn,
+                uploadOpen ? styles.textBtnActive : '',
+              ].filter(Boolean).join(' ')}
+              onClick={() => setUploadOpen((current) => !current)}
+              disabled={uploadDisabled}
+              title={t('photoUpload')}
+              aria-label={t('photoUpload')}
+              aria-expanded={uploadOpen}
+              aria-haspopup="dialog"
+              type="button"
+            >
+              <CloudUploadIcon width={15} height={15} />
+              <span className={styles.uploadLabel}>
+                {isUploadingPhotos ? t('photoUploading') : t('photoUpload')}
+              </span>
+            </button>
+
+            <input
+              ref={uploadInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              hidden
+              onChange={(event) => handleUploadFiles(event.target.files)}
+            />
+
+            {uploadOpen ? (
+              <div className={styles.uploadPopover} role="dialog" aria-label={t('photoUpload')}>
+                <div
+                  className={[
+                    styles.uploadDrop,
+                    isUploadDragActive ? styles.uploadDropActive : '',
+                  ].filter(Boolean).join(' ')}
+                  onDragEnter={(event) => {
+                    event.preventDefault();
+                    setIsUploadDragActive(true);
+                  }}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    setIsUploadDragActive(true);
+                  }}
+                  onDragLeave={() => setIsUploadDragActive(false)}
+                  onDrop={handleUploadDrop}
+                >
+                  <CloudUploadIcon width={22} height={22} />
+                  <span>{t('photoUploadDropTitle')}</span>
+                  <button
+                    className={styles.uploadBrowseBtn}
+                    onClick={() => uploadInputRef.current?.click()}
+                    type="button"
+                  >
+                    {t('photoUploadChooseFiles')}
+                  </button>
+                </div>
+
+                {isUploadingPhotos ? (
+                  <div className={styles.uploadStatus} role="status" aria-live="polite">
+                    <span>{t('photoUploadPendingCount', { count: uploadingPhotoCount })}</span>
+                    <div className={styles.uploadProgress} />
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         <button
           className={[
