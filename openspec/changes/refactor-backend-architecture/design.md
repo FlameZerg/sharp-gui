@@ -1,10 +1,10 @@
 ## Context
 
-Sharp GUI 后端当前以单文件 Flask 应用运行，`app.py` 同时承担入口、配置、路径、LAN 门禁、路由、业务逻辑、任务队列、模型转换、静态文件服务、导出 HTML 和服务启动职责。这个结构在项目早期非常直接，但在本地照片图库、局域网门禁、SPZ 导出、LAN bind 重启等能力加入后，已经出现几个维护压力：
+Sharp GUI 后端当前以单文件 Flask 应用运行，`app.py` 同时承担入口、配置、路径、LAN 门禁、路由、业务逻辑、任务队列、模型转换、静态文件服务、导出 HTML 和服务启动职责。这个结构在项目早期非常直接，但在本地照片图库、局域网门禁、SPZ 导出、LAN bind 重启、局域网相册上传等能力加入后，已经出现几个维护压力：
 
-- 业务域彼此交织：照片图库路由中混合相册配置、扫描索引、路径安全、缩略图、ZIP 下载和任务入队。
+- 业务域彼此交织：照片图库路由中混合相册配置、扫描索引、路径安全、缩略图、相册上传、ZIP 下载和任务入队。
 - 安全边界难审查：`before_request` 中已有集中权限矩阵，但部分路由内部仍重复 owner 判断。
-- 共享状态隐式分散：`task_status`、`running_processes`、`photo_index_lock`、workspace 路径常量都在模块全局。
+- 共享状态隐式分散：`task_status`、`running_processes`、`photo_index_lock`、`PHOTO_MAX_UPLOAD_BATCH`、workspace 路径常量都在模块全局。
 - 启动副作用重：导入 `app.py` 会创建 Flask app、初始化目录、启动后台线程，不利于测试和后续重构。
 - 文档已经把 `app.py` 描述为单文件后端，但实际行数和职责已经超出这个模式的舒适范围。
 
@@ -19,6 +19,7 @@ Sharp GUI 后端当前以单文件 Flask 应用运行，`app.py` 同时承担入
 - 按业务域拆分 routes，按可复用逻辑拆分 services，让前端 API 模块和后端路由域可以互相对应。
 - 将 LAN 门禁权限矩阵、Host/Origin 校验、session token 与 CORS 响应维持为集中式安全层。
 - 将 workspace 路径、配置读取、运行时环境变量等基础能力从业务逻辑中剥离。
+- 将照片相册上传作为照片图库服务的一部分迁移，保留现有 form-data 契约、批量上限、图片格式校验、相册 root 写入边界和上传后扫描刷新行为。
 - 让服务层尽量不直接依赖 Flask `request`、`g`、`jsonify`，提高测试和迁移可控性。
 - 正式引入 pytest 作为后端测试框架，补充足够的后端测试覆盖，覆盖权限、路径安全、任务状态、关键 API contract 和高风险纯函数。
 - 保证现有一键安装、构建、运行、verbose 运行、发布脚本和 GitHub Release 自动化流程不受后端目录拆分影响。
@@ -167,7 +168,7 @@ routes ─────────▶ services ─────────▶ co
 ```text
 backend/services/
   model_gallery.py      # 模型列表、原图、缩略图、删除、下载选择
-  photo_gallery.py      # 相册配置、扫描、索引、缩略图、photo id、ZIP 输入准备
+  photo_gallery.py      # 相册配置、扫描、索引、缩略图、photo id、相册上传、ZIP 输入准备
   task_queue.py         # TaskManager、worker、状态、取消、清理
   model_convert.py      # ply_to_splat、ply_to_spz
   export_html.py        # Spark 独立 HTML 资源嵌入和响应内容构建
@@ -180,6 +181,46 @@ Why:
 - 业务逻辑从 route 中下沉后，后续可以单测服务函数，不必都走 HTTP client。
 - 照片图库和模型图库是两个独立业务域，拆开后更容易维护路径安全和缓存策略。
 - 导出 HTML、模型转换、文件夹选择属于工具型服务，不应和 API 路由互相夹杂。
+
+### Decision 5A: 照片相册上传归入 photo_gallery 服务
+
+当前新增的 `POST /api/photo-albums/<album_id>/uploads` 是照片图库域内的写入型 API。迁移后建议由 `routes/photo_gallery.py` 负责读取 `request.files.getlist('file')`、构造 HTTP 响应；由 `services/photo_gallery.py` 负责以下业务步骤：
+
+```text
+POST /api/photo-albums/<album_id>/uploads
+        │
+        ▼
+routes/photo_gallery.py
+  - 解析 album_id
+  - 读取 multipart/form-data 中的 file 列表
+  - 调用 service 并封装 JSON/status code
+        │
+        ▼
+services/photo_gallery.py
+  - 查找并校验相册存在、启用、目录可用
+  - 限制 PHOTO_MAX_UPLOAD_BATCH
+  - secure_filename + 原始扩展名兜底
+  - 仅允许 .jpg/.jpeg/.png/.webp
+  - 生成不冲突文件名
+  - realpath/commonpath 约束写入相册 root 内
+  - 保存后用 Pillow verify 验证真实图片
+  - 无效或失败时清理已写入文件
+  - 成功后扫描相册并返回更新后的 album 响应
+```
+
+权限语义保持当前行为：当 LAN 门禁开启时，已解锁远程设备可上传照片到已配置相册；当 LAN 门禁关闭时，该端点保持 owner-only，避免开放局域网写入文件系统。这个端点需要在集中权限矩阵中显式列出，而不是依赖默认 `/api/*` Unlocked 规则。
+
+Why:
+
+- 上传会向服务器相册目录写文件，风险高于普通照片读取，不能被“默认 Unlocked”吞掉。
+- 这个能力服务的是局域网设备给当前相册添加照片，因此在门禁开启且有访问码会话时允许远程写入是既有功能契约。
+- 文件名净化、扩展名白名单、真实图片验证、失败清理和相册扫描刷新属于可单测服务逻辑，不应塞在路由函数中。
+
+Alternatives considered:
+
+- 将上传作为单独 `photo_upload.py` 服务：边界更细，但当前上传强依赖相册配置、扫描和 album 响应，拆开会增加跳转。
+- 把上传改成 owner-only：更保守，但会破坏已支持的局域网设备上传场景。
+- 门禁关闭时也允许远程上传：与当前代码语义不符，而且会让无访问码局域网写入服务器文件系统，风险过高。
 
 Alternatives considered:
 
@@ -281,11 +322,12 @@ Alternatives considered:
 ## Risks / Trade-offs
 
 - [风险] Blueprint 注册遗漏导致某个端点 404 -> 缓解：迁移前后列出所有 route rule，并对照现有端点清单做 diff；至少覆盖 auth、gallery、photo、tasks、settings、files、export。
-- [风险] LAN 门禁权限语义被改变 -> 缓解：为 Public/Unlocked/Owner/Conditional 端点建立 pytest 覆盖；重点验证门禁开/关、远程生成开/关、owner-only 拒绝远程。
+- [风险] LAN 门禁权限语义被改变 -> 缓解：为 Public/Unlocked/Owner/Conditional 端点建立 pytest 覆盖；重点验证门禁开/关、远程生成开/关、相册上传条件写入和 owner-only 拒绝远程。
 - [风险] 后台 worker 被重复启动或测试导入时启动 -> 缓解：由 app factory 显式控制 `start_background_workers`，默认运行入口启动，测试可关闭；TaskManager 内部防重复启动。
 - [风险] 路径上下文拆分后使用旧 workspace -> 缓解：所有路径从同一个 `PathContext` 派生；workspace 修改仍要求重启，与现有 `/api/settings` 行为一致。
 - [风险] `/files/*` 白名单或敏感文件拒绝出现回退 -> 缓解：将静态文件解析服务独立测试，验证模型文件可访问、`config.json/key.pem/app.py` 和路径穿越均 404。
 - [风险] 照片图库索引锁拆分后出现竞争或死锁 -> 缓解：photo index 的 lock 与读写函数保留同模块封装，服务接口不向外暴露锁对象。
+- [风险] 照片上传迁移后出现路径逃逸、伪装文件残留或重复文件覆盖 -> 缓解：上传服务单测覆盖文件名净化、扩展名白名单、Pillow verify 失败清理、重复名自动加后缀和 realpath root 约束。
 - [风险] 导出 HTML 涉及多个前端依赖文件路径，拆分后资源定位失败 -> 缓解：保留 `BASE_DIR` 派生策略，验证 SPZ 导出和 PLY 兼容导出都能生成 HTML。
 - [风险] 文档和工作流仍要求向 `app.py` 添加路由 -> 缓解：实现完成后同步更新 `.agents/rules/backend-guide.md` 和 `.agents/workflows/new-api-endpoint.md`。
 - [风险] pytest 引入后测试环境与普通用户运行环境混淆 -> 缓解：将 pytest 作为开发/验证依赖记录清楚，不让普通一键运行路径强依赖测试工具。
@@ -308,7 +350,7 @@ Alternatives considered:
    - 先保持逻辑原样，再跑门禁 pytest 验证，必要时补充手动验证。
 5. 迁移服务与路由：
    - 先迁移低耦合的 frontend/files/export/model_convert。
-   - 再迁移 gallery/photo_gallery。
+   - 再迁移 gallery/photo_gallery，照片图库迁移时同步覆盖相册上传端点。
    - 最后迁移 task_queue 和 settings/restart。
 6. 文档与验证：
    - 更新后端架构规则、新 API 工作流、README 中单文件描述。
@@ -329,7 +371,8 @@ Verification points:
 - pytest 可以运行，且覆盖权限矩阵、路径安全、route map、关键 API 和无需真实推理的任务队列逻辑。
 - 门禁关闭时读取开放但 owner-only 仍拒绝远程；门禁开启时未认证远程读取被拒绝。
 - 任务上传、状态轮询、取消、worker 执行和完成后 SPZ 自动转换保持。
-- 照片相册列表、照片分页、缩略图、原图、ZIP 下载和照片转 3D 保持。
+- 照片相册列表、照片分页、缩略图、原图、相册上传、ZIP 下载和照片转 3D 保持。
+- `POST /api/photo-albums/<album_id>/uploads` 在门禁开启且已解锁时允许远程上传，在门禁关闭或未解锁时拒绝远程上传；上传成功后相册索引刷新，失败文件不残留。
 - `/files/config.json`、`/files/key.pem`、`/files/app.py` 和路径穿越请求仍不可访问。
 - SPZ/Ply 导出 HTML 能下载并包含必要资源。
 - `install.*`、`build.*`、`run.*`、`run_verbose.*`、`release.*`、Windows portable packaging 相关脚本和 `.github/workflows/release.yml` 的关键路径检查通过。

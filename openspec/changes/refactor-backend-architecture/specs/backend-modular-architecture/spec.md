@@ -60,6 +60,13 @@
 - **THEN** 系统 SHALL 仅在 LAN 门禁开启且 owner 显式启用远程生成时创建任务
 - **AND** 其他情况下系统 MUST 拒绝创建生成任务
 
+#### Scenario: 条件远程照片上传
+
+- **WHEN** 远程客户端向 `POST /api/photo-albums/<album_id>/uploads` 上传照片
+- **THEN** 系统 SHALL 仅在 LAN 门禁开启且请求已通过访问码会话解锁时接受上传
+- **AND** 当 LAN 门禁关闭、请求未解锁或相册不可用时，系统 MUST 拒绝远程写入相册目录
+- **AND** 该端点 MUST 在集中权限矩阵中显式归类，不能只依赖默认 `/api/*` 权限
+
 #### Scenario: 新增 API 默认权限归类
 
 - **WHEN** 后续新增私有 `/api/*` 或 `/files/*` 端点
@@ -78,7 +85,7 @@
 
 #### Scenario: 服务执行业务逻辑
 
-- **WHEN** 模型图库、照片图库、任务队列、模型转换、文件解析、导出 HTML 或文件夹选择逻辑被执行
+- **WHEN** 模型图库、照片图库、照片相册上传、任务队列、模型转换、文件解析、导出 HTML 或文件夹选择逻辑被执行
 - **THEN** 系统 SHALL 通过对应服务模块承载主要业务逻辑
 - **AND** 服务模块 SHALL 尽量避免直接依赖 Flask `request`、`g` 或 `jsonify`
 
@@ -138,6 +145,15 @@
 - **THEN** 系统 MUST 从索引和已配置相册 root 反查真实文件路径
 - **AND** 系统 MUST 再次验证真实路径仍位于对应相册 root 内
 
+#### Scenario: 照片相册上传文件
+
+- **WHEN** 系统接收 `POST /api/photo-albums/<album_id>/uploads` 的 multipart/form-data 文件
+- **THEN** 系统 MUST 仅将通过净化文件名、允许扩展名和真实图片验证的文件写入目标相册 root
+- **AND** 系统 MUST 对目标路径执行真实路径归一化和相册 root 内约束，防止路径穿越、符号链接逃逸或跨目录写入
+- **AND** 系统 MUST 避免覆盖既有文件，并在保存后图片验证失败或异常时清理已写入的无效文件
+- **AND** 系统 SHALL 保持现有批量上传上限和 `success`、`uploaded`、`failed`、`album`、`error` 响应字段语义
+- **AND** 至少一个文件上传成功后，系统 SHALL 刷新对应相册扫描结果并返回更新后的相册信息
+
 ### Requirement: 后端 SHALL 提供基于 pytest 的重构验证覆盖
 
 后端模块化重构完成后，系统 SHALL 使用 pytest 提供足够的后端验证来证明行为契约未被破坏。
@@ -151,13 +167,13 @@
 #### Scenario: 验证安全边界
 
 - **WHEN** 开发者运行 pytest 后端验证
-- **THEN** 验证 SHALL 覆盖 LAN 门禁开启和关闭时的私有读取、owner-only 写操作、远程生成条件和敏感文件拒绝
+- **THEN** 验证 SHALL 覆盖 LAN 门禁开启和关闭时的私有读取、owner-only 写操作、远程生成条件、条件远程照片上传和敏感文件拒绝
 - **AND** 验证 MUST 确认客户端可控转发头不能提升为 owner 权限
 
 #### Scenario: 验证核心业务路径
 
 - **WHEN** 开发者运行 pytest 后端验证
-- **THEN** 验证 SHALL 覆盖模型图库、照片图库、任务队列状态、任务取消、静态文件白名单和导出 HTML 的关键路径
+- **THEN** 验证 SHALL 覆盖模型图库、照片图库、照片相册上传、任务队列状态、任务取消、静态文件白名单和导出 HTML 的关键路径
 - **AND** 验证 SHALL 能发现模块拆分造成的注册遗漏、路径上下文错误或共享状态重复实例问题
 
 #### Scenario: 普通运行不依赖测试工具
