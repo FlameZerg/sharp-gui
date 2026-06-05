@@ -20,6 +20,7 @@
   inset: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  overflow-anchor: none;
   padding-left: 18px;
   transition: padding-left 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }

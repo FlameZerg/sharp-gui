@@ -2,6 +2,7 @@
   position: sticky;
   top: 18px;
   z-index: 5;
+  overflow-anchor: none;
   margin: 18px;
   padding: 14px 16px;
   border-radius: var(--radius-2xl);
@@ -16,8 +17,14 @@
   gap: 16px;
 }
 
-.miniHandle {
-  display: none;
+.toolbarContent {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  justify-self: stretch;
 }
 
 .titleBlock {
@@ -437,6 +444,12 @@
     gap: 12px;
   }
 
+  .toolbarContent {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+
   .actions {
     justify-content: flex-start;
     gap: 7px;
@@ -469,50 +482,123 @@
 
 @media (max-width: 768px) {
   .toolbar {
+    --toolbar-motion: 420ms cubic-bezier(0.18, 1.08, 0.22, 1);
+    --toolbar-fade: 140ms ease;
+
     top: 62px;
     display: grid;
     grid-template-columns: minmax(0, 1fr);
+    justify-items: stretch;
     align-items: start;
     margin: 64px 12px 10px;
     padding: 12px;
-    gap: 10px;
     overflow: visible;
+    will-change: width, margin, padding, transform;
     transition:
-      padding var(--transition-normal),
-      margin var(--transition-normal),
-      border-radius var(--transition-normal),
-      transform var(--transition-normal),
-      opacity var(--transition-normal);
+      width var(--toolbar-motion),
+      max-width var(--toolbar-motion),
+      margin var(--toolbar-motion),
+      padding var(--toolbar-motion),
+      border-radius var(--toolbar-motion),
+      transform var(--toolbar-motion),
+      opacity var(--toolbar-motion);
+  }
+
+  .toolbarContent {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+    inline-size: 100%;
+    align-items: start;
+    gap: 10px;
+    border-radius: inherit;
+    overflow: visible;
+    will-change: grid-template-columns, gap, transform;
+    transition:
+      grid-template-columns var(--toolbar-motion),
+      gap var(--toolbar-motion),
+      transform var(--toolbar-motion);
   }
 
   .titleBlock {
     min-width: 92px;
     padding-top: 2px;
+    will-change: min-width, transform;
+    transition:
+      min-width var(--toolbar-motion),
+      padding var(--toolbar-motion),
+      transform var(--toolbar-motion);
   }
 
   .eyebrow {
     margin-bottom: 2px;
     font-size: 10px;
+    max-height: 14px;
+    overflow: hidden;
+    transform: translateY(0);
+    transition:
+      opacity var(--toolbar-fade),
+      max-height var(--toolbar-motion),
+      margin var(--toolbar-motion),
+      transform var(--toolbar-motion);
   }
 
   .titleBlock h1 {
     font-size: 20px;
+    max-height: 28px;
+    transform: translateY(0);
+    transition:
+      opacity var(--toolbar-fade),
+      max-height var(--toolbar-motion),
+      transform var(--toolbar-motion);
   }
 
   .titleBlock p {
     margin-top: 3px;
     font-size: 11px;
+    max-height: 16px;
+    overflow: hidden;
+    transform: translateY(0);
+    transition:
+      opacity var(--toolbar-fade),
+      max-height var(--toolbar-motion),
+      margin var(--toolbar-motion),
+      transform var(--toolbar-motion);
+  }
+
+  .compactTitle {
+    display: block;
+    max-height: 0;
+    opacity: 0;
+    transform: translateY(5px);
+    transition:
+      opacity var(--toolbar-fade),
+      max-height var(--toolbar-motion),
+      transform var(--toolbar-motion);
   }
 
   .actions {
     width: 100%;
+    min-width: 0;
     justify-content: flex-start;
     gap: 7px;
+    will-change: width, max-width, gap;
+    transition:
+      width var(--toolbar-motion),
+      max-width var(--toolbar-motion),
+      gap var(--toolbar-motion),
+      transform var(--toolbar-motion);
   }
 
   .sortMenu {
     min-width: 116px;
     max-width: 132px;
+    transition:
+      min-width var(--toolbar-motion),
+      max-width var(--toolbar-motion),
+      width var(--toolbar-motion),
+      transform var(--toolbar-motion),
+      opacity var(--toolbar-motion);
   }
 
   .textBtn,
@@ -521,6 +607,19 @@
   .densityTrigger {
     height: 34px;
     border-radius: 17px;
+    transition:
+      width var(--toolbar-motion),
+      min-width var(--toolbar-motion),
+      flex-basis var(--toolbar-motion),
+      margin var(--toolbar-motion),
+      padding var(--toolbar-motion),
+      gap var(--toolbar-motion),
+      border-radius var(--toolbar-motion),
+      background var(--transition-normal),
+      color var(--transition-normal),
+      box-shadow var(--transition-normal),
+      transform var(--transition-normal),
+      opacity var(--transition-normal);
   }
 
   .densityTrigger {
@@ -539,7 +638,42 @@
     padding: 0 12px;
   }
 
+  .uploadBtn {
+    width: 34px;
+    min-width: 34px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .uploadLabel {
+    display: none;
+  }
+
+  .primaryLabel,
+  .primaryShortLabel {
+    transition:
+      opacity var(--toolbar-fade),
+      transform var(--toolbar-motion),
+      visibility 0s linear var(--toolbar-fade);
+  }
+
+  .primaryLabel {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .primaryShortLabel {
+    display: inline;
+    position: absolute;
+    opacity: 0;
+    transform: translateY(5px);
+    pointer-events: none;
+  }
+
   .primaryBtn {
+    position: relative;
+    overflow: hidden;
+    max-width: 128px;
     padding: 0 13px;
   }
 
@@ -547,27 +681,39 @@
     order: 7;
   }
 
-  .compact,
-  .mini {
-    grid-template-columns: minmax(0, 1fr) auto;
+  .compact {
     align-items: center;
     margin-top: 56px;
     padding: 8px 10px;
     border-radius: 22px;
   }
 
-  .compact .eyebrow,
-  .compact .titleBlock h1,
-  .compact .titleBlock p,
-  .mini .eyebrow,
-  .mini .titleBlock h1,
-  .mini .titleBlock p {
-    display: none;
+  .compact .toolbarContent {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    overflow: hidden;
   }
 
-  .compact .compactTitle,
-  .mini .compactTitle {
-    display: block;
+  .compact .toolbarContent:has([role="dialog"]),
+  .compact .toolbarContent:has([role="listbox"]) {
+    overflow: visible;
+  }
+
+  .compact .eyebrow,
+  .compact .titleBlock h1,
+  .compact .titleBlock p {
+    max-height: 0;
+    opacity: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+    transform: translateY(-5px);
+    pointer-events: none;
+  }
+
+  .compact .compactTitle {
+    max-height: 18px;
+    opacity: 1;
     max-width: 118px;
     color: var(--text-primary);
     font-size: 12px;
@@ -576,100 +722,128 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    transform: translateY(0);
   }
 
-  .compact .actions,
-  .mini .actions {
+  .compact .titleBlock {
+    min-width: 0;
+    justify-self: start;
+  }
+
+  .compact .actions {
     width: auto;
-    max-width: calc(100vw - 150px);
+    max-width: calc(100vw - 94px);
     flex-wrap: nowrap;
-    gap: 5px;
+    justify-self: end;
+    justify-content: flex-end;
+    gap: 4px;
   }
 
-  .compact .sortMenu,
-  .mini .sortMenu {
-    min-width: 42px;
-    max-width: 42px;
+  .compact .sortMenu {
+    min-width: 38px;
+    max-width: 38px;
   }
 
-  .compact .refreshBtn,
-  .mini .refreshBtn {
+  .compact .densityTrigger {
+    width: 38px;
+    min-width: 38px;
+  }
+
+  .compact .iconBtn {
+    width: 32px;
+    min-width: 32px;
+    flex-basis: 32px;
+  }
+
+  .compact .refreshBtn {
     display: inline-flex;
   }
 
   .compact .selectAction,
-  .compact .addBtn,
-  .mini .selectAction,
-  .mini .addBtn {
-    display: none;
+  .compact .addBtn {
+    width: 0;
+    min-width: 0;
+    flex-basis: 0;
+    margin-left: -4px;
+    padding: 0;
+    gap: 0;
+    overflow: hidden;
+    visibility: hidden;
+    opacity: 0;
+    transform: scale(0.92);
+    pointer-events: none;
+    transition:
+      width var(--toolbar-motion),
+      min-width var(--toolbar-motion),
+      flex-basis var(--toolbar-motion),
+      margin var(--toolbar-motion),
+      padding var(--toolbar-motion),
+      gap var(--toolbar-motion),
+      border-radius var(--toolbar-motion),
+      background var(--transition-normal),
+      color var(--transition-normal),
+      box-shadow var(--transition-normal),
+      transform var(--transition-normal),
+      opacity 60ms ease,
+      visibility 0s;
   }
 
-  .compact .uploadBtn,
-  .mini .uploadBtn {
-    width: 42px;
+  .compact .uploadBtn {
+    width: 32px;
+    min-width: 32px;
     padding: 0;
     justify-content: center;
   }
 
-  .compact .uploadLabel,
-  .mini .uploadLabel {
+  .compact .uploadLabel {
     display: none;
   }
 
-  .compact .primaryBtn,
-  .mini .primaryBtn {
-    width: 50px;
+  .compact .primaryBtn {
+    width: 58px;
+    max-width: 58px;
     padding: 0 10px;
-    gap: 5px;
+    gap: 4px;
   }
 
-  .compact .primaryLabel,
-  .mini .primaryLabel {
-    display: none;
+  .compact .primaryLabel {
+    position: absolute;
+    visibility: hidden;
+    opacity: 0;
+    transform: translateY(-5px);
+    pointer-events: none;
+    transition:
+      opacity 60ms ease,
+      transform var(--toolbar-motion),
+      visibility 0s;
   }
 
-  .compact .primaryShortLabel,
-  .mini .primaryShortLabel {
-    display: inline;
+  .compact .primaryShortLabel {
+    position: static;
+    opacity: 1;
+    transform: translateY(0);
     font-size: 12px;
     font-weight: 800;
   }
 
-  .mini {
-    width: min(278px, calc(100vw - 84px));
-    grid-template-columns: minmax(0, 1fr) auto;
-    margin-right: auto;
-    margin-left: auto;
-    transform: translateY(-6px);
-  }
-
-  .mini .titleBlock {
-    min-width: 0;
-  }
-
-  .mini .compactTitle {
-    max-width: 64px;
-  }
-
-  .mini .miniHandle {
-    position: absolute;
-    top: -30px;
-    left: 50%;
-    width: 44px;
-    height: 26px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    color: rgba(255, 255, 255, 0.72);
-    background: transparent;
-    transform: translateX(-50%);
-    cursor: pointer;
-  }
-
-  .mini .densityControl,
-  .mini .uploadControl,
-  .mini .refreshBtn {
-    display: inline-flex;
+  @media (prefers-reduced-motion: reduce) {
+    .toolbar,
+    .toolbarContent,
+    .titleBlock,
+    .eyebrow,
+    .titleBlock h1,
+    .titleBlock p,
+    .compactTitle,
+    .actions,
+    .sortMenu,
+    .textBtn,
+    .primaryBtn,
+    .iconBtn,
+    .densityTrigger,
+    .primaryLabel,
+    .primaryShortLabel {
+      transition-duration: 1ms;
+    }
   }
 }
 

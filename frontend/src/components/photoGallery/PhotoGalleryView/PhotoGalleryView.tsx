@@ -27,6 +27,8 @@ import styles from './PhotoGalleryView.module.css';
 const MIN_GRID_COLUMNS = 1;
 const MAX_GRID_COLUMNS = 8;
 const MOBILE_TOOLBAR_BREAKPOINT = 768;
+const MOBILE_TOOLBAR_EXPAND_SCROLL_TOP = 1;
+const MOBILE_TOOLBAR_COMPACT_SCROLL_TOP = 128;
 const NOTICE_SUCCESS_AUTO_DISMISS_MS = 3200;
 const NOTICE_ERROR_AUTO_DISMISS_MS = 5200;
 
@@ -62,7 +64,6 @@ export function PhotoGalleryView() {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const hasCustomGridColumns = useRef(false);
   const pinchRef = useRef<{ distance: number; columns: number } | null>(null);
-  const lastScrollTopRef = useRef(0);
   const [sort, setSort] = useState('mtime_desc');
   const [gridColumns, setGridColumns] = useState(getDefaultGridColumns);
   const [isLoading, setIsLoading] = useState(false);
@@ -206,22 +207,19 @@ export function PhotoGalleryView() {
     }
 
     const scrollTop = el.scrollTop;
-    const delta = scrollTop - lastScrollTopRef.current;
-    lastScrollTopRef.current = scrollTop;
     if (window.innerWidth <= MOBILE_TOOLBAR_BREAKPOINT) {
       setToolbarMode((current) => {
-        if (scrollTop < 28) {
+        if (scrollTop <= MOBILE_TOOLBAR_EXPAND_SCROLL_TOP) {
           return current === 'expanded' ? current : 'expanded';
         }
-        if (delta < -8) {
-          return current === 'compact' ? current : 'compact';
+
+        if (current === 'expanded') {
+          if (scrollTop >= MOBILE_TOOLBAR_COMPACT_SCROLL_TOP) {
+            return 'compact';
+          }
+          return current;
         }
-        if (scrollTop > 170 && delta > 5) {
-          return current === 'mini' ? current : 'mini';
-        }
-        if (scrollTop > 52 && current === 'expanded') {
-          return 'compact';
-        }
+
         return current;
       });
     }
@@ -440,10 +438,6 @@ export function PhotoGalleryView() {
     }
   }, [isDownloading, selectedPhotoIds, t]);
 
-  const effectiveToolbarMode = photoSelectionMode && selectedPhotoIds.length > 0
-    ? 'mini'
-    : toolbarMode;
-
   return (
     <div className={styles.root}>
       <div className={styles.backdrop} />
@@ -471,7 +465,7 @@ export function PhotoGalleryView() {
           canUploadPhotos={canUploadPhotos}
           isUploadingPhotos={isUploadingPhotos}
           uploadingPhotoCount={uploadingPhotoCount}
-          mode={effectiveToolbarMode}
+          mode={toolbarMode}
           onAddAlbum={handleAddAlbum}
           onUploadPhotos={handleUploadPhotos}
           onRefresh={handleRefresh}
@@ -479,7 +473,6 @@ export function PhotoGalleryView() {
           onGridColumnsChange={handleGridColumnsChange}
           onToggleSelection={() => setPhotoSelectionMode(!photoSelectionMode)}
           onConvertSelected={handleConvertSelected}
-          onRequestExpand={() => setToolbarMode('compact')}
         />
 
         {error ? <div className={styles.error}>{error}</div> : null}
