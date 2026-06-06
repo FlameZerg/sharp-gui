@@ -1,0 +1,123 @@
+## ADDED Requirements
+
+### Requirement: The system SHALL discover supported local video files
+The system SHALL discover supported video files inside configured local album roots and expose them as stable media items without revealing absolute filesystem paths.
+
+#### Scenario: Album contains supported video files
+- **WHEN** a configured album contains supported video files
+- **THEN** the album media listing SHALL include those videos with stable IDs, names, timestamps, sizes, media type, preview URL, download URL, and playback URL
+- **AND** image files in the same album SHALL remain listed
+
+#### Scenario: Unsupported video-like files are present
+- **WHEN** a configured album contains files whose extension or detected media type is not supported
+- **THEN** the system SHALL ignore those files for media browsing
+- **AND** the album scan SHALL continue processing other files
+
+#### Scenario: Video path traversal is attempted
+- **WHEN** a request attempts to access a video outside a configured album root
+- **THEN** the system MUST reject the request
+- **AND** the system MUST NOT return file contents or filesystem paths
+
+### Requirement: The system SHALL provide video metadata for browsing
+The system SHALL expose enough video metadata for the UI to show a useful card and preview state, while allowing metadata fields to be temporarily unavailable.
+
+#### Scenario: Video metadata is available
+- **WHEN** the system can determine a video's duration, dimensions, codecs, or bitrate
+- **THEN** the video media item SHALL include those fields in the album listing or item detail response
+- **AND** the UI SHALL render duration and dimensions when present
+
+#### Scenario: Video metadata is unavailable
+- **WHEN** metadata cannot be read because tooling is missing, the source is unavailable, or probing fails
+- **THEN** the system SHALL still list the video item when the file itself is supported
+- **AND** unavailable metadata fields SHALL be returned as null or omitted without failing the album listing
+
+#### Scenario: Source video changes
+- **WHEN** a source video has a different modification time or size from cached metadata
+- **THEN** the system SHALL treat cached video metadata and poster assets as stale
+- **AND** subsequent browse or preview requests SHALL use refreshed metadata or a safe fallback state
+
+### Requirement: The system SHALL provide cached video poster images
+The system SHALL provide bounded poster images for video cards and album covers, and SHALL cache poster assets by source file version.
+
+#### Scenario: Video poster exists and source is unchanged
+- **WHEN** a video poster has already been generated for the current source file version
+- **THEN** the system SHALL serve the cached poster
+- **AND** the system SHALL avoid regenerating it for the same request
+
+#### Scenario: Video poster is missing
+- **WHEN** a visible video card needs a poster and no current poster exists
+- **THEN** the system SHALL generate or provide a bounded poster asset when possible
+- **AND** the gallery SHALL remain responsive while poster generation is pending or unavailable
+
+#### Scenario: Poster generation fails
+- **WHEN** a poster cannot be generated for a video
+- **THEN** the UI SHALL show a styled video fallback card
+- **AND** the failure SHALL NOT prevent opening, downloading, or listing the video item
+
+### Requirement: The video preview SHALL support common playback controls
+The video preview SHALL allow users to play, pause, seek, adjust audio, enter fullscreen, download, close, and navigate between media items in the current album context.
+
+#### Scenario: User opens a playable video
+- **WHEN** the user opens a video from the gallery grid
+- **THEN** the preview SHALL display the video using its playback URL
+- **AND** the preview SHALL provide custom controls for play or pause, seek, elapsed and remaining time, volume or mute, fullscreen, download, close, and previous or next media navigation
+
+#### Scenario: User downloads a video from preview
+- **WHEN** the user chooses download from the video preview
+- **THEN** the system SHALL return the original video as an attachment
+- **AND** the downloaded file name SHALL be safe and recognizable
+
+#### Scenario: Video cannot be played by the browser
+- **WHEN** the browser fails to load or decode the video playback URL
+- **THEN** the preview SHALL show a localized playback error state that tells the user to download the video and play it locally
+- **AND** the preview SHALL keep download and close controls available
+
+### Requirement: The mobile video preview SHALL support fine scrubbing from the video surface
+The mobile video preview SHALL support a fine seek interaction where long-pressing and dragging the video surface adjusts playback position without replacing the normal progress-bar seek behavior.
+
+#### Scenario: Mobile user long-presses and drags horizontally on the video surface
+- **WHEN** a mobile user long-presses and drags horizontally on the video surface beyond the configured gesture threshold
+- **THEN** the preview SHALL enter a fine scrub state
+- **AND** the playback position SHALL update by a small, visible time offset relative to the drag distance
+- **AND** the preview SHALL show the target time or offset during the gesture
+
+#### Scenario: Mobile user releases a fine scrub gesture
+- **WHEN** a mobile user releases the video surface after fine scrubbing
+- **THEN** the video SHALL seek to the chosen time
+- **AND** playback SHALL resume or remain paused according to the state before the gesture
+
+#### Scenario: Mobile user taps without dragging
+- **WHEN** a mobile user taps the video surface without crossing the fine scrub threshold
+- **THEN** the preview SHALL toggle play or pause
+- **AND** the interaction SHALL NOT accidentally seek the video
+
+#### Scenario: Desktop user interacts with the video surface
+- **WHEN** a desktop user clicks or drags on the video surface
+- **THEN** the preview SHALL NOT enter video-surface fine scrub mode
+- **AND** desktop seek SHALL remain available through the normal progress control
+
+### Requirement: The video preview SHALL be responsive and accessible
+The video preview SHALL adapt to desktop and mobile viewports and expose accessible controls for keyboard, pointer, and touch users.
+
+#### Scenario: Desktop user opens video preview
+- **WHEN** the video preview opens on a desktop viewport
+- **THEN** the video SHALL be centered in an immersive overlay
+- **AND** controls SHALL use project-styled glass buttons and remain reachable without covering critical content
+
+#### Scenario: Mobile user opens video preview
+- **WHEN** the video preview opens on a mobile viewport
+- **THEN** controls SHALL fit within the viewport without horizontal overflow
+- **AND** touch targets SHALL remain reachable and large enough for touch interaction
+
+#### Scenario: Keyboard user controls video preview
+- **WHEN** a keyboard-only user navigates the video preview
+- **THEN** each actionable control SHALL expose a semantic label
+- **AND** focus state SHALL be visible
+
+### Requirement: Video gallery UI MUST be localized
+The system MUST provide localized text for all video gallery labels, empty states, errors, metadata, tooltips, and actions in both supported locales.
+
+#### Scenario: Language changes while viewing videos
+- **WHEN** the application language switches between supported locales
+- **THEN** video gallery filters, playback controls, errors, metadata labels, and download actions SHALL render from locale resources
+- **AND** English and Chinese locale resources SHALL contain matching keys for the new user-visible text
