@@ -467,6 +467,7 @@ foreach ($file in $coreFiles) {
 }
 
 Invoke-Robocopy -Source "$root\tools" -Destination "$packageRoot\tools" -ExtraArgs @("/XD", "__pycache__")
+Invoke-Robocopy -Source "$root\backend" -Destination "$packageRoot\backend" -ExtraArgs @("/XD", "__pycache__")
 Invoke-Robocopy -Source "$root\templates" -Destination "$packageRoot\templates"
 Invoke-Robocopy -Source "$root\static" -Destination "$packageRoot\static"
 
@@ -687,7 +688,6 @@ Write-Host ("大小: {0:N2} GiB" -f ($zipItem.Length / 1GB))
 Write-Host "SHA256: $($zipHash.Hash)"
 Write-Host ""
 Write-Host "网盘发布建议：同时上传 ZIP 和 .sha256.txt，并在 GitHub Release 正文贴网盘链接与校验值。"
-
 
 
 

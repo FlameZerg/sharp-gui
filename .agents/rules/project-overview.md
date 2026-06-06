@@ -15,14 +15,14 @@ Sharp GUI 采用 **前后端分离 + 双前端模式** 架构：
 └───────────┼────────────────────┼──────────────────┘
             │ /api/*             │ /files/*
 ┌───────────┼────────────────────┼──────────────────┐
-│  Flask 后端 (app.py)                              │
+│  Flask 后端 (app.py 兼容入口 + backend/ 包)        │
 │  ┌────────┴───────┐  ┌────────┴──────────────┐   │
-│  │  REST API 层    │  │  静态文件服务          │   │
-│  │  + LAN 门禁     │  │  (inputs/outputs)     │   │
+│  │  routes/API     │  │  static files service │   │
+│  │  + security     │  │  (白名单服务根)        │   │
 │  └────────┬───────┘  └───────────────────────┘   │
-│           │                                       │
+│           │ services / PathContext / TaskManager  │
 │  ┌────────┴───────────────────────────────────┐  │
-│  │  任务队列 (queue.Queue + threading.Lock)    │  │
+│  │  TaskManager (queue.Queue + threading.Lock) │  │
 │  │  → subprocess 调用 sharp predict            │  │
 │  └────────────────────────────────────────────┘  │
 └───────────────────────────────────────────────────┘
@@ -48,7 +48,16 @@ Sharp GUI 采用 **前后端分离 + 双前端模式** 架构：
 
 ```
 sharp-gui/
-├── app.py                    # Flask 后端 + 任务队列 + 本地照片图库 API（单文件，约 2,000 行）
+├── app.py                    # Flask 兼容入口：暴露 app，python app.py 时启动服务
+├── backend/                  # 模块化后端包
+│   ├── app_factory.py        #   create_app()：创建 Flask app、注册 hooks/routes、挂载 TaskManager
+│   ├── server.py             #   run_server()、监听地址、HTTPS、重启支持
+│   ├── runtime.py            #   环境变量、BASE_DIR、verbose 日志、Sharp 命令/设备解析
+│   ├── config.py             #   config.json 读写与 access_control normalize
+│   ├── paths.py              #   PathContext：workspace/inputs/outputs/cache 派生
+│   ├── security/             #   LAN 门禁、权限矩阵、request hooks
+│   ├── services/             #   模型/照片图库、任务队列、导出、静态文件、文件夹选择
+│   └── routes/               #   auth/gallery/photo_gallery/tasks/settings/files/export/frontend
 ├── config.json               # 运行时配置（workspace_folder, photo_gallery_roots, access_control）
 ├── install.sh / install.bat  # 一键安装脚本（Python/Git/CUDA/依赖/模型/证书）
 ├── run.sh / run.bat          # 启动脚本（支持 --legacy）
@@ -124,6 +133,7 @@ sharp-gui/
 | numpy | PLY 数据处理 |
 | plyfile | PLY 文件解析 |
 | ml-sharp (sharp CLI) | AI 推理引擎 |
+| pytest | 后端开发/重构验证（仅开发依赖，见 `requirements-dev.txt`） |
 
 ## 环境变量
 

@@ -59,6 +59,7 @@ copy README.en.md "%RELEASE_DIR%\" >nul 2>nul
 copy LICENSE "%RELEASE_DIR%\" >nul 2>nul
 
 REM Copy directories
+xcopy /E /I /Q backend "%RELEASE_DIR%\backend" >nul
 xcopy /E /I /Q tools "%RELEASE_DIR%\tools" >nul
 xcopy /E /I /Q templates "%RELEASE_DIR%\templates" >nul
 xcopy /E /I /Q static "%RELEASE_DIR%\static" >nul

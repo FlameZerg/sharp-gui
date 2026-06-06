@@ -47,7 +47,7 @@ cp release.sh release.bat "$RELEASE_DIR/" 2>/dev/null || true
 cp README.md README.en.md LICENSE "$RELEASE_DIR/" 2>/dev/null || true
 
 # Copy directories
-cp -r tools templates static frontend "$RELEASE_DIR/"
+cp -r backend tools templates static frontend "$RELEASE_DIR/"
 
 # Clean unnecessary files
 rm -rf "$RELEASE_DIR/frontend/node_modules"

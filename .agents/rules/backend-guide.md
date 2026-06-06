@@ -2,14 +2,14 @@
 
 ## 架构概述
 
-后端是一个 **单文件 Flask 应用**（`app.py`，约 2,000 行），承担以下职责：
+后端是一个 **模块化 Flask 应用**。`app.py` 只作为兼容入口保留：`from app import app` 可导入 Flask 实例，`python app.py` 会调用 `backend.server.run_server(app)` 启动服务。业务代码位于 `backend/` 包中：
 
-1. **REST API 服务** — 处理前端请求，返回 JSON
-2. **静态文件服务** — 提供图片和模型文件
-3. **任务队列** — `queue.Queue` + 后台 Worker 线程调用 `sharp predict` 推理
-4. **文件管理** — 图片上传、模型存储、缩略图生成、本地照片图库索引/缩略图、PLY→SPZ 自动转换、历史 PLY→Splat 导出兼容
-5. **配置管理** — `config.json` 读写
-6. **安全** — CORS、HTTPS、局域网门禁、仅本机可修改设置
+1. **App Factory** — `backend/app_factory.py` 创建 Flask app、初始化 `PathContext`、注册安全 hooks 与 routes、挂载 `TaskManager`。
+2. **运行时与配置** — `backend/runtime.py` 处理环境变量、verbose 日志、Sharp 命令/设备解析；`backend/config.py` 处理 `config.json` 与 access-control normalize；`backend/paths.py` 派生 workspace 相关路径。
+3. **安全层** — `backend/security/access_control.py` 集中维护 Public / Unlocked / Owner / Conditional 权限矩阵；`backend/security/hooks.py` 注册 `before_request` / `after_request`。
+4. **路由层** — `backend/routes/*` 按 API 域拆分，只处理 Flask request/response。
+5. **服务层** — `backend/services/*` 承载模型图库、照片图库、相册上传、任务队列、导出 HTML、静态文件解析和文件夹选择等可复用逻辑。
+6. **任务队列** — `backend/services/task_queue.py` 的 `TaskManager` 持有 queue/status/lock/running processes。默认 app import 不启动 worker；只有服务运行入口显式启动，且启动操作幂等。
 
 ---
 
@@ -24,7 +24,7 @@
 
 When `access_control.enabled=false`, private read resources fall back to the old open LAN browsing behavior, but Owner endpoints must still enforce real localhost access. Disabling the gate must not make delete, settings, restart, folder management, batch conversion, or task cancellation remote-accessible.
 
-Do not grant owner permissions from `X-Forwarded-For`, `Forwarded`, `X-Real-IP`, or other client-controlled headers. New private endpoints must be added to `get_required_access_level()` in `app.py`; unknown `/api/*` and `/files/*` requests should remain Unlocked by default.
+Do not grant owner permissions from `X-Forwarded-For`, `Forwarded`, `X-Real-IP`, or other client-controlled headers. New private endpoints must be added to `get_required_access_level()` in `backend/security/access_control.py`; unknown `/api/*` and `/files/*` requests should remain Unlocked by default.
 
 | 方法 | 路径 | 功能 | 权限 |
 |------|------|------|------|
@@ -53,8 +53,10 @@ Do not grant owner permissions from `X-Forwarded-For`, `Forwarded`, `X-Real-IP`,
 | DELETE | `/api/photo-albums/<album_id>` | 移除照片相册配置，不删除原图 | Owner |
 | POST | `/api/photo-albums/<album_id>/scan` | 重新扫描照片相册 | Owner |
 | GET | `/api/photo-albums/<album_id>/photos` | 分页获取照片，支持时间/名称/大小排序 | Unlocked |
+| POST | `/api/photo-albums/<album_id>/uploads` | 上传照片到当前相册目录 | Unlocked when gate enabled / Owner when gate disabled |
 | GET | `/api/photo-thumbnail/<photo_id>` | 获取或按需生成照片图库缩略图 | Unlocked |
 | GET | `/api/photo-original/<photo_id>` | 获取照片原图（inline 或 `?download=1` 附件） | Unlocked |
+| POST | `/api/photo-downloads` | 打包下载照片原图 ZIP | Unlocked |
 | POST | `/api/photo-conversions` | 将单张/多张照片加入现有 3D 生成队列 | Owner / Conditional |
 
 ### 新增端点规则
@@ -62,15 +64,19 @@ Do not grant owner permissions from `X-Forwarded-For`, `Forwarded`, `X-Real-IP`,
 1. **路由前缀**：必须使用 `/api/` 前缀
 2. **返回格式**：统一返回 JSON（`jsonify()`）
 3. **错误响应**：返回 `{"error": "描述"}` + 对应 HTTP 状态码
-4. **权限控制**：在 `get_required_access_level()` 中明确 Public / Unlocked / Owner / Conditional；owner 判断只能使用真实 `request.remote_addr` + 允许的 Host，不能相信转发头
+4. **路由位置**：在 `backend/routes/` 选择对应业务模块；必要时新增 `backend/services/` 服务函数，避免把大段业务流程写在 route 中
+5. **权限控制**：在 `backend/security/access_control.py` 的 `get_required_access_level()` 中明确 Public / Unlocked / Owner / Conditional；owner 判断只能使用真实 `request.remote_addr` + 允许的 Host，不能相信转发头
+6. **测试覆盖**：新增或调整 pytest，至少覆盖 route map、权限矩阵或相关服务纯函数
 
 ```python
 # ✅ 标准路由模式
-@app.route('/api/my-endpoint', methods=['GET'])
+bp = Blueprint("my_feature", __name__)
+
+@bp.route('/api/my-endpoint', methods=['GET'])
 def api_my_endpoint():
     """获取某某数据"""
     try:
-        result = do_something()
+        result = my_service.do_something()
         return jsonify({"data": result})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -83,9 +89,8 @@ def api_my_endpoint():
 ### 架构
 
 ```python
-task_queue = queue.Queue()       # FIFO 任务队列
-task_status = {}                 # 任务ID → 状态对象 (dict)
-task_lock = threading.Lock()     # 线程安全锁
+task_manager = current_app.config["TASK_MANAGER"]
+task_info = task_manager.enqueue_file(input_path, filename)
 ```
 
 ### 任务生命周期
@@ -98,18 +103,19 @@ pending → running → processing → completed
 
 ### 关键实现
 
-- **Worker 线程**：后台线程从队列取任务，用 `subprocess` 调用 `sharp predict`
+- **Worker 线程**：`TaskManager.start_workers()` 启动后台线程，从队列取任务，用 `subprocess` 调用 `sharp predict`
 - **进度解析**：实时读取 subprocess 的 stdout，解析进度阶段（downloading → loading → preprocessing → inference → postprocessing → saving）
 - **取消机制**：`process.terminate()` 终止子进程
 - **自动清理**：已完成任务 1 小时后自动从内存中移除（`TASK_RETENTION_SECONDS`）
+- **导入无副作用**：`create_app()` 和 `from app import app` 默认不启动 worker/cleanup 线程，便于 pytest 和工具导入
 
 ### 线程安全
 
-修改 `task_status` 时 **必须** 使用 `task_lock`：
+修改任务状态时必须通过 `TaskManager` API 或其内部 `task_lock`：
 
 ```python
-with task_lock:
-    task_status[task_id] = {
+with task_manager.task_lock:
+    task_manager.task_status[task_id] = {
         'status': 'running',
         'progress': 0,
         'stage': 'loading'
@@ -273,6 +279,8 @@ if not resolved.startswith(os.path.abspath(workspace)):
 - 解析 photo id 后必须使用 `os.path.abspath()`、`os.path.realpath()`、`os.path.commonpath()` 和平台大小写归一化确认文件仍在配置 root 内。
 - Windows 需要避免跨盘符 `commonpath` 抛错导致接口 500；Linux/macOS 需要避免符号链接逃逸相册 root。
 - 原图响应优先使用 `send_from_directory(..., download_name=...)` 交给 Werkzeug 生成兼容的 `Content-Disposition`，不要手写包含中文的 header。
+- `POST /api/photo-albums/<album_id>/uploads` 属于照片图库服务：route 层只读取 multipart `file` 列表并封装响应，`services/photo_gallery.py` 必须负责相册存在/启用/目录可用检查、`PHOTO_MAX_UPLOAD_BATCH`、`secure_filename()`、扩展名白名单、唯一命名、真实路径 root 约束、Pillow `verify()`、失败清理与上传后扫描刷新。
+- 照片相册上传权限必须在集中矩阵中显式列出：门禁开启且远程已解锁时允许，门禁关闭或未解锁时远程拒绝。
 
 ### 其他
 
@@ -284,6 +292,10 @@ if not resolved.startswith(os.path.abspath(workspace)):
 - **反向代理**：若本机前置反向代理，所有请求 `remote_addr` 会变成 `127.0.0.1` 导致全员被判 owner；文档需提示用户在反代场景关闭 `allow_localhost_bypass`（需先设访问码）
 - **subprocess 调用**使用列表参数（非字符串拼接），避免命令注入
 - **不要**在 JSON 响应中暴露服务器绝对路径或堆栈信息
+
+### 后续清理 TODO
+
+- 本次模块化迁移暂时保留部分路由内部重复 owner 检查，作为集中 hook 之外的纵深防御。后续新需求或专门清理任务中，可以在 pytest 覆盖稳定后统一梳理这些重复检查，决定哪些删除、哪些保留。
 
 ---
 

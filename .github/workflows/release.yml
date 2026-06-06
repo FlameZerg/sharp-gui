@@ -49,7 +49,7 @@ jobs:
           cp README.md README.en.md LICENSE release-build/ 2>/dev/null || true
 
           # 复制目录
-          cp -r tools templates static release-build/
+          cp -r backend tools templates static release-build/
           cp -r frontend release-build/
 
           # 清理不需要的文件

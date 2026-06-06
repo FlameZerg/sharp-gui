@@ -2,11 +2,12 @@
 
 ## 现状
 
-项目当前 **无测试覆盖**：
+项目已正式引入 **后端 pytest**：
 
-- 无测试文件（`.test.*`、`.spec.*`、`test_*.py`）
-- 无测试框架依赖（package.json 中无 jest/vitest/testing-library；无 pytest 安装）
-- ml-sharp 子项目的 `pyproject.toml` 配置了 pytest 路径，但未创建实际测试
+- 后端测试位于项目根目录 `tests/`。
+- 开发测试依赖记录在 `requirements-dev.txt`，普通一键安装/运行脚本不强制安装 pytest。
+- `create_app()` 与 `from app import app` 默认不启动后台 worker，测试可安全创建 Flask test client。
+- 前端仍未正式引入 Vitest / Testing Library；新增前端复杂逻辑时可按推荐框架补充。
 
 ---
 
@@ -17,10 +18,30 @@
 | 优先级 | 覆盖范围 | 说明 |
 |--------|----------|------|
 | 🔴 高 | 后端 API 端点 | 确保 `/api/*` 请求/响应正确 |
+| 🔴 高 | 后端安全边界 | LAN 门禁、owner-only、远程生成、相册上传、静态文件白名单 |
 | 🔴 高 | 工具函数 | `utils/format.ts`, `utils/camera.ts`, `ply_to_splat()` 等纯函数 |
 | 🟡 中 | 前端组件 | 关键交互组件（Button, Modal, GalleryItem） |
 | 🟡 中 | Zustand Store | Action 逻辑正确性 |
 | 🟢 低 | 自定义 Hooks | 需要模拟 3D 环境，复杂度较高 |
+
+### 后端 pytest 运行
+
+```bash
+# 如当前环境未安装 pytest
+python -m pip install -r requirements-dev.txt
+
+# 运行后端测试
+python -m pytest -q
+```
+
+关键覆盖目标：
+
+- route map：关键 HTTP 路径和方法必须注册完整。
+- app import：`from app import app` 不启动 worker/cleanup 线程。
+- LAN 门禁：门禁开/关、owner-only、远程生成条件、转发头不能提权。
+- 静态文件：模型文件允许访问，敏感文件和路径穿越拒绝。
+- 照片图库：photo id 解析、相册上传文件名净化/扩展名白名单/无效图片清理。
+- 任务队列：无需真实推理即可验证入队、列出、取消和状态变更。
 
 ### 本地照片图库 smoke checklist
 
@@ -73,7 +94,7 @@ npm install -D vitest @testing-library/react @testing-library/jest-dom happy-dom
 | 工具 | 用途 |
 |------|------|
 | **pytest** | 测试运行器 |
-| **pytest-flask** | Flask 应用测试辅助 |
+| **pytest-flask** | Flask 应用测试辅助（当前未强制依赖，Flask 原生 test client 已够用） |
 
 ---
 

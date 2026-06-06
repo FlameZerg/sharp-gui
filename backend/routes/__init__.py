@@ -1,0 +1,12 @@
+from backend.routes import auth, export, files, frontend, gallery, photo_gallery, settings, tasks
+
+
+def register_routes(app):
+    app.register_blueprint(auth.bp)
+    app.register_blueprint(gallery.bp)
+    app.register_blueprint(photo_gallery.bp)
+    app.register_blueprint(tasks.bp)
+    app.register_blueprint(settings.bp)
+    app.register_blueprint(files.bp)
+    app.register_blueprint(export.bp)
+    app.register_blueprint(frontend.bp)

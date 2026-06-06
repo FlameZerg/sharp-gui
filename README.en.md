@@ -520,7 +520,16 @@ The table below shows the permission boundaries for each role:
 
 ```
 sharp-gui/
-├── 📄 app.py                 # Flask backend + task queue system
+├── 📄 app.py                 # Flask compatibility entry (exports app, runs server)
+├── 📁 backend/               # Modular Flask backend
+│   ├── 📄 app_factory.py     # create_app(): registers hooks/routes and TaskManager
+│   ├── 📄 server.py          # Server startup, HTTPS/LAN bind, restart support
+│   ├── 📄 runtime.py         # Env vars, verbose logging, Sharp command/device resolution
+│   ├── 📄 config.py          # config.json and access-control normalization
+│   ├── 📄 paths.py           # workspace/inputs/outputs/cache path context
+│   ├── 📁 security/          # LAN access gate, permission matrix, request hooks
+│   ├── 📁 services/          # Model/photo gallery, task queue, export, static-file services
+│   └── 📁 routes/            # auth/gallery/photo_gallery/tasks/settings/files/export/frontend
 ├── 📄 install.sh/bat         # One-click install scripts
 ├── 📄 run.sh/bat             # Startup scripts (supports --legacy flag)
 ├── 📄 run_verbose.sh/bat     # Verbose entry (writes sharp-gui-verbose.log)
@@ -572,7 +581,7 @@ frontend/
 | **State**        | Zustand                                                |
 | **i18n**         | i18next + react-i18next                                |
 | **Styling**      | CSS Modules + Apple Glass Morphism                     |
-| **Backend**      | Python 3.10+, Flask, multi-threaded task queue         |
+| **Backend**      | Python 3.10+, Flask app factory + Blueprints, TaskManager |
 | **AI Engine**    | Apple ML-Sharp (PyTorch, gsplat)                       |
 | **3D Rendering** | Three.js + Spark 2.0 (WASM-accelerated Gaussian Splatting) |
 
@@ -617,7 +626,7 @@ npm run build
 
 ### Environment Variables
 
-The `app.py` backend honors the following environment variables. Regular users don't need to set any; they're handy for development and troubleshooting:
+The `app.py` compatibility entry and `backend/` modules honor the following environment variables. Regular users don't need to set any; they're handy for development and troubleshooting:
 
 | Variable | Default | Description |
 |----------|---------|-------------|

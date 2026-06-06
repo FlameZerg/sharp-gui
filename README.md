@@ -523,7 +523,16 @@ Sharp GUI 提供**可选**的局域网门禁。首次启动或本机尚未完整
 
 ```
 sharp-gui/
-├── 📄 app.py                 # Flask 后端 + 任务队列系统
+├── 📄 app.py                 # Flask 兼容入口（暴露 app，python app.py 启动）
+├── 📁 backend/               # 模块化 Flask 后端
+│   ├── 📄 app_factory.py     # create_app()：注册 hooks/routes、挂载 TaskManager
+│   ├── 📄 server.py          # 启动服务、HTTPS/LAN bind、重启支持
+│   ├── 📄 runtime.py         # 环境变量、verbose 日志、Sharp 命令/设备解析
+│   ├── 📄 config.py          # config.json 与 access-control normalize
+│   ├── 📄 paths.py           # workspace/inputs/outputs/cache 路径上下文
+│   ├── 📁 security/          # LAN 门禁、权限矩阵、request hooks
+│   ├── 📁 services/          # 模型/照片图库、任务队列、导出、静态文件等服务
+│   └── 📁 routes/            # auth/gallery/photo_gallery/tasks/settings/files/export/frontend
 ├── 📄 install.sh/bat         # 一键安装脚本
 ├── 📄 run.sh/bat             # 启动脚本 (支持 --legacy 参数)
 ├── 📄 run_verbose.sh/bat     # Verbose 启动入口（生成 sharp-gui-verbose.log）
@@ -575,7 +584,7 @@ frontend/
 | **状态管理** | Zustand                                            |
 | **国际化**   | i18next + react-i18next                            |
 | **样式**     | CSS Modules + Apple Glass Morphism                 |
-| **后端**     | Python 3.10+, Flask, 多线程任务队列                |
+| **后端**     | Python 3.10+, Flask app factory + Blueprints, TaskManager |
 | **AI 引擎**  | Apple ML-Sharp (PyTorch, gsplat)                   |
 | **3D 渲染**  | Three.js + Spark 2.0 (WASM 加速高斯溅射)           |
 
@@ -620,7 +629,7 @@ npm run build
 
 ### 环境变量
 
-后端 `app.py` 支持以下环境变量，普通用户无需设置，开发与排障时可按需使用：
+后端兼容入口 `app.py` 与 `backend/` 模块支持以下环境变量，普通用户无需设置，开发与排障时可按需使用：
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
