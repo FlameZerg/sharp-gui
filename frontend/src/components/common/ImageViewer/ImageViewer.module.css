@@ -25,7 +25,7 @@
 }
 
 .videoContainer {
-  width: min(1180px, 92vw);
+  width: var(--video-viewer-width, min(calc(100vw - 96px), 124vh));
   max-height: 88vh;
   transform: none;
 }
@@ -62,7 +62,7 @@
 .videoStage {
   position: relative;
   width: 100%;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: var(--video-aspect-ratio, 16 / 9);
   max-height: 82vh;
   overflow: hidden;
   border-radius: 18px;

@@ -21,6 +21,11 @@ const VIDEO_LONG_PRESS_MS = 260;
 const VIDEO_SCRUB_THRESHOLD_PX = 12;
 const VIDEO_FINE_SCRUB_SECONDS_PER_PX = 0.08;
 const VIDEO_CONTROLS_HIDE_DELAY_MS = 2200;
+const VIDEO_VIEWER_HEIGHT_VH = 70;
+const VIDEO_FALLBACK_ASPECT_RATIO = 16 / 9;
+const VIDEO_KEYBOARD_SEEK_SECONDS = 5;
+const VIDEO_KEYBOARD_FAST_SEEK_SECONDS = 15;
+const VIDEO_KEYBOARD_VOLUME_STEP = 0.05;
 const VIDEO_INLINE_PLAYBACK_ATTRIBUTES = {
   playsInline: true,
   'webkit-playsinline': 'true',
@@ -95,6 +100,7 @@ export function ImageViewer() {
   const [videoControlsVisible, setVideoControlsVisible] = useState(true);
   const [isVideoFullscreen, setIsVideoFullscreen] = useState(false);
   const [isLandscapeVideo, setIsLandscapeVideo] = useState(false);
+  const [videoNaturalSize, setVideoNaturalSize] = useState<{ width: number; height: number } | null>(null);
   
   const overlayRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -180,6 +186,7 @@ export function ImageViewer() {
       setVideoScrubLabel(null);
       setVideoControlsVisible(true);
       setIsLandscapeVideo(false);
+      setVideoNaturalSize(null);
       setTransform({ scale: 1, x: 0, y: 0 });
     } else {
       releaseVideoOrientationLock();
@@ -190,6 +197,19 @@ export function ImageViewer() {
       document.body.style.overflow = '';
     };
   }, [activePreview, releaseVideoOrientationLock]);
+
+  useEffect(() => {
+    if (!activePreview) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      overlayRef.current?.focus({ preventScroll: true });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [activePreview]);
+
 
   useEffect(() => {
     const video = videoRef.current;
@@ -299,6 +319,27 @@ export function ImageViewer() {
       }, VIDEO_CONTROLS_HIDE_DELAY_MS);
     }
   }, [clearVideoControlsHideTimer, isVideoPlaying, isVideoPreview, isVideoScrubbing, videoError]);
+
+  const toggleVideoControls = useCallback(() => {
+    if (!isVideoPreview || videoError || isVideoScrubbing) {
+      return;
+    }
+
+    if (videoControlsVisible) {
+      clearVideoControlsHideTimer();
+      setVideoControlsVisible(false);
+      return;
+    }
+
+    revealVideoControls();
+  }, [
+    clearVideoControlsHideTimer,
+    isVideoPreview,
+    isVideoScrubbing,
+    revealVideoControls,
+    videoControlsVisible,
+    videoError,
+  ]);
 
   useEffect(() => {
     clearVideoControlsHideTimer();
@@ -450,6 +491,132 @@ export function ImageViewer() {
     }
   };
 
+  const handleVideoTogglePlay = useCallback(() => {
+    const video = videoRef.current;
+    if (!video || videoError) {
+      return;
+    }
+
+    if (video.paused) {
+      void video.play().catch(() => setVideoError(true));
+    } else {
+      video.pause();
+    }
+  }, [videoError]);
+
+  const handleVideoSkip = useCallback((seconds: number) => {
+    const video = videoRef.current;
+    if (!video || videoError) {
+      return;
+    }
+
+    const duration = Number.isFinite(video.duration) ? video.duration : videoDuration;
+    const nextTime = clampTime(video.currentTime + seconds, duration);
+    video.currentTime = nextTime;
+    setVideoCurrentTime(nextTime);
+    revealVideoControls();
+  }, [revealVideoControls, videoDuration, videoError]);
+
+  const handleVideoVolumeStep = useCallback((delta: number) => {
+    const video = videoRef.current;
+    const currentVolume = video
+      ? (video.muted ? 0 : video.volume)
+      : (videoMuted ? 0 : videoVolume);
+    const nextVolume = clampVolume(currentVolume + delta);
+    setVideoVolume(nextVolume);
+    setVideoMuted(nextVolume === 0);
+    revealVideoControls();
+  }, [revealVideoControls, videoMuted, videoVolume]);
+
+  const isCurrentVideoLandscape = useCallback(() => {
+    const video = videoRef.current;
+    if (video?.videoWidth && video.videoHeight) {
+      return video.videoWidth > video.videoHeight;
+    }
+
+    if (previewPhoto?.width && previewPhoto.height) {
+      return previewPhoto.width > previewPhoto.height;
+    }
+
+    return isLandscapeVideo;
+  }, [isLandscapeVideo, previewPhoto?.height, previewPhoto?.width]);
+
+  const handleVideoFullscreen = useCallback(async () => {
+    const target = videoStageRef.current;
+    if (!target) {
+      return;
+    }
+
+    if (document.fullscreenElement === target) {
+      releaseVideoOrientationLock();
+      await document.exitFullscreen().catch(() => undefined);
+      return;
+    }
+
+    try {
+      await target.requestFullscreen?.();
+    } catch {
+      return;
+    }
+
+    if (isCurrentVideoLandscape()) {
+      videoOrientationLocked.current = await lockScreenLandscape();
+    }
+  }, [isCurrentVideoLandscape, releaseVideoOrientationLock]);
+
+  useEffect(() => {
+    if (!activePreview || !isVideoPreview || videoError) {
+      return;
+    }
+
+    const handleVideoKeyDown = (event: KeyboardEvent) => {
+      if (isKeyboardEventFromFormControl(event)) {
+        return;
+      }
+
+      if (event.key === ' ' || event.key === 'Spacebar') {
+        event.preventDefault();
+        handleVideoTogglePlay();
+        revealVideoControls();
+        return;
+      }
+
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        event.preventDefault();
+        const direction = event.key === 'ArrowLeft' ? -1 : 1;
+        const seconds = event.shiftKey ? VIDEO_KEYBOARD_FAST_SEEK_SECONDS : VIDEO_KEYBOARD_SEEK_SECONDS;
+        handleVideoSkip(direction * seconds);
+        return;
+      }
+
+      if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+        event.preventDefault();
+        handleVideoVolumeStep(event.key === 'ArrowUp'
+          ? VIDEO_KEYBOARD_VOLUME_STEP
+          : -VIDEO_KEYBOARD_VOLUME_STEP);
+        return;
+      }
+
+      if (event.key.toLowerCase() === 'f' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        event.preventDefault();
+        void handleVideoFullscreen();
+        revealVideoControls();
+      }
+    };
+
+    window.addEventListener('keydown', handleVideoKeyDown);
+    return () => window.removeEventListener('keydown', handleVideoKeyDown);
+  }, [
+    activePreview,
+    handleVideoFullscreen,
+    handleVideoSkip,
+    handleVideoTogglePlay,
+    handleVideoVolumeStep,
+    isVideoPreview,
+    revealVideoControls,
+    videoError,
+  ]);
+
   if (!activePreview) return null;
 
   const handleOverlayClick = () => {
@@ -539,19 +706,6 @@ export function ImageViewer() {
     }
   };
 
-  const handleVideoTogglePlay = () => {
-    const video = videoRef.current;
-    if (!video || videoError) {
-      return;
-    }
-
-    if (video.paused) {
-      void video.play().catch(() => setVideoError(true));
-    } else {
-      video.pause();
-    }
-  };
-
   const handleVideoTimeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const video = videoRef.current;
     if (!video || !videoDuration) {
@@ -576,55 +730,6 @@ export function ImageViewer() {
     revealVideoControls();
   };
 
-  const handleVideoSkip = (seconds: number) => {
-    const video = videoRef.current;
-    if (!video || videoError) {
-      return;
-    }
-
-    const duration = Number.isFinite(video.duration) ? video.duration : videoDuration;
-    const nextTime = clampTime(video.currentTime + seconds, duration);
-    video.currentTime = nextTime;
-    setVideoCurrentTime(nextTime);
-    revealVideoControls();
-  };
-
-  const isCurrentVideoLandscape = () => {
-    const video = videoRef.current;
-    if (video?.videoWidth && video.videoHeight) {
-      return video.videoWidth > video.videoHeight;
-    }
-
-    if (previewPhoto?.width && previewPhoto.height) {
-      return previewPhoto.width > previewPhoto.height;
-    }
-
-    return isLandscapeVideo;
-  };
-
-  const handleVideoFullscreen = async () => {
-    const target = videoStageRef.current;
-    if (!target) {
-      return;
-    }
-
-    if (document.fullscreenElement === target) {
-      releaseVideoOrientationLock();
-      await document.exitFullscreen().catch(() => undefined);
-      return;
-    }
-
-    try {
-      await target.requestFullscreen?.();
-    } catch {
-      return;
-    }
-
-    if (isCurrentVideoLandscape()) {
-      videoOrientationLocked.current = await lockScreenLandscape();
-    }
-  };
-
   const clearVideoLongPressTimer = () => {
     if (videoLongPressTimer.current) {
       window.clearTimeout(videoLongPressTimer.current);
@@ -633,10 +738,6 @@ export function ImageViewer() {
   };
 
   const handleVideoPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (isVideoPreview && !videoError) {
-      revealVideoControls();
-    }
-
     if (!isVideoPreview || event.pointerType === 'mouse' || videoError) {
       return;
     }
@@ -677,7 +778,7 @@ export function ImageViewer() {
   };
 
   const handleVideoPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (isVideoPreview && !videoError) {
+    if (isVideoPreview && !videoError && event.pointerType === 'mouse') {
       revealVideoControls();
     }
 
@@ -706,17 +807,25 @@ export function ImageViewer() {
     setVideoScrubLabel(formatVideoScrubLabel(offsetSeconds, targetTime));
   };
 
-  const handleVideoPointerUp = () => {
+  const handleVideoPointerUp = (event: React.PointerEvent<HTMLDivElement>, isCancelled = false) => {
+    const target = event.target as HTMLElement;
+    if (target.closest('button,input')) {
+      return;
+    }
+
     const current = videoScrubRef.current;
     const video = videoRef.current;
     clearVideoLongPressTimer();
     videoScrubRef.current = null;
 
     if (!current || !video) {
+      if (!isCancelled) {
+        toggleVideoControls();
+      }
       return;
     }
 
-    if (current.cancelled) {
+    if (isCancelled || current.cancelled) {
       // A short move before long-press should be treated as neither tap nor scrub.
     } else if (current.activated) {
       video.currentTime = current.targetTime;
@@ -724,13 +833,13 @@ export function ImageViewer() {
       if (current.wasPlaying) {
         void video.play().catch(() => setVideoError(true));
       }
+      revealVideoControls();
     } else {
-      handleVideoTogglePlay();
+      toggleVideoControls();
     }
 
     setIsVideoScrubbing(false);
     setVideoScrubLabel(null);
-    revealVideoControls();
   };
 
   // Prevent clicks inside the container from closing the viewer
@@ -751,10 +860,18 @@ export function ImageViewer() {
   const hasNextPhoto = previewPhoto ? photoIndex >= 0 && photoIndex < photoItems.length - 1 : false;
   const videoProgress = videoDuration > 0 ? `${(videoCurrentTime / videoDuration) * 100}%` : '0%';
   const volumeProgress = `${(videoMuted ? 0 : videoVolume) * 100}%`;
-  const videoControlsHidden = isVideoPlaying && !videoControlsVisible && !isVideoScrubbing && !videoError;
+  const videoControlsHidden = !videoControlsVisible && !isVideoScrubbing && !videoError;
   const mediaMeta = previewPhoto
     ? getPreviewMetaLabel(previewPhoto, t('unknownSize'))
     : null;
+  const videoAspectRatio = isVideoPreview
+    ? getVideoAspectRatio(previewPhoto, videoNaturalSize)
+    : VIDEO_FALLBACK_ASPECT_RATIO;
+  const videoViewerWidthVh = Math.min(168, Math.max(40, videoAspectRatio * VIDEO_VIEWER_HEIGHT_VH));
+  const videoViewerStyle = {
+    '--video-aspect-ratio': String(videoAspectRatio),
+    '--video-viewer-width': `min(calc(100vw - 96px), ${videoViewerWidthVh.toFixed(3)}vh)`,
+  } as React.CSSProperties;
 
   const isAnimating = (!isDragging && !isPinching);
   const wrapperStyle: React.CSSProperties = {
@@ -769,6 +886,7 @@ export function ImageViewer() {
       className={`${styles.overlay} ${isClosing ? styles.closing : ''}`}
       onClick={handleOverlayClick}
       ref={overlayRef}
+      tabIndex={-1}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
@@ -835,7 +953,7 @@ export function ImageViewer() {
       <div 
         className={[styles.container, isVideoPreview ? styles.videoContainer : ''].filter(Boolean).join(' ')}
         onClick={handleContainerClick}
-        style={isVideoPreview ? undefined : wrapperStyle}
+        style={isVideoPreview ? videoViewerStyle : wrapperStyle}
       >
         {isVideoPreview && videoUrl ? (
           <div
@@ -843,8 +961,12 @@ export function ImageViewer() {
             className={styles.videoStage}
             onPointerDown={handleVideoPointerDown}
             onPointerMove={handleVideoPointerMove}
-            onPointerUp={handleVideoPointerUp}
-            onPointerCancel={handleVideoPointerUp}
+            onPointerUp={(event) => handleVideoPointerUp(event)}
+            onPointerCancel={(event) => handleVideoPointerUp(event, true)}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
           >
             {!isLoaded && !videoError ? <div className={styles.loadingSpinner} /> : null}
             <video
@@ -861,6 +983,9 @@ export function ImageViewer() {
                 setVideoDuration(Number.isFinite(video.duration) ? video.duration : 0);
                 setVideoCurrentTime(video.currentTime);
                 setIsLandscapeVideo(video.videoWidth > video.videoHeight);
+                setVideoNaturalSize(video.videoWidth && video.videoHeight
+                  ? { width: video.videoWidth, height: video.videoHeight }
+                  : null);
               }}
               onTimeUpdate={(event) => setVideoCurrentTime(event.currentTarget.currentTime)}
               onPlay={() => setIsVideoPlaying(true)}
@@ -912,6 +1037,7 @@ export function ImageViewer() {
                 handleVideoTogglePlay();
               }}
               onPointerDown={(event) => event.stopPropagation()}
+              onPointerUp={(event) => event.stopPropagation()}
               type="button"
               aria-label={t('photoVideoPlay')}
             >
@@ -1119,6 +1245,24 @@ function clampTime(value: number, duration: number): number {
   return Math.min(duration, Math.max(0, value));
 }
 
+function clampVolume(value: number): number {
+  return Math.min(1, Math.max(0, value));
+}
+
+function isKeyboardEventFromFormControl(event: KeyboardEvent): boolean {
+  const target = event.target as HTMLElement | null;
+  if (!target) {
+    return false;
+  }
+
+  const formControl = target.closest('input,textarea,select,[contenteditable="true"]');
+  if (!formControl) {
+    return false;
+  }
+
+  return !(formControl instanceof HTMLInputElement) || formControl.type !== 'button';
+}
+
 function formatVideoTime(value: number): string {
   if (!Number.isFinite(value) || value <= 0) {
     return '0:00';
@@ -1138,6 +1282,18 @@ function formatVideoScrubLabel(offsetSeconds: number, targetTime: number): strin
   const sign = offsetSeconds >= 0 ? '+' : '-';
   const offset = Math.abs(offsetSeconds);
   return `${sign}${offset.toFixed(1)}s · ${formatVideoTime(targetTime)}`;
+}
+
+function getVideoAspectRatio(
+  photo: { width?: number | null; height?: number | null } | null | undefined,
+  naturalSize: { width: number; height: number } | null,
+): number {
+  const width = naturalSize?.width ?? photo?.width;
+  const height = naturalSize?.height ?? photo?.height;
+  if (!width || !height || width <= 0 || height <= 0) {
+    return VIDEO_FALLBACK_ASPECT_RATIO;
+  }
+  return Math.min(4, Math.max(0.45, width / height));
 }
 
 function getPreviewMetaLabel(

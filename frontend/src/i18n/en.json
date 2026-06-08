@@ -371,6 +371,7 @@
   "photoDownloadPartial": "Packed {{success}} photo(s). {{failed}} failed.",
   "photoDownloadFailed": "Failed to download photos",
   "photoExpandToolbar": "Expand toolbar",
+  "photoBackToTop": "Back to top",
   "photoOriginalLoadFailed": "Original image failed to load. Refresh the album or check that the source file is still available.",
   "photoPrevious": "Previous photo",
   "photoNext": "Next photo",

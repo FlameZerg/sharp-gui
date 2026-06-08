@@ -22,7 +22,31 @@
   overflow-x: hidden;
   overflow-anchor: none;
   padding-left: 18px;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(28, 31, 38, 0.34) transparent;
   transition: padding-left 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.scrollArea::-webkit-scrollbar {
+  width: 10px;
+}
+
+.scrollArea::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollArea::-webkit-scrollbar-thumb {
+  min-height: 72px;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: rgba(28, 31, 38, 0.28);
+  background-clip: padding-box;
+}
+
+.scrollArea::-webkit-scrollbar-thumb:hover {
+  background: rgba(28, 31, 38, 0.42);
+  background-clip: padding-box;
 }
 
 .scrollAreaWithSidebar {
@@ -99,6 +123,56 @@
   border: 1px solid rgba(255, 59, 48, 0.2);
 }
 
+.backToTop {
+  position: absolute;
+  right: 28px;
+  bottom: max(28px, calc(env(safe-area-inset-bottom) + 24px));
+  z-index: 8;
+  width: 46px;
+  height: 46px;
+  border-radius: var(--radius-full);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(30, 34, 42, 0.46);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow:
+    0 16px 38px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(10px) scale(0.96);
+  transition:
+    opacity var(--transition-normal),
+    transform var(--transition-normal),
+    background var(--transition-normal),
+    border-color var(--transition-normal);
+}
+
+.backToTopVisible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+}
+
+.backToTop:hover,
+.backToTop:focus-visible {
+  background: rgba(0, 113, 227, 0.72);
+  border-color: rgba(255, 255, 255, 0.28);
+  transform: translateY(-2px) scale(1.02);
+}
+
+.backToTop:active {
+  transform: translateY(0) scale(0.97);
+}
+
+.backToTopWithSelection {
+  bottom: max(104px, calc(env(safe-area-inset-bottom) + 100px));
+}
+
 @media (max-width: 1100px) {
   .scrollArea {
     padding-left: 0;
@@ -116,6 +190,17 @@
     left: 12px;
     max-width: none;
   }
+
+  .backToTop {
+    right: 16px;
+    bottom: max(20px, calc(env(safe-area-inset-bottom) + 16px));
+    width: 44px;
+    height: 44px;
+  }
+
+  .backToTopWithSelection {
+    bottom: max(100px, calc(env(safe-area-inset-bottom) + 94px));
+  }
 }
 
 @media (prefers-color-scheme: dark) {
@@ -131,6 +216,20 @@
     color: #ffb4ab;
     background: rgba(255, 59, 48, 0.14);
     border-color: rgba(255, 59, 48, 0.24);
+  }
+
+  .scrollArea {
+    scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+  }
+
+  .scrollArea::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.26);
+    background-clip: padding-box;
+  }
+
+  .scrollArea::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.42);
+    background-clip: padding-box;
   }
 
   .success {

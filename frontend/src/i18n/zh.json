@@ -371,6 +371,7 @@
   "photoDownloadPartial": "已打包 {{success}} 张，{{failed}} 张失败。",
   "photoDownloadFailed": "照片下载失败",
   "photoExpandToolbar": "展开工具栏",
+  "photoBackToTop": "回到顶部",
   "photoOriginalLoadFailed": "原图加载失败，请刷新相册或检查源文件是否仍可访问。",
   "photoPrevious": "上一张照片",
   "photoNext": "下一张照片",

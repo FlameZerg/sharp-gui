@@ -13,7 +13,7 @@ import {
   fetchPhotoAlbums,
   uploadPhotosToGallery,
 } from '@/api';
-import { CloseIcon } from '@/components/common/Icons';
+import { ChevronUpIcon, CloseIcon } from '@/components/common/Icons';
 import { TextInputDialog } from '@/components/common/TextInputDialog';
 import { PhotoMasonryGrid } from '@/components/photoGallery/PhotoMasonryGrid';
 import { PhotoSelectionBar } from '@/components/photoGallery/PhotoSelectionBar';
@@ -31,6 +31,7 @@ const MOBILE_TOOLBAR_EXPAND_SCROLL_TOP = 1;
 const MOBILE_TOOLBAR_COMPACT_SCROLL_TOP = 128;
 const NOTICE_SUCCESS_AUTO_DISMISS_MS = 3200;
 const NOTICE_ERROR_AUTO_DISMISS_MS = 5200;
+const BACK_TO_TOP_VISIBLE_SCROLL_TOP = 420;
 
 function getDefaultGridColumns() {
   if (typeof window === 'undefined') {
@@ -88,6 +89,7 @@ export function PhotoGalleryView() {
   const [error, setError] = useState<string | null>(null);
   const [pathDialogOpen, setPathDialogOpen] = useState(false);
   const [notice, setNotice] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
+  const [showBackToTop, setShowBackToTop] = useState(false);
 
   const {
     photoAlbums,
@@ -292,6 +294,11 @@ export function PhotoGalleryView() {
       }
 
       const scrollTop = el.scrollTop;
+      setShowBackToTop((current) => {
+        const nextVisible = scrollTop >= BACK_TO_TOP_VISIBLE_SCROLL_TOP;
+        return current === nextVisible ? current : nextVisible;
+      });
+
       if (window.innerWidth <= MOBILE_TOOLBAR_BREAKPOINT) {
         if (scrollTop <= MOBILE_TOOLBAR_EXPAND_SCROLL_TOP) {
           updateToolbarMode('expanded');
@@ -436,6 +443,11 @@ export function PhotoGalleryView() {
   }, []);
 
   const handleExpandToolbar = useCallback(() => {
+    updateToolbarMode('expanded');
+  }, [updateToolbarMode]);
+
+  const handleBackToTop = useCallback(() => {
+    scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
     updateToolbarMode('expanded');
   }, [updateToolbarMode]);
 
@@ -609,6 +621,20 @@ export function PhotoGalleryView() {
           onConvertPhoto={handleConvertOne}
         />
       </div>
+
+      <button
+        className={[
+          styles.backToTop,
+          showBackToTop ? styles.backToTopVisible : '',
+          photoSelectionMode ? styles.backToTopWithSelection : '',
+        ].filter(Boolean).join(' ')}
+        onClick={handleBackToTop}
+        type="button"
+        title={t('photoBackToTop')}
+        aria-label={t('photoBackToTop')}
+      >
+        <ChevronUpIcon width={20} height={20} />
+      </button>
 
       {notice ? (
         <div className={[styles.notice, styles[notice.tone]].join(' ')} role="status" aria-live="polite">
