@@ -8,6 +8,7 @@ import styles from './SelectMenu.module.css';
 export interface SelectMenuOption {
   value: string;
   label: string;
+  icon?: ReactNode;
 }
 
 interface SelectMenuProps {
@@ -94,6 +95,9 @@ export function SelectMenu({
       >
         {icon ? <span className={styles.triggerIcon}>{icon}</span> : null}
         {showSelectedLabel ? <span className={styles.triggerLabel}>{selectedOption?.label}</span> : null}
+        {showSelectedLabel && selectedOption?.icon ? (
+          <span className={styles.triggerDirection}>{selectedOption.icon}</span>
+        ) : null}
         <ChevronDownIcon width={15} height={15} />
       </button>
 
@@ -110,7 +114,10 @@ export function SelectMenu({
                 aria-selected={isSelected}
                 onClick={() => handleSelect(option.value)}
               >
-                <span>{option.label}</span>
+                <span className={styles.optionLabel}>
+                  {option.icon ? <span className={styles.optionDirection}>{option.icon}</span> : null}
+                  <span className={styles.optionText}>{option.label}</span>
+                </span>
                 {isSelected ? <CheckIcon width={15} height={15} /> : null}
               </button>
             );

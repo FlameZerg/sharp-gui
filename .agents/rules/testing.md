@@ -40,27 +40,34 @@ python -m pytest -q
 - app import：`from app import app` 不启动 worker/cleanup 线程。
 - LAN 门禁：门禁开/关、owner-only、远程生成条件、转发头不能提权。
 - 静态文件：模型文件允许访问，敏感文件和路径穿越拒绝。
-- 照片图库：photo id 解析、相册上传文件名净化/扩展名白名单/无效图片清理。
+- 本地媒体图库：media/photo/video id 解析、视频扫描、poster/metadata 降级、Range 播放、相册上传文件名净化/扩展名白名单/无效图片清理。
 - 任务队列：无需真实推理即可验证入队、列出、取消和状态变更。
 
-### 本地照片图库 smoke checklist
+### 本地媒体图库 smoke checklist
 
-照片图库属于大功能，当前若暂不引入测试框架，至少应手动或脚本化验证：
+本地媒体图库属于大功能，当前若暂不引入测试框架，至少应手动或脚本化验证：
 
-- `GET/POST/DELETE /api/photo-albums`、`POST /scan`、`GET /photos`、`GET /photo-thumbnail`、`GET /photo-original`、`POST /api/photo-conversions` 的成功与错误路径。
+- `GET/POST/DELETE /api/photo-albums`、`POST /scan`、`GET /photos?type=all|photo|video`、`GET /photo-thumbnail`、`GET /photo-original`、`GET /video-poster`、`GET /video-original`、`GET /video-play/<id>/<token>/<filename>`、`POST /api/photo-downloads`、`POST /api/photo-conversions` 的成功与错误路径。
 - 列表返回 `thumb_url`，预览/下载使用 `full_url` 或 `preview_url` 原图地址，不能把缩略图放大当原图。
+- 视频列表返回 `poster_url`、`playback_url`、`download_url` 和可选元数据；列表滚动不能加载完整视频文件。
 - 中文、空格、大小写混合文件名可以生成缩略图、打开原图、下载和加入 3D 队列。
-- 构造非法 photo id、相对路径逃逸和 root 外路径访问会被拒绝。
+- 中文、空格、大小写混合视频文件名可以生成 poster、预览、Range seek 和下载；后端日志不能出现 latin-1 header 编码错误。
+- 构造非法 media id、相对路径逃逸和 root 外路径访问会被拒绝。
+- 视频播放 token 成功、过期、撤销会话失效都要覆盖；play token 不能绕过 `/api/video-original/<id>?download=1` 的 Unlocked 下载权限。
+- 删除相册只移除配置、索引、该相册对应照片缩略图和视频 poster，不删除原始相册文件。
+- 批量下载照片/视频 ZIP 正常包含选中媒体；取消下载或服务重启留下的 `photo-gallery-*.zip` 应在后续批量下载前按过期规则清理。
 - 至少一个 1000+ 图片目录验证分页、缩略图缓存和瀑布流滚动性能。
+- 移动端媒体图库真实设备验证：浮动/粘性控制区的展开、折叠、吸附或自动隐藏不应推动列表/瀑布流抖动；玻璃态控件不能退化成实心板；弱提示文案仍需可读。
 - Windows、Linux、macOS 或挂载/NAS 路径至少做路径配置与不可用目录错误状态验证。
+- 移动端至少验证 Chrome、一个国产浏览器和一个会接管播放器的浏览器：Chrome 应使用网页播放器；接管播放器能播放则接受；接管失败时必须展示美观失败态并保留下载。排查时确认真实视频请求是否命中 `/api/video-play/.../<filename>`，而不是只请求页面根地址。
 
 ### 局域网门禁 smoke checklist
 
 门禁涉及隐私边界，若暂不引入测试框架，至少应手动或脚本化验证：
 
 - 缺省 `access_control.enabled=false` 时，局域网读取模型/照片/`/files/*` 恢复旧开放行为，但设置、删除、目录管理、重启、取消任务等 owner-only API 仍拒绝远程请求。
-- 门禁开启且未登录时，远程访问模型列表、照片相册、缩略图、原图、下载、导出和 `/files/*` 返回 401，不泄露元数据或文件内容。
-- 访问码登录成功后，远程设备可浏览、预览、下载和导出；修改访问码或撤销会话后，旧 Cookie 失效。
+- 门禁开启且未登录时，远程访问模型列表、媒体相册、缩略图、poster、原图、视频原文件下载、导出和 `/files/*` 返回 401，不泄露元数据或文件内容；有效视频播放 token 只允许对应视频 inline 播放。
+- 访问码登录成功后，远程设备可浏览、预览、下载和导出；修改访问码或撤销会话后，旧 Cookie 和旧视频播放 token 都失效。
 - 远程生成默认拒绝；只有 `access_control.enabled=true` 且 `allow_remote_generation=true` 时，已解锁远程设备才可提交 `/api/generate` 与 `/api/photo-conversions`。
 - localhost owner 免访问码进入应用和设置；owner 判断不得信任 `X-Forwarded-For`、`Forwarded`、`X-Real-IP` 等客户端可控头。
 - 本机 owner 在门禁关闭或未设置访问码时应默认看到启动提醒；“稍后”只关闭本次提示，“不再提示”才持久抑制。

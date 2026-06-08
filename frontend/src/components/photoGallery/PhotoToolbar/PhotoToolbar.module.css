@@ -29,6 +29,7 @@
 
 .titleBlock {
   min-width: 0;
+  max-width: min(420px, 100%);
 }
 
 .compactTitle {
@@ -37,7 +38,11 @@
 
 .eyebrow {
   display: block;
+  max-width: 100%;
   margin-bottom: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 11px;
   font-weight: 700;
   color: var(--accent-blue);
@@ -55,6 +60,10 @@
 
 .titleBlock p {
   margin: 4px 0 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 12px;
   color: var(--text-muted);
 }
@@ -66,6 +75,75 @@
   flex-shrink: 0;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.mediaFilter {
+  min-width: 0;
+  height: 42px;
+  padding: 3px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border-radius: var(--radius-lg);
+  /* 与下方按钮一致的简洁半透明底，去掉原来的顶部高光内阴影与亮边框 */
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.mediaFilterBtn {
+  height: 36px;
+  min-width: 68px;
+  padding: 0 12px;
+  border-radius: calc(var(--radius-lg) - 3px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: var(--text-secondary);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background var(--transition-normal),
+    color var(--transition-normal),
+    opacity var(--transition-normal),
+    box-shadow var(--transition-normal);
+}
+
+.mediaFilterBtn strong {
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border-radius: 0;
+  display: inline;
+  color: var(--text-muted);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: inherit;
+}
+
+.mediaFilterBtnActive {
+  color: var(--accent-blue);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 5px 14px rgba(0, 0, 0, 0.08);
+}
+
+.mediaFilterBtnActive strong {
+  color: currentColor;
+  background: transparent;
+}
+
+.mediaFilterBtn:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}
+
+.mediaFilterBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .textBtn,
@@ -436,7 +514,7 @@
   transform: translateY(-1px);
 }
 
-@media (max-width: 860px) {
+@media (max-width: 1100px) {
   .toolbar {
     align-items: stretch;
     flex-direction: column;
@@ -454,6 +532,15 @@
     justify-content: flex-start;
     gap: 7px;
   }
+
+  .mediaFilter {
+    width: 100%;
+    order: -1;
+  }
+
+  .mediaFilterBtn {
+    flex: 1 1 0;
+  }
 }
 
 @media (max-width: 460px) {
@@ -464,6 +551,12 @@
   .sortMenu {
     min-width: 128px;
     max-width: 136px;
+  }
+
+  .mediaFilterBtn {
+    min-width: 0;
+    padding: 0 7px;
+    font-size: 11px;
   }
 
   .densityPopover {
@@ -480,54 +573,77 @@
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1100px) {
   .toolbar {
-    --toolbar-motion: 420ms cubic-bezier(0.18, 1.08, 0.22, 1);
-    --toolbar-fade: 140ms ease;
+    --toolbar-motion: 360ms cubic-bezier(0.22, 1, 0.36, 1);
+    --toolbar-fade: 160ms ease;
+    /* 容器整体回弹专用的柔和弹簧曲线（轻微过冲，自然不生硬） */
+    --toolbar-spring: 440ms cubic-bezier(0.33, 1.08, 0.4, 1);
+    --toolbar-expanded-height: var(--toolbar-reserved-height, 248px);
+    --toolbar-compact-height: 54px;
 
     top: 62px;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    justify-items: stretch;
-    align-items: start;
+    display: block;
+    height: var(--toolbar-expanded-height);
     margin: 64px 12px 10px;
-    padding: 12px;
+    padding: 0;
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-color: transparent;
+    box-shadow: none;
     overflow: visible;
-    will-change: width, margin, padding, transform;
-    transition:
-      width var(--toolbar-motion),
-      max-width var(--toolbar-motion),
-      margin var(--toolbar-motion),
-      padding var(--toolbar-motion),
-      border-radius var(--toolbar-motion),
-      transform var(--toolbar-motion),
-      opacity var(--toolbar-motion);
+    pointer-events: none;
+    /*
+     * 注意：这里不能给占位层 .toolbar 设置 transform / will-change: transform|opacity /
+     * isolation: isolate / filter 等属性。任意一项都会让 .toolbar 成为 backdrop root，
+     * 从而把内层 .toolbarContent 的 backdrop-filter 限制在「透明的 .toolbar 自身」范围内，
+     * 导致毛玻璃没有可采样的背景内容 → 退化成灰白塑料板。玻璃质感必须能透出下方瀑布流。
+     */
   }
 
   .toolbarContent {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     width: 100%;
     inline-size: 100%;
+    padding: 12px;
     align-items: start;
-    gap: 10px;
-    border-radius: inherit;
+    gap: 6px;
+    border-radius: var(--radius-2xl);
+    background: var(--glass-bg);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
     overflow: visible;
-    will-change: grid-template-columns, gap, transform;
+    pointer-events: auto;
+    transform-origin: top center;
+    will-change: transform, opacity;
     transition:
-      grid-template-columns var(--toolbar-motion),
-      gap var(--toolbar-motion),
-      transform var(--toolbar-motion);
+      border-radius var(--toolbar-motion),
+      padding var(--toolbar-motion),
+      transform var(--toolbar-motion),
+      opacity var(--toolbar-fade);
+  }
+
+  .expanded .toolbarContent {
+    animation: toolbarExpandSettle var(--toolbar-spring);
   }
 
   .titleBlock {
-    min-width: 92px;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
     padding-top: 2px;
-    will-change: min-width, transform;
+    will-change: transform, opacity;
     transition:
-      min-width var(--toolbar-motion),
-      padding var(--toolbar-motion),
-      transform var(--toolbar-motion);
+      transform var(--toolbar-motion),
+      opacity var(--toolbar-fade);
   }
 
   .eyebrow {
@@ -538,8 +654,6 @@
     transform: translateY(0);
     transition:
       opacity var(--toolbar-fade),
-      max-height var(--toolbar-motion),
-      margin var(--toolbar-motion),
       transform var(--toolbar-motion);
   }
 
@@ -549,56 +663,68 @@
     transform: translateY(0);
     transition:
       opacity var(--toolbar-fade),
-      max-height var(--toolbar-motion),
       transform var(--toolbar-motion);
   }
 
   .titleBlock p {
-    margin-top: 3px;
-    font-size: 11px;
-    max-height: 16px;
+    margin-top: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.35;
+    letter-spacing: 0.01em;
+    /* 仍是弱提示文案，但比 11px/#888 更易读：略大字号 + 更稳的次级灰 */
+    color: var(--text-secondary);
+    opacity: 0.78;
+    max-height: 18px;
     overflow: hidden;
     transform: translateY(0);
     transition:
       opacity var(--toolbar-fade),
-      max-height var(--toolbar-motion),
-      margin var(--toolbar-motion),
       transform var(--toolbar-motion);
   }
 
   .compactTitle {
     display: block;
-    max-height: 0;
+    max-height: 18px;
     opacity: 0;
     transform: translateY(5px);
     transition:
       opacity var(--toolbar-fade),
-      max-height var(--toolbar-motion),
       transform var(--toolbar-motion);
   }
 
   .actions {
     width: 100%;
     min-width: 0;
+    flex-wrap: wrap;
     justify-content: flex-start;
     gap: 7px;
-    will-change: width, max-width, gap;
+    will-change: transform, opacity;
     transition:
-      width var(--toolbar-motion),
-      max-width var(--toolbar-motion),
-      gap var(--toolbar-motion),
-      transform var(--toolbar-motion);
+      transform var(--toolbar-motion),
+      opacity var(--toolbar-fade);
   }
 
   .sortMenu {
     min-width: 116px;
     max-width: 132px;
     transition:
-      min-width var(--toolbar-motion),
-      max-width var(--toolbar-motion),
-      width var(--toolbar-motion),
       transform var(--toolbar-motion),
-      opacity var(--toolbar-motion);
+      opacity var(--toolbar-fade);
+  }
+
+  .mediaFilter {
+    width: 100%;
+    height: 40px;
+    gap: 2px;
+    transition:
+      opacity var(--toolbar-fade),
+      transform var(--toolbar-motion);
+  }
+
+  .mediaFilterBtn {
+    height: 34px;
+    min-width: 0;
   }
 
   .textBtn,
@@ -608,13 +734,6 @@
     height: 34px;
     border-radius: 17px;
     transition:
-      width var(--toolbar-motion),
-      min-width var(--toolbar-motion),
-      flex-basis var(--toolbar-motion),
-      margin var(--toolbar-motion),
-      padding var(--toolbar-motion),
-      gap var(--toolbar-motion),
-      border-radius var(--toolbar-motion),
       background var(--transition-normal),
       color var(--transition-normal),
       box-shadow var(--transition-normal),
@@ -683,21 +802,16 @@
 
   .compact {
     align-items: center;
-    margin-top: 56px;
-    padding: 8px 10px;
-    border-radius: 22px;
   }
 
   .compact .toolbarContent {
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: 8px;
-    overflow: hidden;
-  }
-
-  .compact .toolbarContent:has([role="dialog"]),
-  .compact .toolbarContent:has([role="listbox"]) {
-    overflow: visible;
+    min-height: var(--toolbar-compact-height);
+    padding: 8px 10px;
+    border-radius: 22px;
+    animation: toolbarCompactSettle var(--toolbar-spring);
   }
 
   .compact .eyebrow,
@@ -712,7 +826,6 @@
   }
 
   .compact .compactTitle {
-    max-height: 18px;
     opacity: 1;
     max-width: 118px;
     color: var(--text-primary);
@@ -744,6 +857,18 @@
     max-width: 38px;
   }
 
+  .compact .mediaFilter {
+    width: 0;
+    max-width: 0;
+    margin-left: -4px;
+    padding: 0;
+    overflow: hidden;
+    visibility: hidden;
+    opacity: 0;
+    transform: scale(0.92);
+    pointer-events: none;
+  }
+
   .compact .densityTrigger {
     width: 38px;
     min-width: 38px;
@@ -773,17 +898,10 @@
     transform: scale(0.92);
     pointer-events: none;
     transition:
-      width var(--toolbar-motion),
-      min-width var(--toolbar-motion),
-      flex-basis var(--toolbar-motion),
-      margin var(--toolbar-motion),
-      padding var(--toolbar-motion),
-      gap var(--toolbar-motion),
-      border-radius var(--toolbar-motion),
       background var(--transition-normal),
       color var(--transition-normal),
       box-shadow var(--transition-normal),
-      transform var(--transition-normal),
+      transform var(--toolbar-motion),
       opacity 60ms ease,
       visibility 0s;
   }
@@ -836,6 +954,8 @@
     .compactTitle,
     .actions,
     .sortMenu,
+    .mediaFilter,
+    .mediaFilterBtn,
     .textBtn,
     .primaryBtn,
     .iconBtn,
@@ -847,10 +967,39 @@
   }
 }
 
+@keyframes toolbarCompactSettle {
+  0% {
+    transform: translateY(4px) scale(1.008);
+  }
+
+  56% {
+    transform: translateY(-1px) scale(0.997);
+  }
+
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes toolbarExpandSettle {
+  0% {
+    transform: translateY(-3px) scale(0.994);
+  }
+
+  60% {
+    transform: translateY(1px) scale(1.003);
+  }
+
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+
 @media (prefers-color-scheme: dark) {
   .textBtn,
   .iconBtn,
-  .densityTrigger {
+  .densityTrigger,
+  .mediaFilter {
     background: rgba(255, 255, 255, 0.1);
     border-color: rgba(255, 255, 255, 0.12);
   }
@@ -860,6 +1009,21 @@
   .densityTrigger:hover:not(:disabled),
   .densityTrigger:focus-visible {
     background: rgba(255, 255, 255, 0.16);
+  }
+
+  .mediaFilterBtnActive {
+    /* 暗色下选中态要明显：亮色磨砂滑块 + 品牌蓝文字 + 投影，呼应浅色态语言 */
+    color: var(--accent-blue);
+    background: rgba(255, 255, 255, 0.95);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  }
+
+  .mediaFilterBtn {
+    background: transparent;
+  }
+
+  .mediaFilterBtn strong {
+    background: transparent;
   }
 
   .densityPopover {

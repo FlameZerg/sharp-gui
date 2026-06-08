@@ -6,6 +6,8 @@ import styles from './PhotoSelectionBar.module.css';
 
 interface PhotoSelectionBarProps {
   selectedCount: number;
+  convertCount: number;
+  canConvert: boolean;
   isConverting: boolean;
   isDownloading: boolean;
   onConvert: () => void;
@@ -15,6 +17,8 @@ interface PhotoSelectionBarProps {
 
 export function PhotoSelectionBar({
   selectedCount,
+  convertCount,
+  canConvert,
   isConverting,
   isDownloading,
   onConvert,
@@ -36,11 +40,18 @@ export function PhotoSelectionBar({
       <button
         className={styles.primaryBtn}
         onClick={onConvert}
-        disabled={isConverting}
+        disabled={isConverting || !canConvert}
+        title={canConvert ? t('photoConvertSelected') : t('photoConvertPhotosOnly')}
         type="button"
       >
         <SparklesIcon width={16} height={16} />
-        <span>{isConverting ? t('converting') : t('photoConvertSelected')}</span>
+        <span>
+          {isConverting
+            ? t('converting')
+            : canConvert
+              ? t('photoConvertSelectedShort', { count: convertCount })
+              : t('photoConvertPhotosOnly')}
+        </span>
       </button>
       <button
         className={styles.iconBtn}

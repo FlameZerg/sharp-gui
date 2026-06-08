@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
@@ -20,13 +20,13 @@ import { PhotoSelectionBar } from '@/components/photoGallery/PhotoSelectionBar';
 import { PhotoToolbar } from '@/components/photoGallery/PhotoToolbar';
 import type { PhotoToolbarMode } from '@/components/photoGallery/PhotoToolbar';
 import { useAppStore } from '@/store';
-import type { PhotoItem } from '@/types';
+import type { PhotoItem, PhotoMediaType } from '@/types';
 
 import styles from './PhotoGalleryView.module.css';
 
 const MIN_GRID_COLUMNS = 1;
 const MAX_GRID_COLUMNS = 8;
-const MOBILE_TOOLBAR_BREAKPOINT = 768;
+const MOBILE_TOOLBAR_BREAKPOINT = 1100;
 const MOBILE_TOOLBAR_EXPAND_SCROLL_TOP = 1;
 const MOBILE_TOOLBAR_COMPACT_SCROLL_TOP = 128;
 const NOTICE_SUCCESS_AUTO_DISMISS_MS = 3200;
@@ -53,7 +53,7 @@ function clampGridColumns(columns: number) {
   return Math.min(MAX_GRID_COLUMNS, Math.max(MIN_GRID_COLUMNS, columns));
 }
 
-function getTouchDistance(touches: React.TouchList) {
+function getTouchDistance(touches: TouchList) {
   const dx = touches[0].clientX - touches[1].clientX;
   const dy = touches[0].clientY - touches[1].clientY;
   return Math.sqrt(dx * dx + dy * dy);
@@ -64,6 +64,16 @@ export function PhotoGalleryView() {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const hasCustomGridColumns = useRef(false);
   const pinchRef = useRef<{ distance: number; columns: number } | null>(null);
+  const toolbarModeRef = useRef<PhotoToolbarMode>('expanded');
+  const scrollFrameRef = useRef<number | null>(null);
+  const resizeFrameRef = useRef<number | null>(null);
+  const lastViewportWidthRef = useRef(typeof window === 'undefined' ? 0 : window.innerWidth);
+  const scrollStateRef = useRef<{
+    isLoading: boolean;
+    isLoadingMore: boolean;
+    loadPhotos: (cursor: string | null, append: boolean) => void;
+    photoNextCursor: string | null;
+  } | null>(null);
   const [sort, setSort] = useState('mtime_desc');
   const [gridColumns, setGridColumns] = useState(getDefaultGridColumns);
   const [isLoading, setIsLoading] = useState(false);
@@ -74,6 +84,7 @@ export function PhotoGalleryView() {
   const [isUploadingPhotos, setIsUploadingPhotos] = useState(false);
   const [uploadingPhotoCount, setUploadingPhotoCount] = useState(0);
   const [toolbarMode, setToolbarMode] = useState<PhotoToolbarMode>('expanded');
+  const gridColumnsRef = useRef(gridColumns);
   const [error, setError] = useState<string | null>(null);
   const [pathDialogOpen, setPathDialogOpen] = useState(false);
   const [notice, setNotice] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
@@ -84,6 +95,8 @@ export function PhotoGalleryView() {
     photoItems,
     photoNextCursor,
     photoTotal,
+    photoMediaType,
+    photoMediaCounts,
     photoSelectionMode,
     selectedPhotoIds,
     isLocalAccess,
@@ -92,6 +105,7 @@ export function PhotoGalleryView() {
     setPhotoAlbums,
     setPhotoItems,
     clearPhotoItems,
+    setPhotoMediaType,
     setPhotoSelectionMode,
     toggleSelectedPhoto,
     clearSelectedPhotos,
@@ -105,6 +119,8 @@ export function PhotoGalleryView() {
       photoItems: state.photoItems,
       photoNextCursor: state.photoNextCursor,
       photoTotal: state.photoTotal,
+      photoMediaType: state.photoMediaType,
+      photoMediaCounts: state.photoMediaCounts,
       photoSelectionMode: state.photoSelectionMode,
       selectedPhotoIds: state.selectedPhotoIds,
       isLocalAccess: state.isLocalAccess,
@@ -113,6 +129,7 @@ export function PhotoGalleryView() {
       setPhotoAlbums: state.setPhotoAlbums,
       setPhotoItems: state.setPhotoItems,
       clearPhotoItems: state.clearPhotoItems,
+      setPhotoMediaType: state.setPhotoMediaType,
       setPhotoSelectionMode: state.setPhotoSelectionMode,
       toggleSelectedPhoto: state.toggleSelectedPhoto,
       clearSelectedPhotos: state.clearSelectedPhotos,
@@ -123,25 +140,76 @@ export function PhotoGalleryView() {
   );
 
   const currentAlbum = photoAlbums.find((album) => album.id === currentPhotoAlbumId) ?? null;
+  const selectedPhotoIdSet = useMemo(() => new Set(selectedPhotoIds), [selectedPhotoIds]);
+  const selectedItems = useMemo(
+    () => photoItems.filter((photo) => selectedPhotoIdSet.has(photo.id)),
+    [photoItems, selectedPhotoIdSet],
+  );
+  const selectedImageItems = useMemo(
+    () => selectedItems.filter((photo) => photo.media_type === 'image'),
+    [selectedItems],
+  );
   const canUploadPhotos = Boolean(currentAlbum) && (
     isLocalAccess || Boolean(authStatus?.access_control_enabled)
   );
 
+  const updateToolbarMode = useCallback((nextMode: PhotoToolbarMode) => {
+    if (toolbarModeRef.current === nextMode) {
+      return;
+    }
+    toolbarModeRef.current = nextMode;
+    setToolbarMode(nextMode);
+  }, []);
+
   useEffect(() => {
     const handleResize = () => {
-      if (window.innerWidth > MOBILE_TOOLBAR_BREAKPOINT) {
-        setToolbarMode('expanded');
-      }
-
-      if (hasCustomGridColumns.current) {
-        setGridColumns((current) => clampGridColumns(current));
+      if (resizeFrameRef.current !== null) {
         return;
       }
-      setGridColumns(getDefaultGridColumns());
+
+      resizeFrameRef.current = window.requestAnimationFrame(() => {
+        resizeFrameRef.current = null;
+        const nextWidth = window.innerWidth;
+
+        // Mobile browser chrome can resize only viewport height while scrolling.
+        // Ignoring height-only resize avoids rebuilding the masonry grid mid-scroll.
+        if (Math.abs(nextWidth - lastViewportWidthRef.current) < 1) {
+          return;
+        }
+        lastViewportWidthRef.current = nextWidth;
+
+        if (nextWidth > MOBILE_TOOLBAR_BREAKPOINT) {
+          updateToolbarMode('expanded');
+        }
+
+        if (hasCustomGridColumns.current) {
+          setGridColumns((current) => {
+            const nextColumns = clampGridColumns(current);
+            return current === nextColumns ? current : nextColumns;
+          });
+          return;
+        }
+
+        const nextColumns = getDefaultGridColumns();
+        setGridColumns((current) => current === nextColumns ? current : nextColumns);
+      });
     };
 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
+  }, [updateToolbarMode]);
+
+  useEffect(() => {
+    gridColumnsRef.current = gridColumns;
+  }, [gridColumns]);
+
+  useEffect(() => () => {
+    if (scrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(scrollFrameRef.current);
+    }
+    if (resizeFrameRef.current !== null) {
+      window.cancelAnimationFrame(resizeFrameRef.current);
+    }
   }, []);
 
   useEffect(() => {
@@ -179,8 +247,8 @@ export function PhotoGalleryView() {
       }
       setError(null);
 
-      const response = await fetchPhotoAlbumPhotos(albumId, cursor, 60, sort);
-      setPhotoItems(response.items, response.next_cursor, response.total, append);
+      const response = await fetchPhotoAlbumPhotos(albumId, cursor, 60, sort, photoMediaType);
+      setPhotoItems(response.items, response.next_cursor, response.total, append, response.media_counts);
       if (response.error) {
         setError(response.error);
       }
@@ -194,45 +262,66 @@ export function PhotoGalleryView() {
       setIsLoading(false);
       setIsLoadingMore(false);
     }
-  }, [clearPhotoItems, currentPhotoAlbumId, setPhotoItems, sort, t]);
+  }, [clearPhotoItems, currentPhotoAlbumId, photoMediaType, setPhotoItems, sort, t]);
+
+  useEffect(() => {
+    scrollStateRef.current = {
+      isLoading,
+      isLoadingMore,
+      loadPhotos: (cursor, append) => {
+        void loadPhotos(cursor, append);
+      },
+      photoNextCursor,
+    };
+  }, [isLoading, isLoadingMore, loadPhotos, photoNextCursor]);
 
   useEffect(() => {
     void loadPhotos(null, false);
   }, [loadPhotos]);
 
   const handleScroll = useCallback(() => {
+    if (scrollFrameRef.current !== null) {
+      return;
+    }
+
+    scrollFrameRef.current = window.requestAnimationFrame(() => {
+      scrollFrameRef.current = null;
+      const el = scrollRef.current;
+      if (!el) {
+        return;
+      }
+
+      const scrollTop = el.scrollTop;
+      if (window.innerWidth <= MOBILE_TOOLBAR_BREAKPOINT) {
+        if (scrollTop <= MOBILE_TOOLBAR_EXPAND_SCROLL_TOP) {
+          updateToolbarMode('expanded');
+        } else if (toolbarModeRef.current === 'expanded' && scrollTop >= MOBILE_TOOLBAR_COMPACT_SCROLL_TOP) {
+          updateToolbarMode('compact');
+        }
+      }
+
+      const scrollState = scrollStateRef.current;
+      if (!scrollState || !scrollState.photoNextCursor || scrollState.isLoadingMore || scrollState.isLoading) {
+        return;
+      }
+
+      const remaining = el.scrollHeight - el.scrollTop - el.clientHeight;
+      if (remaining < 700) {
+        scrollState.isLoadingMore = true;
+        scrollState.loadPhotos(scrollState.photoNextCursor, true);
+      }
+    });
+  }, [updateToolbarMode]);
+
+  useEffect(() => {
     const el = scrollRef.current;
     if (!el) {
       return;
     }
 
-    const scrollTop = el.scrollTop;
-    if (window.innerWidth <= MOBILE_TOOLBAR_BREAKPOINT) {
-      setToolbarMode((current) => {
-        if (scrollTop <= MOBILE_TOOLBAR_EXPAND_SCROLL_TOP) {
-          return current === 'expanded' ? current : 'expanded';
-        }
-
-        if (current === 'expanded') {
-          if (scrollTop >= MOBILE_TOOLBAR_COMPACT_SCROLL_TOP) {
-            return 'compact';
-          }
-          return current;
-        }
-
-        return current;
-      });
-    }
-
-    if (!photoNextCursor || isLoadingMore || isLoading) {
-      return;
-    }
-
-    const remaining = el.scrollHeight - el.scrollTop - el.clientHeight;
-    if (remaining < 700) {
-      void loadPhotos(photoNextCursor, true);
-    }
-  }, [isLoading, isLoadingMore, loadPhotos, photoNextCursor]);
+    el.addEventListener('scroll', handleScroll, { passive: true });
+    return () => el.removeEventListener('scroll', handleScroll);
+  }, [handleScroll]);
 
   const submitAlbumPath = useCallback(async (selectedPath: string) => {
     if (!selectedPath.trim() || isAddingAlbum) {
@@ -336,57 +425,89 @@ export function PhotoGalleryView() {
     scrollRef.current?.scrollTo({ top: 0 });
   }, []);
 
+  const handleMediaTypeChange = useCallback((nextType: PhotoMediaType) => {
+    setPhotoMediaType(nextType);
+    scrollRef.current?.scrollTo({ top: 0 });
+  }, [setPhotoMediaType]);
+
   const handleGridColumnsChange = useCallback((nextColumns: number) => {
     hasCustomGridColumns.current = true;
     setGridColumns(clampGridColumns(nextColumns));
   }, []);
 
-  const handleGridTouchStart = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
-    if (event.touches.length === 2) {
+  const handleExpandToolbar = useCallback(() => {
+    updateToolbarMode('expanded');
+  }, [updateToolbarMode]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) {
+      return;
+    }
+
+    const handleTouchMove = (event: TouchEvent) => {
+      if (!pinchRef.current || event.touches.length !== 2) {
+        return;
+      }
+
+      event.preventDefault();
+      const distance = getTouchDistance(event.touches);
+      const delta = distance - pinchRef.current.distance;
+      if (Math.abs(delta) < 34) {
+        return;
+      }
+
+      const nextColumns = delta > 0
+        ? pinchRef.current.columns - 1
+        : pinchRef.current.columns + 1;
+      const clampedColumns = clampGridColumns(nextColumns);
+      hasCustomGridColumns.current = true;
+      setGridColumns((current) => current === clampedColumns ? current : clampedColumns);
+      gridColumnsRef.current = clampedColumns;
+      pinchRef.current = {
+        distance,
+        columns: clampedColumns,
+      };
+    };
+
+    const handleTouchEnd = () => {
+      pinchRef.current = null;
+      el.removeEventListener('touchmove', handleTouchMove);
+    };
+
+    const handleTouchStart = (event: TouchEvent) => {
+      if (event.touches.length !== 2) {
+        return;
+      }
+
       pinchRef.current = {
         distance: getTouchDistance(event.touches),
-        columns: gridColumns,
+        columns: gridColumnsRef.current,
       };
-    }
-  }, [gridColumns]);
+      el.addEventListener('touchmove', handleTouchMove, { passive: false });
+    };
 
-  const handleGridTouchMove = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
-    if (!pinchRef.current || event.touches.length !== 2) {
-      return;
-    }
-
-    event.preventDefault();
-    const distance = getTouchDistance(event.touches);
-    const delta = distance - pinchRef.current.distance;
-    if (Math.abs(delta) < 34) {
-      return;
-    }
-
-    const nextColumns = delta > 0
-      ? pinchRef.current.columns - 1
-      : pinchRef.current.columns + 1;
-    const clampedColumns = clampGridColumns(nextColumns);
-    hasCustomGridColumns.current = true;
-    setGridColumns(clampedColumns);
-    pinchRef.current = {
-      distance,
-      columns: clampedColumns,
+    el.addEventListener('touchstart', handleTouchStart, { passive: true });
+    el.addEventListener('touchend', handleTouchEnd, { passive: true });
+    el.addEventListener('touchcancel', handleTouchEnd, { passive: true });
+    return () => {
+      el.removeEventListener('touchstart', handleTouchStart);
+      el.removeEventListener('touchmove', handleTouchMove);
+      el.removeEventListener('touchend', handleTouchEnd);
+      el.removeEventListener('touchcancel', handleTouchEnd);
     };
   }, []);
 
-  const handleGridTouchEnd = useCallback(() => {
-    pinchRef.current = null;
-  }, []);
-
   const convertPhotos = useCallback(async (photos: PhotoItem[]) => {
-    if (photos.length === 0 || isConverting) {
+    const imagePhotos = photos.filter((photo) => photo.media_type === 'image');
+    if (imagePhotos.length === 0 || isConverting) {
       return;
     }
 
     try {
       setIsConverting(true);
       setNotice({ tone: 'success', message: t('photoConvertPreparing') });
-      const result = await convertPhotosToModels(photos.map((photo) => photo.id));
+      const result = await convertPhotosToModels(imagePhotos.map((photo) => photo.id));
       if (result.tasks?.length) {
         setTasks(result.tasks, true);
       }
@@ -408,9 +529,8 @@ export function PhotoGalleryView() {
   }, [clearSelectedPhotos, isConverting, setTasks, t]);
 
   const handleConvertSelected = useCallback(() => {
-    const selected = photoItems.filter((photo) => selectedPhotoIds.includes(photo.id));
-    void convertPhotos(selected);
-  }, [convertPhotos, photoItems, selectedPhotoIds]);
+    void convertPhotos(selectedItems);
+  }, [convertPhotos, selectedItems]);
 
   const handleConvertOne = useCallback((photo: PhotoItem) => {
     void convertPhotos([photo]);
@@ -447,18 +567,16 @@ export function PhotoGalleryView() {
           styles.scrollArea,
           !sidebarCollapsed ? styles.scrollAreaWithSidebar : '',
         ].filter(Boolean).join(' ')}
-        onScroll={handleScroll}
-        onTouchStart={handleGridTouchStart}
-        onTouchMove={handleGridTouchMove}
-        onTouchEnd={handleGridTouchEnd}
-        onTouchCancel={handleGridTouchEnd}
       >
         <PhotoToolbar
           album={currentAlbum}
           total={photoTotal}
+          mediaType={photoMediaType}
+          mediaCounts={photoMediaCounts}
           sort={sort}
           selectionMode={photoSelectionMode}
           selectedCount={selectedPhotoIds.length}
+          selectedImageCount={selectedImageItems.length}
           gridColumns={gridColumns}
           isLocalAccess={isLocalAccess}
           isLoading={isLoading}
@@ -469,10 +587,12 @@ export function PhotoGalleryView() {
           onAddAlbum={handleAddAlbum}
           onUploadPhotos={handleUploadPhotos}
           onRefresh={handleRefresh}
+          onMediaTypeChange={handleMediaTypeChange}
           onSortChange={handleSortChange}
           onGridColumnsChange={handleGridColumnsChange}
           onToggleSelection={() => setPhotoSelectionMode(!photoSelectionMode)}
           onConvertSelected={handleConvertSelected}
+          onExpandRequest={handleExpandToolbar}
         />
 
         {error ? <div className={styles.error}>{error}</div> : null}
@@ -483,6 +603,7 @@ export function PhotoGalleryView() {
           selectionMode={photoSelectionMode}
           selectedPhotoIds={selectedPhotoIds}
           columns={gridColumns}
+          mediaType={photoMediaType}
           onOpenPhoto={setPreviewPhoto}
           onTogglePhoto={toggleSelectedPhoto}
           onConvertPhoto={handleConvertOne}
@@ -507,6 +628,8 @@ export function PhotoGalleryView() {
         selectedCount={selectedPhotoIds.length}
         isConverting={isConverting}
         isDownloading={isDownloading}
+        canConvert={selectedImageItems.length > 0}
+        convertCount={selectedImageItems.length}
         onConvert={handleConvertSelected}
         onDownload={handleDownloadSelected}
         onClear={clearSelectedPhotos}

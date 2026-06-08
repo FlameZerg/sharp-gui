@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { memo, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 
 import { useTranslation } from 'react-i18next';
@@ -6,9 +6,10 @@ import { useTranslation } from 'react-i18next';
 import {
   CheckIcon,
   GalleryIcon,
+  PlayIcon,
   SparklesIcon,
 } from '@/components/common/Icons';
-import type { PhotoItem } from '@/types';
+import type { PhotoItem, PhotoMediaType } from '@/types';
 
 import styles from './PhotoMasonryGrid.module.css';
 
@@ -18,6 +19,7 @@ interface PhotoMasonryGridProps {
   selectionMode: boolean;
   selectedPhotoIds: string[];
   columns: number;
+  mediaType: PhotoMediaType;
   onOpenPhoto: (photo: PhotoItem) => void;
   onTogglePhoto: (photoId: string) => void;
   onConvertPhoto: (photo: PhotoItem) => void;
@@ -29,11 +31,13 @@ export const PhotoMasonryGrid = memo(function PhotoMasonryGrid({
   selectionMode,
   selectedPhotoIds,
   columns,
+  mediaType,
   onOpenPhoto,
   onTogglePhoto,
   onConvertPhoto,
 }: PhotoMasonryGridProps) {
   const { t } = useTranslation();
+  const [failedThumbIds, setFailedThumbIds] = useState<Set<string>>(() => new Set());
   const columnCount = Math.max(1, Math.floor(columns));
   const columnItems = useMemo(() => {
     const nextColumns = Array.from({ length: columnCount }, () => [] as PhotoItem[]);
@@ -44,11 +48,22 @@ export const PhotoMasonryGrid = memo(function PhotoMasonryGrid({
   }, [columnCount, items]);
 
   if (!isLoading && items.length === 0) {
+    const emptyTitle = mediaType === 'video'
+      ? t('photoVideoGridEmptyTitle')
+      : mediaType === 'image'
+        ? t('photoGridEmptyTitle')
+        : t('photoMediaGridEmptyTitle');
+    const emptyHint = mediaType === 'video'
+      ? t('photoVideoGridEmptyHint')
+      : mediaType === 'image'
+        ? t('photoGridEmptyHint')
+        : t('photoMediaGridEmptyHint');
+
     return (
       <div className={styles.empty}>
         <GalleryIcon width={42} height={42} />
-        <h2>{t('photoGridEmptyTitle')}</h2>
-        <p>{t('photoGridEmptyHint')}</p>
+        <h2>{emptyTitle}</h2>
+        <p>{emptyHint}</p>
       </div>
     );
   }
@@ -63,15 +78,25 @@ export const PhotoMasonryGrid = memo(function PhotoMasonryGrid({
         <div className={styles.column} key={`photo-column-${columnIndex}`} role="presentation">
           {column.map((photo) => {
             const isSelected = selectedPhotoIds.includes(photo.id);
+            const isVideo = photo.media_type === 'video';
+            const thumbUrl = photo.thumb_url ?? undefined;
+            const hasThumb = Boolean(thumbUrl) && !failedThumbIds.has(photo.id);
             const ratio = photo.width && photo.height
               ? `${photo.width} / ${photo.height}`
-              : '4 / 3';
+              : isVideo ? '16 / 9' : '4 / 3';
+            const durationLabel = isVideo && typeof photo.duration === 'number'
+              ? formatDuration(photo.duration)
+              : null;
+            const specLabel = isVideo
+              ? getVideoSpecLabel(photo)
+              : null;
 
             return (
               <article
                 key={photo.id}
                 className={[
                   styles.card,
+                  isVideo ? styles.videoCard : '',
                   isSelected ? styles.selected : '',
                 ].filter(Boolean).join(' ')}
                 style={{ aspectRatio: ratio }}
@@ -83,17 +108,40 @@ export const PhotoMasonryGrid = memo(function PhotoMasonryGrid({
                   type="button"
                   aria-label={selectionMode ? t('photoToggleSelection', { name: photo.name }) : t('photoOpen', { name: photo.name })}
                 >
-                  {photo.thumb_url ? (
+                  {hasThumb ? (
                     <img
-                      src={photo.thumb_url}
+                      src={thumbUrl}
                       alt={photo.name}
                       loading="lazy"
                       decoding="async"
                       draggable={false}
+                      onError={() => {
+                        setFailedThumbIds((current) => {
+                          if (current.has(photo.id)) {
+                            return current;
+                          }
+                          const next = new Set(current);
+                          next.add(photo.id);
+                          return next;
+                        });
+                      }}
                     />
                   ) : (
-                    <span className={styles.fallback}>{t('galleryThumbUnavailableShort')}</span>
+                    <span className={[styles.fallback, isVideo ? styles.videoFallback : ''].filter(Boolean).join(' ')}>
+                      {isVideo ? <PlayIcon width={24} height={24} /> : null}
+                      <span>{isVideo ? t('photoVideoPosterUnavailable') : t('galleryThumbUnavailableShort')}</span>
+                    </span>
                   )}
+                  {isVideo ? (
+                    <>
+                      <span className={styles.playBadge} aria-hidden="true">
+                        <PlayIcon width={18} height={18} />
+                      </span>
+                      <span className={styles.videoMetaPill}>
+                        {durationLabel ?? t('photoVideo')}
+                      </span>
+                    </>
+                  ) : null}
                 </button>
 
                 <div className={styles.topActions}>
@@ -112,16 +160,21 @@ export const PhotoMasonryGrid = memo(function PhotoMasonryGrid({
                 </div>
 
                 <div className={styles.footer}>
-                  <span>{photo.name}</span>
-                  <button
-                    className={styles.convertBtn}
-                    onClick={() => onConvertPhoto(photo)}
-                    type="button"
-                    title={t('photoConvertOne')}
-                    aria-label={t('photoConvertOne')}
-                  >
-                    <SparklesIcon width={14} height={14} />
-                  </button>
+                  <span className={styles.footerText}>
+                    <span>{photo.name}</span>
+                    {specLabel ? <small>{specLabel}</small> : null}
+                  </span>
+                  {!isVideo ? (
+                    <button
+                      className={styles.convertBtn}
+                      onClick={() => onConvertPhoto(photo)}
+                      type="button"
+                      title={t('photoConvertOne')}
+                      aria-label={t('photoConvertOne')}
+                    >
+                      <SparklesIcon width={14} height={14} />
+                    </button>
+                  ) : null}
                 </div>
               </article>
             );
@@ -141,3 +194,23 @@ export const PhotoMasonryGrid = memo(function PhotoMasonryGrid({
 });
 
 PhotoMasonryGrid.displayName = 'PhotoMasonryGrid';
+
+function formatDuration(durationSeconds: number): string {
+  const totalSeconds = Math.max(0, Math.round(durationSeconds));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+function getVideoSpecLabel(photo: PhotoItem): string | null {
+  const resolution = photo.width && photo.height ? `${photo.width} × ${photo.height}` : null;
+  const codec = photo.video_codec ? photo.video_codec.toUpperCase() : null;
+  if (resolution && codec) {
+    return `${resolution} · ${codec}`;
+  }
+  return resolution ?? codec;
+}

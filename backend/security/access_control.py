@@ -25,6 +25,7 @@ ACCESS_UNLOCKED = "unlocked"
 ACCESS_OWNER = "owner"
 LOGIN_FAILURE_WINDOW_SECONDS = 300
 LOGIN_FAILURE_MAX_DELAY_SECONDS = 8
+VIDEO_PLAY_TOKEN_TTL_SECONDS = 6 * 60 * 60
 
 login_failure_lock = threading.Lock()
 login_failures = {}
@@ -130,6 +131,41 @@ def sign_session_payload(encoded, secret):
     return hmac.new(secret.encode("utf-8"), encoded.encode("ascii"), hashlib.sha256).hexdigest()
 
 
+def sign_video_play_payload(video_id, expires_at, access_config):
+    session_version = coerce_int(access_config.get("session_version"), 1, 1)
+    message = f"video-play:{session_version}:{video_id}:{expires_at}"
+    return hmac.new(
+        access_config.get("session_secret", "").encode("utf-8"),
+        message.encode("utf-8", "surrogatepass"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def create_video_play_token(video_id, access_config=None, now=None):
+    access_config = access_config or get_access_control_config(persist_missing=False)
+    expires_at = int(now or time.time()) + VIDEO_PLAY_TOKEN_TTL_SECONDS
+    signature = sign_video_play_payload(video_id, expires_at, access_config)
+    return f"{expires_at}.{signature}"
+
+
+def verify_video_play_token(video_id, token, access_config=None, now=None):
+    if not token or not isinstance(token, str) or "." not in token:
+        return False
+
+    raw_expires_at, signature = token.rsplit(".", 1)
+    try:
+        expires_at = int(raw_expires_at)
+    except ValueError:
+        return False
+
+    if expires_at < int(now or time.time()):
+        return False
+
+    access_config = access_config or get_access_control_config(persist_missing=False)
+    expected_signature = sign_video_play_payload(video_id, expires_at, access_config)
+    return hmac.compare_digest(signature, expected_signature)
+
+
 def create_access_session_token(access_config):
     now = int(time.time())
     session_days = coerce_int(access_config.get("session_days"), 30, 1, 365)
@@ -211,6 +247,7 @@ def clear_login_failures():
 def get_required_access_level(access_config=None):
     path = request.path
     method = request.method.upper()
+    download = request.args.get("download", "0").lower() in ("1", "true", "yes")
 
     if method == "OPTIONS":
         return ACCESS_PUBLIC
@@ -249,6 +286,21 @@ def get_required_access_level(access_config=None):
     if path.startswith("/api/photo-albums/") and path.endswith("/uploads"):
         access_config = access_config or get_access_control_config(persist_missing=False)
         return ACCESS_UNLOCKED if is_access_control_enabled(access_config) else ACCESS_OWNER
+    if path.startswith("/api/video-poster/"):
+        return ACCESS_UNLOCKED
+    if path.startswith("/api/video-play/"):
+        parts = path.split("/", 5)
+        video_id = parts[3] if len(parts) > 3 else ""
+        token = parts[4] if len(parts) > 4 else ""
+        if method == "GET" and verify_video_play_token(video_id, token, access_config):
+            return ACCESS_PUBLIC
+        return ACCESS_UNLOCKED
+    if path.startswith("/api/video-original/"):
+        video_id = path.rsplit("/", 1)[-1]
+        token = request.args.get("play_token")
+        if method == "GET" and not download and verify_video_play_token(video_id, token, access_config):
+            return ACCESS_PUBLIC
+        return ACCESS_UNLOCKED
     if path in {"/api/generate", "/api/photo-conversions"}:
         access_config = access_config or get_access_control_config(persist_missing=False)
         if not is_access_control_enabled(access_config):

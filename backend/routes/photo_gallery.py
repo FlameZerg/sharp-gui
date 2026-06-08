@@ -55,13 +55,14 @@ def scan_photo_album_endpoint(album_id):
 
 @bp.route("/api/photo-albums/<album_id>/photos")
 def get_photo_album_photos(album_id):
-    """分页获取相册照片。"""
+    """分页获取相册媒体。"""
     payload, status_code = photo_gallery.list_album_photos(
         get_paths(),
         album_id,
         request.args.get("sort", "mtime_desc"),
         request.args.get("cursor", "0"),
         request.args.get("limit", str(photo_gallery.PHOTO_DEFAULT_PAGE_SIZE)),
+        request.args.get("type", photo_gallery.MEDIA_TYPE_ALL),
     )
     return jsonify(payload), status_code
 
@@ -104,6 +105,62 @@ def get_photo_original(photo_id):
         conditional=True,
         max_age=3600,
     )
+
+
+@bp.route("/api/video-poster/<video_id>")
+def get_video_poster(video_id):
+    """获取视频封面；不可生成时返回 404 交给前端占位降级。"""
+    paths = get_paths()
+    poster_path = photo_gallery.ensure_video_poster(paths, video_id)
+    if not poster_path or not os.path.exists(poster_path):
+        return jsonify({"error": "Video poster not available"}), 404
+
+    filename = os.path.basename(poster_path)
+    response = send_from_directory(
+        paths.video_poster_folder,
+        filename,
+        conditional=True,
+        max_age=photo_gallery.PHOTO_THUMBNAIL_CACHE_SECONDS,
+    )
+    response.headers["Content-Disposition"] = f'inline; filename="{filename}"'
+    response.cache_control.public = True
+    response.cache_control.max_age = photo_gallery.PHOTO_THUMBNAIL_CACHE_SECONDS
+    return response
+
+
+def send_video_file(video_id):
+    resolved = photo_gallery.resolve_media_path(
+        get_paths(),
+        video_id,
+        expected_type=photo_gallery.MEDIA_TYPE_VIDEO,
+    )
+    if not resolved:
+        return jsonify({"error": "Video not found"}), 404
+
+    _, full_path, meta = resolved
+    download = request.args.get("download", "0").lower() in ("1", "true", "yes")
+    response = send_from_directory(
+        os.path.dirname(full_path),
+        os.path.basename(full_path),
+        as_attachment=download,
+        download_name=meta.get("name") or os.path.basename(full_path),
+        mimetype=meta.get("mime_type") or photo_gallery.get_video_mime_type(full_path),
+        conditional=True,
+        max_age=3600,
+    )
+    return response
+
+
+@bp.route("/api/video-original/<video_id>")
+def get_video_original(video_id):
+    """获取视频原文件，支持 inline 播放、附件下载和 Range seek。"""
+    return send_video_file(video_id)
+
+
+@bp.route("/api/video-play/<video_id>/<play_token>/<path:filename>")
+def play_video_original(video_id, play_token, filename):
+    """为移动端原生播放器提供带文件名后缀的临时播放地址。"""
+    return send_video_file(video_id)
 
 
 @bp.route("/api/photo-albums/<album_id>/uploads", methods=["POST"])

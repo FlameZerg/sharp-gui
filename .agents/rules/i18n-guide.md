@@ -69,7 +69,7 @@
 }
 ```
 
-照片图库新增文案统一使用 `photo*` 前缀，例如 `photoGallery`、`photoSortModifiedNewest`、`photoGridDensityStandard`、`photoOriginalLoadFailed`。排序、弹窗、错误提示、按钮 tooltip 和 aria-label 都必须双语同步。
+本地媒体图库沿用历史 `photo*` 前缀，例如 `photoGallery`、`photoSortModifiedNewest`、`photoGridDensityStandard`、`photoOriginalLoadFailed`；新增视频/媒体文案也优先放在该前缀下，例如 `photoMediaTypeVideo`、`photoVideoPlaybackFailed`、`photoVideoDownload`。排序、弹窗、错误提示、按钮 tooltip 和 aria-label 都必须双语同步。
 
 局域网门禁新增文案统一使用 `access*` / `auth*` 前缀，例如 `accessGateTitle`、`accessSetupPromptTitle`、`authPermissionOwnerOnly`。门禁页、启动提醒、设置说明、错误提示和按钮文案都必须双语同步。
 

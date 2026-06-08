@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { CSSProperties, DragEvent } from 'react';
 
 import { useTranslation } from 'react-i18next';
 
 import {
+  ArrowDownIcon,
+  ArrowUpIcon,
   CheckIcon,
   ChevronDownIcon,
   CloudUploadIcon,
@@ -14,7 +16,7 @@ import {
   SparklesIcon,
 } from '@/components/common/Icons';
 import { SelectMenu } from '@/components/common/SelectMenu';
-import type { PhotoAlbum } from '@/types';
+import type { PhotoAlbum, PhotoMediaCounts, PhotoMediaType } from '@/types';
 
 import styles from './PhotoToolbar.module.css';
 
@@ -23,9 +25,12 @@ export type PhotoToolbarMode = 'expanded' | 'compact';
 interface PhotoToolbarProps {
   album: PhotoAlbum | null;
   total: number;
+  mediaType: PhotoMediaType;
+  mediaCounts: PhotoMediaCounts;
   sort: string;
   selectionMode: boolean;
   selectedCount: number;
+  selectedImageCount: number;
   gridColumns: number;
   isLocalAccess: boolean;
   isLoading: boolean;
@@ -36,18 +41,23 @@ interface PhotoToolbarProps {
   onAddAlbum: () => void;
   onUploadPhotos: (files: FileList | File[]) => Promise<void> | void;
   onRefresh: () => void;
+  onMediaTypeChange: (mediaType: PhotoMediaType) => void;
   onSortChange: (sort: string) => void;
   onGridColumnsChange: (columns: number) => void;
   onToggleSelection: () => void;
   onConvertSelected: () => void;
+  onExpandRequest?: () => void;
 }
 
 export function PhotoToolbar({
   album,
   total,
+  mediaType,
+  mediaCounts,
   sort,
   selectionMode,
   selectedCount,
+  selectedImageCount,
   gridColumns,
   isLocalAccess,
   isLoading,
@@ -58,27 +68,33 @@ export function PhotoToolbar({
   onAddAlbum,
   onUploadPhotos,
   onRefresh,
+  onMediaTypeChange,
   onSortChange,
   onGridColumnsChange,
   onToggleSelection,
   onConvertSelected,
+  onExpandRequest,
 }: PhotoToolbarProps) {
   const { t } = useTranslation();
+  const toolbarContentRef = useRef<HTMLDivElement | null>(null);
   const densityControlRef = useRef<HTMLDivElement | null>(null);
   const uploadControlRef = useRef<HTMLDivElement | null>(null);
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const [densityOpen, setDensityOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [isUploadDragActive, setIsUploadDragActive] = useState(false);
+  const [reservedHeight, setReservedHeight] = useState<number | null>(null);
+  const sortDescIcon = <ArrowDownIcon width={14} height={14} />;
+  const sortAscIcon = <ArrowUpIcon width={14} height={14} />;
   const sortOptions = [
-    { value: 'mtime_desc', label: t('photoSortModifiedNewest') },
-    { value: 'mtime_asc', label: t('photoSortModifiedOldest') },
-    { value: 'ctime_desc', label: t('photoSortCreatedNewest') },
-    { value: 'ctime_asc', label: t('photoSortCreatedOldest') },
-    { value: 'name_asc', label: t('photoSortNameAsc') },
-    { value: 'name_desc', label: t('photoSortNameDesc') },
-    { value: 'size_desc', label: t('photoSortSizeDesc') },
-    { value: 'size_asc', label: t('photoSortSizeAsc') },
+    { value: 'mtime_desc', label: t('photoSortModifiedNewest'), icon: sortDescIcon },
+    { value: 'mtime_asc', label: t('photoSortModifiedOldest'), icon: sortAscIcon },
+    { value: 'ctime_desc', label: t('photoSortCreatedNewest'), icon: sortDescIcon },
+    { value: 'ctime_asc', label: t('photoSortCreatedOldest'), icon: sortAscIcon },
+    { value: 'name_asc', label: t('photoSortNameAsc'), icon: sortAscIcon },
+    { value: 'name_desc', label: t('photoSortNameDesc'), icon: sortDescIcon },
+    { value: 'size_desc', label: t('photoSortSizeDesc'), icon: sortDescIcon },
+    { value: 'size_asc', label: t('photoSortSizeAsc'), icon: sortAscIcon },
   ];
   const densityOptions = [
     { value: '1', label: t('photoGridDensityPoster') },
@@ -93,13 +109,76 @@ export function PhotoToolbar({
   const currentDensity = densityOptions.find((option) => option.value === String(gridColumns)) ?? densityOptions[3];
   const densityProgress = `${((gridColumns - 1) / 7) * 100}%`;
   const title = album?.name ?? t('photoNoAlbumSelected');
-  const subtitle = album ? t('photoTotalCount', { count: total }) : t('photoChooseAlbumHint');
+  const subtitle = album
+    ? mediaType === 'video'
+      ? t('photoVideoTotalCount', { count: total })
+      : mediaType === 'image'
+        ? t('photoTotalCount', { count: total })
+        : t('photoMediaTotalCount', {
+            count: total,
+            photos: mediaCounts.image,
+            videos: mediaCounts.video,
+          })
+    : t('photoChooseAlbumHint');
   const compactTitle = album ? `${album.name} · ${total}` : t('photoNoAlbumSelected');
   const uploadDisabled = !album || !canUploadPhotos || isUploadingPhotos;
   const isExpandedMode = mode === 'expanded';
   const primaryActionLabel = selectedCount > 0
-    ? t('photoConvertSelectedShort', { count: selectedCount })
+    ? selectedImageCount > 0
+      ? t('photoConvertSelectedShort', { count: selectedImageCount })
+      : t('photoConvertPhotosOnlyShort')
     : t('photoConvertTo3d');
+  const primaryActionDisabled = !album || (selectedCount > 0 && selectedImageCount === 0);
+  const mediaOptions: Array<{ value: PhotoMediaType; label: string; count: number }> = [
+    { value: 'all', label: t('photoFilterAll'), count: mediaCounts.all },
+    { value: 'image', label: t('photoFilterPhotos'), count: mediaCounts.image },
+    { value: 'video', label: t('photoFilterVideos'), count: mediaCounts.video },
+  ];
+  const toolbarStyle = reservedHeight
+    ? ({ '--toolbar-reserved-height': `${reservedHeight}px` } as CSSProperties)
+    : undefined;
+
+  useLayoutEffect(() => {
+    const el = toolbarContentRef.current;
+    if (!el) {
+      return;
+    }
+
+    let frameId: number | null = null;
+    const measure = () => {
+      frameId = null;
+      // 用 offsetHeight（布局边框盒高度，忽略 settle 动画里的 scale 变换）。
+      // 若用 getBoundingClientRect().height，会把回弹瞬间放大的高度也测进去，
+      // 进而撑大 --toolbar-reserved-height 占位，连带瀑布流列表跟着抖动。
+      const nextHeight = el.offsetHeight;
+      if (nextHeight <= 0) {
+        return;
+      }
+
+      setReservedHeight((current) => {
+        if (mode === 'compact') {
+          return current ?? nextHeight;
+        }
+        return current === nextHeight ? current : nextHeight;
+      });
+    };
+    const scheduleMeasure = () => {
+      if (frameId !== null) {
+        return;
+      }
+      frameId = window.requestAnimationFrame(measure);
+    };
+
+    measure();
+    const observer = new ResizeObserver(scheduleMeasure);
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+    };
+  }, [mode, title, subtitle, primaryActionLabel, mediaCounts.all, mediaCounts.image, mediaCounts.video]);
 
   useEffect(() => {
     if (!densityOpen) {
@@ -171,14 +250,29 @@ export function PhotoToolbar({
     handleUploadFiles(event.dataTransfer.files);
   };
 
+  const handleToolbarPointerDown = (event: React.PointerEvent<HTMLElement>) => {
+    if (mode !== 'compact' || !onExpandRequest) {
+      return;
+    }
+
+    const target = event.target as HTMLElement;
+    if (target.closest('button,input,[role="button"],[role="dialog"],[role="listbox"],a')) {
+      return;
+    }
+
+    onExpandRequest();
+  };
+
   return (
     <header
       className={[
         styles.toolbar,
         styles[mode],
       ].filter(Boolean).join(' ')}
+      style={toolbarStyle}
+      onPointerDown={handleToolbarPointerDown}
     >
-      <div className={styles.toolbarContent}>
+      <div ref={toolbarContentRef} className={styles.toolbarContent}>
         <div className={styles.titleBlock}>
           <span className={styles.eyebrow}>{t('photoView')}</span>
           <h1>{title}</h1>
@@ -187,6 +281,25 @@ export function PhotoToolbar({
         </div>
 
         <div className={styles.actions}>
+          <div className={styles.mediaFilter} role="group" aria-label={t('photoFilterType')}>
+            {mediaOptions.map((option) => (
+              <button
+                key={option.value}
+                className={[
+                  styles.mediaFilterBtn,
+                  mediaType === option.value ? styles.mediaFilterBtnActive : '',
+                ].filter(Boolean).join(' ')}
+                onClick={() => onMediaTypeChange(option.value)}
+                disabled={!album}
+                aria-pressed={mediaType === option.value}
+                type="button"
+              >
+                <span>{option.label}</span>
+                <strong>{option.count}</strong>
+              </button>
+            ))}
+          </div>
+
           <SelectMenu
             className={styles.sortMenu}
             value={sort}
@@ -344,7 +457,7 @@ export function PhotoToolbar({
           <button
             className={styles.primaryBtn}
             onClick={selectedCount > 0 ? onConvertSelected : onToggleSelection}
-            disabled={!album}
+            disabled={primaryActionDisabled}
             aria-label={primaryActionLabel}
             type="button"
           >

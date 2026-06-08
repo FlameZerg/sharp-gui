@@ -8,6 +8,12 @@ The system SHALL discover supported video files inside configured local album ro
 - **THEN** the album media listing SHALL include those videos with stable IDs, names, timestamps, sizes, media type, preview URL, download URL, and playback URL
 - **AND** image files in the same album SHALL remain listed
 
+#### Scenario: Video playback URL is generated
+- **WHEN** the system returns a playback URL for a video item
+- **THEN** the URL SHALL use a path-style route with the video ID, a short-lived signed token, and a safe filename suffix
+- **AND** the URL SHALL NOT expose an absolute filesystem path
+- **AND** the token SHALL be scoped to inline playback of that video
+
 #### Scenario: Unsupported video-like files are present
 - **WHEN** a configured album contains files whose extension or detected media type is not supported
 - **THEN** the system SHALL ignore those files for media browsing
@@ -64,13 +70,30 @@ The video preview SHALL allow users to play, pause, seek, adjust audio, enter fu
 
 #### Scenario: User downloads a video from preview
 - **WHEN** the user chooses download from the video preview
-- **THEN** the system SHALL return the original video as an attachment
+- **THEN** the preview SHALL download the original video content
+- **AND** the download flow SHALL remain reliable for local HTTPS and Chrome preview-overlay interactions
 - **AND** the downloaded file name SHALL be safe and recognizable
+
+#### Scenario: Playback token is used for download
+- **WHEN** a request attempts to use a video playback token to download the original video as an attachment
+- **THEN** the system MUST NOT treat the playback token as download authorization
+- **AND** the download endpoint SHALL still require the normal Unlocked access level
+
+#### Scenario: Playback token expires or sessions are revoked
+- **WHEN** a playback token is expired or was issued before access sessions were revoked
+- **THEN** the playback route SHALL reject the token
+- **AND** the system SHALL NOT return video bytes unless the request otherwise satisfies the required access level
+
+#### Scenario: Video file name contains non-ASCII characters
+- **WHEN** a video with spaces, Chinese characters, or other non-ASCII characters is previewed or downloaded
+- **THEN** the system SHALL generate HTTP response headers that do not trigger server-side header encoding errors
+- **AND** playback, Range requests, and download behavior SHALL remain available when the browser supports the media
 
 #### Scenario: Video cannot be played by the browser
 - **WHEN** the browser fails to load or decode the video playback URL
 - **THEN** the preview SHALL show a localized playback error state that tells the user to download the video and play it locally
 - **AND** the preview SHALL keep download and close controls available
+- **AND** the error state SHALL use the same glass visual language as the rest of the preview instead of an unrelated high-contrast callout
 
 ### Requirement: The mobile video preview SHALL support fine scrubbing from the video surface
 The mobile video preview SHALL support a fine seek interaction where long-pressing and dragging the video surface adjusts playback position without replacing the normal progress-bar seek behavior.
@@ -103,11 +126,23 @@ The video preview SHALL adapt to desktop and mobile viewports and expose accessi
 - **WHEN** the video preview opens on a desktop viewport
 - **THEN** the video SHALL be centered in an immersive overlay
 - **AND** controls SHALL use project-styled glass buttons and remain reachable without covering critical content
+- **AND** playback and seek controls SHALL be visually centered in the compact control bar while volume controls remain left-aligned
 
 #### Scenario: Mobile user opens video preview
 - **WHEN** the video preview opens on a mobile viewport
 - **THEN** controls SHALL fit within the viewport without horizontal overflow
 - **AND** touch targets SHALL remain reachable and large enough for touch interaction
+- **AND** filename, download, fullscreen, close, and playback controls SHALL NOT overlap at intermediate tablet or narrow desktop widths
+
+#### Scenario: Mobile controls are collapsed
+- **WHEN** mobile preview controls are collapsed and the user taps the preview surface outside control buttons
+- **THEN** the controls SHALL expand in place without forcing a scroll-to-top action
+- **AND** normal scrolling SHALL remain available after the interaction
+
+#### Scenario: Mobile user enters fullscreen for a landscape video
+- **WHEN** a mobile user requests fullscreen for a landscape video
+- **THEN** the preview SHALL attempt to lock screen orientation to landscape
+- **AND** if the browser or device rejects orientation lock, playback SHALL continue with a graceful fallback rather than failing
 
 #### Scenario: Keyboard user controls video preview
 - **WHEN** a keyboard-only user navigates the video preview

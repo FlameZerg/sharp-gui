@@ -239,7 +239,7 @@ export function PhotoAlbumList() {
                   <span className={styles.meta}>
                     {album.scan_status === 'error'
                       ? t('photoAlbumUnavailable')
-                      : t('photoCount', { count: album.photo_count ?? 0 })}
+                      : t('photoMediaCount', { count: album.media_count ?? album.photo_count ?? 0 })}
                   </span>
                 </div>
 

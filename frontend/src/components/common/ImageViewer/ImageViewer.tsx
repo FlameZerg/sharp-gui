@@ -7,9 +7,65 @@ import {
   ChevronRightIcon,
   CloseIcon,
   DownloadIcon,
+  ExitFullscreenIcon,
+  FullscreenIcon,
+  PauseIcon,
+  PlayIcon,
   SparklesIcon,
+  VolumeIcon,
+  VolumeMutedIcon,
 } from '@/components/common/Icons';
 import styles from './ImageViewer.module.css';
+
+const VIDEO_LONG_PRESS_MS = 260;
+const VIDEO_SCRUB_THRESHOLD_PX = 12;
+const VIDEO_FINE_SCRUB_SECONDS_PER_PX = 0.08;
+const VIDEO_CONTROLS_HIDE_DELAY_MS = 2200;
+const VIDEO_INLINE_PLAYBACK_ATTRIBUTES = {
+  playsInline: true,
+  'webkit-playsinline': 'true',
+  'x5-video-player-type': 'h5-page',
+  'x-webkit-airplay': 'deny',
+  controlsList: 'nodownload noremoteplayback',
+  disablePictureInPicture: true,
+  disableRemotePlayback: true,
+} as const;
+
+interface LockableScreenOrientation extends ScreenOrientation {
+  lock?: (orientation: OrientationLockType) => Promise<void>;
+}
+
+type OrientationLockType = 'any' | 'natural' | 'landscape' | 'portrait' | 'portrait-primary' | 'portrait-secondary' | 'landscape-primary' | 'landscape-secondary';
+
+function getScreenOrientation(): LockableScreenOrientation | null {
+  if (typeof screen === 'undefined') {
+    return null;
+  }
+
+  return screen.orientation as LockableScreenOrientation | undefined ?? null;
+}
+
+async function lockScreenLandscape(): Promise<boolean> {
+  const orientation = getScreenOrientation();
+  if (!orientation?.lock) {
+    return false;
+  }
+
+  try {
+    await orientation.lock('landscape');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function unlockScreenOrientation(): void {
+  try {
+    getScreenOrientation()?.unlock();
+  } catch {
+    // Some browsers expose the API but reject unlock outside their allowed state.
+  }
+}
 
 export function ImageViewer() {
   const {
@@ -28,8 +84,34 @@ export function ImageViewer() {
   const [isConverting, setIsConverting] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [notice, setNotice] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  const [videoDuration, setVideoDuration] = useState(0);
+  const [videoCurrentTime, setVideoCurrentTime] = useState(0);
+  const [videoVolume, setVideoVolume] = useState(1);
+  const [videoMuted, setVideoMuted] = useState(false);
+  const [videoError, setVideoError] = useState(false);
+  const [isVideoScrubbing, setIsVideoScrubbing] = useState(false);
+  const [videoScrubLabel, setVideoScrubLabel] = useState<string | null>(null);
+  const [videoControlsVisible, setVideoControlsVisible] = useState(true);
+  const [isVideoFullscreen, setIsVideoFullscreen] = useState(false);
+  const [isLandscapeVideo, setIsLandscapeVideo] = useState(false);
   
   const overlayRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const videoStageRef = useRef<HTMLDivElement | null>(null);
+  const videoLongPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const videoControlsHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const videoOrientationLocked = useRef(false);
+  const videoScrubRef = useRef<{
+    startX: number;
+    startY: number;
+    baseTime: number;
+    targetTime: number;
+    wasPlaying: boolean;
+    isTouchLike: boolean;
+    activated: boolean;
+    cancelled: boolean;
+  } | null>(null);
 
   // --- Zoom & Pan State ---
   const [transform, setTransform] = useState({ scale: 1, x: 0, y: 0 });
@@ -41,8 +123,19 @@ export function ImageViewer() {
   const wheelTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activePreview = previewPhoto ?? previewImage;
   const isPhotoPreview = Boolean(previewPhoto);
+  const isVideoPreview = previewPhoto?.media_type === 'video';
+
+  const releaseVideoOrientationLock = useCallback(() => {
+    if (!videoOrientationLocked.current) {
+      return;
+    }
+
+    videoOrientationLocked.current = false;
+    unlockScreenOrientation();
+  }, []);
 
   const handleClose = useCallback(() => {
+    releaseVideoOrientationLock();
     setIsClosing(true);
     // Wait for the exit animation to finish
     setTimeout(() => {
@@ -53,7 +146,7 @@ export function ImageViewer() {
       }
       setIsClosing(false);
     }, 250);
-  }, [isPhotoPreview, setPreviewImage, setPreviewPhoto]);
+  }, [isPhotoPreview, releaseVideoOrientationLock, setPreviewImage, setPreviewPhoto]);
 
   // Handle Escape key to close
   useEffect(() => {
@@ -77,19 +170,54 @@ export function ImageViewer() {
       setIsConverting(false);
       setImageError(false);
       setNotice(null);
+      setIsVideoPlaying(false);
+      setVideoDuration(0);
+      setVideoCurrentTime(0);
+      setVideoVolume(1);
+      setVideoMuted(false);
+      setVideoError(false);
+      setIsVideoScrubbing(false);
+      setVideoScrubLabel(null);
+      setVideoControlsVisible(true);
+      setIsLandscapeVideo(false);
       setTransform({ scale: 1, x: 0, y: 0 });
     } else {
+      releaseVideoOrientationLock();
       document.body.style.overflow = '';
     }
     return () => {
+      releaseVideoOrientationLock();
       document.body.style.overflow = '';
     };
-  }, [activePreview]);
+  }, [activePreview, releaseVideoOrientationLock]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !isVideoPreview) {
+      return;
+    }
+
+    video.volume = videoVolume;
+    video.muted = videoMuted;
+  }, [isVideoPreview, videoMuted, videoVolume]);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const isCurrentVideoFullscreen = document.fullscreenElement === videoStageRef.current;
+      setIsVideoFullscreen(isCurrentVideoFullscreen);
+      if (!isCurrentVideoFullscreen) {
+        releaseVideoOrientationLock();
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, [releaseVideoOrientationLock]);
 
   // --- Wheel to Zoom ---
   useEffect(() => {
     const overlay = overlayRef.current;
-    if (!overlay || !activePreview) return;
+    if (!overlay || !activePreview || isVideoPreview) return;
 
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault(); // Prevent page scroll
@@ -151,7 +279,49 @@ export function ImageViewer() {
       overlay.removeEventListener('wheel', handleWheel);
       if (wheelTimeout.current) clearTimeout(wheelTimeout.current);
     };
-  }, [activePreview]);
+  }, [activePreview, isVideoPreview]);
+
+  const clearVideoControlsHideTimer = useCallback(() => {
+    if (videoControlsHideTimer.current) {
+      window.clearTimeout(videoControlsHideTimer.current);
+      videoControlsHideTimer.current = null;
+    }
+  }, []);
+
+  const revealVideoControls = useCallback(() => {
+    setVideoControlsVisible(true);
+    clearVideoControlsHideTimer();
+
+    if (isVideoPreview && isVideoPlaying && !videoError && !isVideoScrubbing) {
+      videoControlsHideTimer.current = window.setTimeout(() => {
+        setVideoControlsVisible(false);
+        videoControlsHideTimer.current = null;
+      }, VIDEO_CONTROLS_HIDE_DELAY_MS);
+    }
+  }, [clearVideoControlsHideTimer, isVideoPlaying, isVideoPreview, isVideoScrubbing, videoError]);
+
+  useEffect(() => {
+    clearVideoControlsHideTimer();
+
+    if (!activePreview || !isVideoPreview || !isVideoPlaying || videoError || isVideoScrubbing) {
+      setVideoControlsVisible(true);
+      return;
+    }
+
+    videoControlsHideTimer.current = window.setTimeout(() => {
+      setVideoControlsVisible(false);
+      videoControlsHideTimer.current = null;
+    }, VIDEO_CONTROLS_HIDE_DELAY_MS);
+
+    return clearVideoControlsHideTimer;
+  }, [
+    activePreview,
+    clearVideoControlsHideTimer,
+    isVideoPlaying,
+    isVideoPreview,
+    isVideoScrubbing,
+    videoError,
+  ]);
 
   // --- Touch (Pinch & Pan) ---
   const getDistance = (touches: React.TouchList) => {
@@ -161,6 +331,9 @@ export function ImageViewer() {
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {
+    if (isVideoPreview) {
+      return;
+    }
     isMoved.current = false;
     if (e.touches.length === 2) {
       setIsPinching(true);
@@ -176,6 +349,9 @@ export function ImageViewer() {
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
+    if (isVideoPreview) {
+      return;
+    }
     if (isPinching && e.touches.length === 2) {
       isMoved.current = true;
       const dist = getDistance(e.touches);
@@ -208,6 +384,9 @@ export function ImageViewer() {
   };
 
   const handleTouchEnd = () => {
+    if (isVideoPreview) {
+      return;
+    }
     setTimeout(() => {
       isMoved.current = false;
     }, 50);
@@ -220,6 +399,9 @@ export function ImageViewer() {
 
   // --- Mouse (Pan) ---
   const handleMouseDown = (e: React.MouseEvent) => {
+    if (isVideoPreview) {
+      return;
+    }
     isMoved.current = false;
     if (scale > 1 && e.button === 0) { // Only left click for dragging
       setIsDragging(true);
@@ -231,6 +413,9 @@ export function ImageViewer() {
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
+    if (isVideoPreview) {
+      return;
+    }
     if (isDragging && scale > 1) {
       isMoved.current = true;
       const dx = e.clientX - startPos.current.x;
@@ -244,6 +429,9 @@ export function ImageViewer() {
   };
 
   const handleMouseUp = () => {
+    if (isVideoPreview) {
+      return;
+    }
     // delay reset slightly to let onClick fire and see isMoved
     setTimeout(() => {
       isMoved.current = false;
@@ -252,6 +440,9 @@ export function ImageViewer() {
   };
 
   const handleDoubleClick = () => {
+    if (isVideoPreview) {
+      return;
+    }
     if (scale > 1) {
       setTransform({ scale: 1, x: 0, y: 0 });
     } else {
@@ -309,7 +500,7 @@ export function ImageViewer() {
   };
 
   const handleConvertPhoto = async () => {
-    if (!previewPhoto || isConverting) {
+    if (!previewPhoto || previewPhoto.media_type !== 'image' || isConverting) {
       return;
     }
 
@@ -348,6 +539,200 @@ export function ImageViewer() {
     }
   };
 
+  const handleVideoTogglePlay = () => {
+    const video = videoRef.current;
+    if (!video || videoError) {
+      return;
+    }
+
+    if (video.paused) {
+      void video.play().catch(() => setVideoError(true));
+    } else {
+      video.pause();
+    }
+  };
+
+  const handleVideoTimeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const video = videoRef.current;
+    if (!video || !videoDuration) {
+      return;
+    }
+
+    const nextTime = Number(event.target.value);
+    video.currentTime = nextTime;
+    setVideoCurrentTime(nextTime);
+    revealVideoControls();
+  };
+
+  const handleVideoVolumeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const nextVolume = Number(event.target.value);
+    setVideoVolume(nextVolume);
+    setVideoMuted(nextVolume === 0);
+    revealVideoControls();
+  };
+
+  const handleVideoMuteToggle = () => {
+    setVideoMuted((current) => !current);
+    revealVideoControls();
+  };
+
+  const handleVideoSkip = (seconds: number) => {
+    const video = videoRef.current;
+    if (!video || videoError) {
+      return;
+    }
+
+    const duration = Number.isFinite(video.duration) ? video.duration : videoDuration;
+    const nextTime = clampTime(video.currentTime + seconds, duration);
+    video.currentTime = nextTime;
+    setVideoCurrentTime(nextTime);
+    revealVideoControls();
+  };
+
+  const isCurrentVideoLandscape = () => {
+    const video = videoRef.current;
+    if (video?.videoWidth && video.videoHeight) {
+      return video.videoWidth > video.videoHeight;
+    }
+
+    if (previewPhoto?.width && previewPhoto.height) {
+      return previewPhoto.width > previewPhoto.height;
+    }
+
+    return isLandscapeVideo;
+  };
+
+  const handleVideoFullscreen = async () => {
+    const target = videoStageRef.current;
+    if (!target) {
+      return;
+    }
+
+    if (document.fullscreenElement === target) {
+      releaseVideoOrientationLock();
+      await document.exitFullscreen().catch(() => undefined);
+      return;
+    }
+
+    try {
+      await target.requestFullscreen?.();
+    } catch {
+      return;
+    }
+
+    if (isCurrentVideoLandscape()) {
+      videoOrientationLocked.current = await lockScreenLandscape();
+    }
+  };
+
+  const clearVideoLongPressTimer = () => {
+    if (videoLongPressTimer.current) {
+      window.clearTimeout(videoLongPressTimer.current);
+      videoLongPressTimer.current = null;
+    }
+  };
+
+  const handleVideoPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (isVideoPreview && !videoError) {
+      revealVideoControls();
+    }
+
+    if (!isVideoPreview || event.pointerType === 'mouse' || videoError) {
+      return;
+    }
+
+    const target = event.target as HTMLElement;
+    if (target.closest('button,input')) {
+      return;
+    }
+
+    const video = videoRef.current;
+    if (!video || !Number.isFinite(video.duration) || video.duration <= 0) {
+      return;
+    }
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    clearVideoLongPressTimer();
+    videoScrubRef.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      baseTime: video.currentTime,
+      targetTime: video.currentTime,
+      wasPlaying: !video.paused,
+      isTouchLike: true,
+      activated: false,
+      cancelled: false,
+    };
+    videoLongPressTimer.current = window.setTimeout(() => {
+      const current = videoScrubRef.current;
+      if (!current || !current.isTouchLike) {
+        return;
+      }
+      current.activated = true;
+      current.wasPlaying = !video.paused;
+      video.pause();
+      setIsVideoScrubbing(true);
+      setVideoScrubLabel(formatVideoScrubLabel(0, current.baseTime));
+    }, VIDEO_LONG_PRESS_MS);
+  };
+
+  const handleVideoPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (isVideoPreview && !videoError) {
+      revealVideoControls();
+    }
+
+    const current = videoScrubRef.current;
+    const video = videoRef.current;
+    if (!current || !video || !current.isTouchLike) {
+      return;
+    }
+
+    const deltaX = event.clientX - current.startX;
+    const deltaY = event.clientY - current.startY;
+    if (!current.activated && Math.hypot(deltaX, deltaY) > VIDEO_SCRUB_THRESHOLD_PX) {
+      clearVideoLongPressTimer();
+      current.cancelled = true;
+    }
+    if (!current.activated) {
+      return;
+    }
+
+    event.preventDefault();
+    const offsetSeconds = deltaX * VIDEO_FINE_SCRUB_SECONDS_PER_PX;
+    const duration = Number.isFinite(video.duration) ? video.duration : videoDuration;
+    const targetTime = clampTime(current.baseTime + offsetSeconds, duration);
+    current.targetTime = targetTime;
+    setVideoCurrentTime(targetTime);
+    setVideoScrubLabel(formatVideoScrubLabel(offsetSeconds, targetTime));
+  };
+
+  const handleVideoPointerUp = () => {
+    const current = videoScrubRef.current;
+    const video = videoRef.current;
+    clearVideoLongPressTimer();
+    videoScrubRef.current = null;
+
+    if (!current || !video) {
+      return;
+    }
+
+    if (current.cancelled) {
+      // A short move before long-press should be treated as neither tap nor scrub.
+    } else if (current.activated) {
+      video.currentTime = current.targetTime;
+      setVideoCurrentTime(current.targetTime);
+      if (current.wasPlaying) {
+        void video.play().catch(() => setVideoError(true));
+      }
+    } else {
+      handleVideoTogglePlay();
+    }
+
+    setIsVideoScrubbing(false);
+    setVideoScrubLabel(null);
+    revealVideoControls();
+  };
+
   // Prevent clicks inside the container from closing the viewer
   const handleContainerClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -357,12 +742,19 @@ export function ImageViewer() {
   const imageUrl = previewPhoto
     ? (previewPhoto.full_url ?? previewPhoto.preview_url)
     : `/api/original/${encodeURIComponent(previewImage?.id ?? '')}`;
+  const videoUrl = isVideoPreview ? previewPhoto?.playback_url ?? previewPhoto?.preview_url : null;
   const activeName = previewPhoto?.name ?? previewImage?.name ?? '';
   const photoIndex = previewPhoto
     ? photoItems.findIndex((photo) => photo.id === previewPhoto.id)
     : -1;
   const hasPreviousPhoto = photoIndex > 0;
   const hasNextPhoto = previewPhoto ? photoIndex >= 0 && photoIndex < photoItems.length - 1 : false;
+  const videoProgress = videoDuration > 0 ? `${(videoCurrentTime / videoDuration) * 100}%` : '0%';
+  const volumeProgress = `${(videoMuted ? 0 : videoVolume) * 100}%`;
+  const videoControlsHidden = isVideoPlaying && !videoControlsVisible && !isVideoScrubbing && !videoError;
+  const mediaMeta = previewPhoto
+    ? getPreviewMetaLabel(previewPhoto, t('unknownSize'))
+    : null;
 
   const isAnimating = (!isDragging && !isPinching);
   const wrapperStyle: React.CSSProperties = {
@@ -387,7 +779,7 @@ export function ImageViewer() {
       onDoubleClick={handleDoubleClick}
     >
       <div className={styles.controls} onClick={(e) => { e.stopPropagation(); setIsDragging(false); }}>
-        {previewPhoto ? (
+        {previewPhoto && previewPhoto.media_type === 'image' ? (
           <button
             className={`${styles.controlBtn} ${isConverting ? styles.downloading : ''}`}
             onClick={handleConvertPhoto}
@@ -441,28 +833,243 @@ export function ImageViewer() {
       ) : null}
 
       <div 
-        className={styles.container} 
+        className={[styles.container, isVideoPreview ? styles.videoContainer : ''].filter(Boolean).join(' ')}
         onClick={handleContainerClick}
-        style={wrapperStyle}
+        style={isVideoPreview ? undefined : wrapperStyle}
       >
-        <div className={styles.imageWrapper}>
-          {!isLoaded && <div className={styles.loadingSpinner} />}
-          {imageError ? <div className={styles.imageError}>{t('photoOriginalLoadFailed')}</div> : null}
-          <img 
-            src={imageUrl} 
-            alt={activeName} 
-            className={`${styles.image} ${isLoaded ? styles.loaded : ''}`}
-            onLoad={() => {
-              setIsLoaded(true);
-              setImageError(false);
-            }}
-            onError={() => {
-              setIsLoaded(true);
-              setImageError(true);
-            }}
-            draggable={false}
-          />
-        </div>
+        {isVideoPreview && videoUrl ? (
+          <div
+            ref={videoStageRef}
+            className={styles.videoStage}
+            onPointerDown={handleVideoPointerDown}
+            onPointerMove={handleVideoPointerMove}
+            onPointerUp={handleVideoPointerUp}
+            onPointerCancel={handleVideoPointerUp}
+          >
+            {!isLoaded && !videoError ? <div className={styles.loadingSpinner} /> : null}
+            <video
+              ref={videoRef}
+              className={[styles.video, isLoaded ? styles.loaded : ''].filter(Boolean).join(' ')}
+              src={videoUrl}
+              poster={previewPhoto?.poster_url ?? undefined}
+              preload="metadata"
+              {...VIDEO_INLINE_PLAYBACK_ATTRIBUTES}
+              onLoadedMetadata={(event) => {
+                const video = event.currentTarget;
+                setIsLoaded(true);
+                setVideoError(false);
+                setVideoDuration(Number.isFinite(video.duration) ? video.duration : 0);
+                setVideoCurrentTime(video.currentTime);
+                setIsLandscapeVideo(video.videoWidth > video.videoHeight);
+              }}
+              onTimeUpdate={(event) => setVideoCurrentTime(event.currentTarget.currentTime)}
+              onPlay={() => setIsVideoPlaying(true)}
+              onPause={() => setIsVideoPlaying(false)}
+              onVolumeChange={(event) => {
+                setVideoVolume(event.currentTarget.volume);
+                setVideoMuted(event.currentTarget.muted);
+              }}
+              onError={() => {
+                setIsLoaded(true);
+                setVideoError(true);
+                setIsVideoPlaying(false);
+              }}
+            >
+              <source src={videoUrl} type={previewPhoto?.mime_type ?? undefined} />
+            </video>
+
+            {videoError ? (
+              <div className={styles.videoError}>
+                <div className={styles.videoErrorCard}>
+                  <div className={styles.videoErrorIcon}>
+                    <PlayIcon width={22} height={22} />
+                  </div>
+                  <strong>{t('photoVideoPlaybackFailedTitle')}</strong>
+                  <span>{t('photoVideoPlaybackFailedHint')}</span>
+                  <button
+                    className={styles.videoErrorAction}
+                    onClick={handleDownload}
+                    type="button"
+                  >
+                    <DownloadIcon width={16} height={16} />
+                    {t('photoDownloadVideo')}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {isVideoScrubbing && videoScrubLabel ? (
+              <div className={styles.scrubBubble}>{videoScrubLabel}</div>
+            ) : null}
+
+            <button
+              className={[
+                styles.videoCenterPlay,
+                isVideoPlaying || videoError ? styles.videoCenterPlayHidden : '',
+              ].filter(Boolean).join(' ')}
+              onClick={(event) => {
+                event.stopPropagation();
+                handleVideoTogglePlay();
+              }}
+              onPointerDown={(event) => event.stopPropagation()}
+              type="button"
+              aria-label={t('photoVideoPlay')}
+            >
+              <PlayIcon width={28} height={28} />
+            </button>
+
+            <div
+              className={[
+                styles.videoControls,
+                videoControlsHidden ? styles.videoControlsHidden : '',
+              ].filter(Boolean).join(' ')}
+              onClick={(event) => event.stopPropagation()}
+              onPointerDown={(event) => {
+                event.stopPropagation();
+                revealVideoControls();
+              }}
+              onPointerMove={() => revealVideoControls()}
+              onPointerUp={(event) => event.stopPropagation()}
+              onFocus={() => revealVideoControls()}
+            >
+              <div className={styles.videoTimeline}>
+                <input
+                  className={styles.videoRange}
+                  style={{ '--video-progress': videoProgress } as React.CSSProperties}
+                  type="range"
+                  min="0"
+                  max={videoDuration || 0}
+                  step="0.05"
+                  value={Math.min(videoCurrentTime, videoDuration || 0)}
+                  disabled={!videoDuration || videoError}
+                  aria-label={t('photoVideoSeek')}
+                  onChange={handleVideoTimeChange}
+                />
+                <div className={styles.videoTime}>
+                  <span>{formatVideoTime(videoCurrentTime)}</span>
+                  <span>{formatVideoTime(videoDuration)}</span>
+                </div>
+              </div>
+
+              <div className={styles.videoControlRow}>
+                <div className={styles.videoVolumeGroup}>
+                  <button
+                    className={styles.videoControlBtn}
+                    onClick={handleVideoMuteToggle}
+                    disabled={videoError}
+                    type="button"
+                    aria-label={videoMuted ? t('photoVideoUnmute') : t('photoVideoMute')}
+                    title={videoMuted ? t('photoVideoUnmute') : t('photoVideoMute')}
+                  >
+                    {videoMuted || videoVolume === 0
+                      ? <VolumeMutedIcon width={17} height={17} />
+                      : <VolumeIcon width={17} height={17} />}
+                  </button>
+
+                  <input
+                    className={[styles.videoRange, styles.volumeRange].join(' ')}
+                    style={{ '--video-progress': volumeProgress } as React.CSSProperties}
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={videoMuted ? 0 : videoVolume}
+                    disabled={videoError}
+                    aria-label={t('photoVideoVolume')}
+                    onChange={handleVideoVolumeChange}
+                  />
+                </div>
+
+                <div className={styles.videoTransportGroup}>
+                  <button
+                    className={styles.videoControlBtn}
+                    onClick={() => {
+                      handleVideoSkip(-15);
+                    }}
+                    disabled={!videoDuration || videoError}
+                    type="button"
+                    aria-label={t('photoVideoBack15')}
+                    title={t('photoVideoBack15')}
+                  >
+                    <span className={styles.videoSkipLabel}>-15s</span>
+                  </button>
+
+                  <button
+                    className={styles.videoControlBtn}
+                    onClick={() => {
+                      handleVideoTogglePlay();
+                      revealVideoControls();
+                    }}
+                    disabled={videoError}
+                    type="button"
+                    aria-label={isVideoPlaying ? t('photoVideoPause') : t('photoVideoPlay')}
+                    title={isVideoPlaying ? t('photoVideoPause') : t('photoVideoPlay')}
+                  >
+                    {isVideoPlaying ? <PauseIcon width={17} height={17} /> : <PlayIcon width={17} height={17} />}
+                  </button>
+
+                  <button
+                    className={styles.videoControlBtn}
+                    onClick={() => {
+                      handleVideoSkip(15);
+                    }}
+                    disabled={!videoDuration || videoError}
+                    type="button"
+                    aria-label={t('photoVideoForward15')}
+                    title={t('photoVideoForward15')}
+                  >
+                    <span className={styles.videoSkipLabel}>+15s</span>
+                  </button>
+                </div>
+
+                <div className={styles.videoUtilityGroup}>
+                  <button
+                    className={styles.videoControlBtn}
+                    onClick={handleDownload}
+                    disabled={isDownloading}
+                    type="button"
+                    aria-label={t('photoDownloadVideo')}
+                    title={t('photoDownloadVideo')}
+                  >
+                    <DownloadIcon width={17} height={17} />
+                  </button>
+
+                  <button
+                    className={styles.videoControlBtn}
+                    onClick={handleVideoFullscreen}
+                    disabled={videoError}
+                    type="button"
+                    aria-label={isVideoFullscreen ? t('photoVideoExitFullscreen') : t('photoVideoFullscreen')}
+                    title={isVideoFullscreen ? t('photoVideoExitFullscreen') : t('photoVideoFullscreen')}
+                  >
+                    {isVideoFullscreen
+                      ? <ExitFullscreenIcon width={17} height={17} />
+                      : <FullscreenIcon width={17} height={17} />}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className={styles.imageWrapper}>
+            {!isLoaded && <div className={styles.loadingSpinner} />}
+            {imageError ? <div className={styles.imageError}>{t('photoOriginalLoadFailed')}</div> : null}
+            <img
+              src={imageUrl}
+              alt={activeName}
+              className={`${styles.image} ${isLoaded ? styles.loaded : ''}`}
+              onLoad={() => {
+                setIsLoaded(true);
+                setImageError(false);
+              }}
+              onError={() => {
+                setIsLoaded(true);
+                setImageError(true);
+              }}
+              draggable={false}
+            />
+          </div>
+        )}
       </div>
 
       {notice ? (
@@ -488,15 +1095,61 @@ export function ImageViewer() {
       ) : null}
 
       {previewPhoto ? (
-        <div className={styles.infoPanel} onClick={(event) => event.stopPropagation()}>
+        <div
+          className={[
+            styles.infoPanel,
+            isVideoPreview ? styles.videoInfoPanel : '',
+          ].filter(Boolean).join(' ')}
+          onClick={(event) => event.stopPropagation()}
+        >
           <span className={styles.infoTitle}>{previewPhoto.name}</span>
           <span className={styles.infoMeta}>
-            {previewPhoto.width && previewPhoto.height
-              ? `${previewPhoto.width} × ${previewPhoto.height}`
-              : t('unknownSize')}
+            {mediaMeta}
           </span>
         </div>
       ) : null}
     </div>
   );
+}
+
+function clampTime(value: number, duration: number): number {
+  if (!Number.isFinite(duration) || duration <= 0) {
+    return Math.max(0, value);
+  }
+  return Math.min(duration, Math.max(0, value));
+}
+
+function formatVideoTime(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) {
+    return '0:00';
+  }
+
+  const totalSeconds = Math.floor(value);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+function formatVideoScrubLabel(offsetSeconds: number, targetTime: number): string {
+  const sign = offsetSeconds >= 0 ? '+' : '-';
+  const offset = Math.abs(offsetSeconds);
+  return `${sign}${offset.toFixed(1)}s · ${formatVideoTime(targetTime)}`;
+}
+
+function getPreviewMetaLabel(
+  photo: { media_type?: string; width?: number | null; height?: number | null; duration?: number | null; video_codec?: string | null },
+  fallback: string,
+): string {
+  const resolution = photo.width && photo.height ? `${photo.width} × ${photo.height}` : null;
+  if (photo.media_type !== 'video') {
+    return resolution ?? fallback;
+  }
+
+  const duration = typeof photo.duration === 'number' ? formatVideoTime(photo.duration) : null;
+  const codec = photo.video_codec ? photo.video_codec.toUpperCase() : null;
+  return [resolution, duration, codec].filter(Boolean).join(' · ') || fallback;
 }

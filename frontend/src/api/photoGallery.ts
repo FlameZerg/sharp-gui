@@ -4,6 +4,7 @@ import type {
   AddPhotoAlbumResponse,
   PhotoAlbumsResponse,
   PhotoConversionResponse,
+  PhotoMediaType,
   PhotoListResponse,
   PhotoUploadResponse,
 } from '@/types';
@@ -35,10 +36,12 @@ export async function fetchPhotoAlbumPhotos(
   cursor: string | null,
   limit = 60,
   sort = 'mtime_desc',
+  mediaType: PhotoMediaType = 'all',
 ): Promise<PhotoListResponse> {
   const params = new URLSearchParams({
     limit: String(limit),
     sort,
+    type: mediaType,
   });
   if (cursor) {
     params.set('cursor', cursor);
@@ -101,7 +104,7 @@ export async function downloadPhotos(
     { timeout: 300000 },
   );
   const filename = getDownloadFilename(response.headers.get('Content-Disposition'))
-    ?? 'sharp-gui-photos.zip';
+    ?? 'sharp-gui-media.zip';
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
@@ -116,4 +119,9 @@ export async function downloadPhotos(
     failed: Number(response.headers.get('X-Photo-Download-Failed') ?? 0),
     filename,
   };
+}
+
+export function getPhotoMediaDownloadUrl(itemId: string, mediaType: Exclude<PhotoMediaType, 'all'>): string {
+  const endpoint = mediaType === 'video' ? 'video-original' : 'photo-original';
+  return `/api/${endpoint}/${encodeURIComponent(itemId)}?download=1`;
 }

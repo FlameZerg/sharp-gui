@@ -1,12 +1,23 @@
 export type AppView = 'models' | 'photos';
 
 export type PhotoAlbumScanStatus = 'idle' | 'scanning' | 'error';
+export type PhotoMediaType = 'all' | 'image' | 'video';
+export type PhotoItemMediaType = 'image' | 'video';
+
+export interface PhotoMediaCounts {
+  all: number;
+  image: number;
+  photo: number;
+  video: number;
+}
 
 export interface PhotoAlbum {
   id: string;
   name: string;
   cover_thumb_url: string | null;
   photo_count: number | null;
+  media_count?: number | null;
+  video_count?: number | null;
   recursive: boolean;
   enabled: boolean;
   scan_status: PhotoAlbumScanStatus;
@@ -18,12 +29,20 @@ export interface PhotoItem {
   id: string;
   album_id: string;
   name: string;
+  media_type: PhotoItemMediaType;
   width: number | null;
   height: number | null;
   thumb_url: string | null;
   full_url?: string;
+  poster_url?: string | null;
   preview_url: string;
+  playback_url?: string;
   download_url: string;
+  duration?: number | null;
+  mime_type?: string | null;
+  video_codec?: string | null;
+  audio_codec?: string | null;
+  bitrate?: number | null;
   size?: number | null;
   created_at?: string | null;
   updated_at?: string | null;
@@ -51,6 +70,7 @@ export interface PhotoListResponse {
   items: PhotoItem[];
   next_cursor: string | null;
   total: number;
+  media_counts?: PhotoMediaCounts;
   scan_status: PhotoAlbumScanStatus;
   error?: string | null;
 }

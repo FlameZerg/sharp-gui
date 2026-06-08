@@ -81,7 +81,7 @@ const classes = [
 | `components/common/` | 通用 UI 组件，不含业务逻辑 | Button, Modal, Loading, Icons, ImageViewer, ConfirmDialog, SelectMenu, TextInputDialog |
 | `components/auth/` | 局域网门禁与启动安全提示 | AccessGate, AccessSetupPrompt |
 | `components/gallery/` | 模型图库相关组件 | GalleryItem, GalleryList |
-| `components/photoGallery/` | 本地照片图库业务组件 | PhotoAlbumList, PhotoGalleryView, PhotoMasonryGrid, PhotoSelectionBar, PhotoToolbar |
+| `components/photoGallery/` | 本地媒体图库业务组件（历史目录名保留） | PhotoAlbumList, PhotoGalleryView, PhotoMasonryGrid, PhotoSelectionBar, PhotoToolbar |
 | `components/layout/` | 页面布局与导航组件 | Sidebar, ControlsBar, Settings, Help |
 | `components/viewer/` | 3D 查看器相关组件 | ViewerCanvas, QuickControls, ViewerRevealEffectsRail, GyroIndicator, VirtualJoystick, SpeedTooltip |
 
@@ -125,11 +125,12 @@ export const useAppStore = create<AppState>((set) => ({
 - **Action 是箭头函数**：在 `create` 内部用 `set()` 修改状态
 - **桶导出**：通过 `store/index.ts` re-export
 
-当前 store 同时承载模型工作区与照片图库工作区：
+当前 store 同时承载模型工作区与本地媒体图库工作区：
 
-- `activeView` 在 `models` / `photos` 间切换，Sidebar 与主区域按该状态展示。
+- `activeView` 在 `models` / `photos` 间切换；UI 文案可显示为“图库”，但状态值保持历史兼容。
 - 模型图库仍使用 `galleryItems`、`selectedModel` 等字段。
-- 照片图库使用 `photoAlbums`、`currentPhotoAlbumId`、`photoItems`、`photoNextCursor`、`photoSelectionMode`、`selectedPhotoIds`、`previewPhoto` 等独立字段，避免影响 3D 查看器状态。
+- 本地媒体图库使用 `photoAlbums`、`currentPhotoAlbumId`、`photoItems`、`photoNextCursor`、`photoMediaType`、`photoSelectionMode`、`selectedPhotoIds`、`previewPhoto` 等独立字段，避免影响 3D 查看器状态。
+- `PhotoItem.media_type` 支持 `image` / `video`，`photoMediaType` 支持 `all` / `image` / `video`；视频条目通过 `poster_url`、`playback_url`、`download_url` 和可选元数据驱动卡片与预览。
 - 局域网门禁使用 `authStatus`、`isAuthenticated`、`isOwnerAccess`、`authSetupRequired`、`authPermissionError` 等字段；本机 owner 可进入设置，远程未解锁时必须展示门禁页或权限反馈。
 
 ### 使用方式
@@ -153,7 +154,7 @@ api/
 ├── client.ts    # 底层 fetch 封装（apiGet, apiPost, apiPostFormData, apiDelete）
 ├── auth.ts      # 局域网门禁、访问码、会话与远程生成设置 API
 ├── gallery.ts   # 图库相关 API
-├── photoGallery.ts # 本地照片相册、照片列表、扫描、转换 API
+├── photoGallery.ts # 本地媒体相册、媒体列表、扫描、转换/下载 API
 ├── tasks.ts     # 任务相关 API
 ├── settings.ts  # 设置相关 API
 └── index.ts     # 桶导出（export * from 各模块）
@@ -205,7 +206,7 @@ export const useMyHook = (param: ParamType) => {
 |------|------|------|
 | Viewer 操作 | 接收 `viewerRef` 参数操作 3D viewer | `useKeyboard(viewerRef)` |
 | 动画循环 | 使用 `requestAnimationFrame` + `useRef` | `useGyroscope`, `useJoystick` |
-| 图库性能 | 组合虚拟滚动、缩略图预加载与稳定高度；照片图库列表只加载缩略图，预览才加载原图 | `useGalleryVirtualizer`, `useGalleryThumbnail` |
+| 图库性能 | 组合虚拟滚动、缩略图/poster 预加载与稳定高度；媒体图库列表只加载缩略图或 poster，预览才加载原图/视频流 | `useGalleryVirtualizer`, `useGalleryThumbnail` |
 | 任务轮询 | 根据队列状态调整刷新频率 | `useTaskQueue` |
 | 状态引用 | 使用 `useRef` 管理不触发重渲染的状态 | 各 3D 相关 hook |
 | 组合模式 | 主 hook 内部调用子 hook | `useViewer` 组合 `useKeyboard` + `useGyroscope` + `useJoystick` + `useXR` |
@@ -280,13 +281,23 @@ export type { CameraConfig } from './viewer';
 
 对大型页面级组件可使用 `React.lazy` + `Suspense`（当前项目为单页应用，暂无需要）。
 
-### 本地照片图库性能
+### 本地媒体图库性能
 
-- 相册照片列表必须分页加载，不要一次性把大目录全部塞进 DOM。
-- 瀑布流图片使用 `thumb_url`、`loading="lazy"`、`decoding="async"` 和稳定 `aspect-ratio`。
-- 图片预览层使用 `full_url` / `preview_url` 原图地址，不能复用缩略图放大。
+- 相册媒体列表必须分页加载，不要一次性把大目录全部塞进 DOM。
+- 瀑布流图片使用 `thumb_url`、视频使用 `poster_url` 或 fallback 卡片，配合 `loading="lazy"`、`decoding="async"` 和稳定 `aspect-ratio`。
+- 列表与离屏卡片不能加载完整视频文件；只有进入视频预览时才使用 `playback_url` 请求视频流。
+- 图片预览层使用 `full_url` / `preview_url` 原图地址，不能复用缩略图放大；视频预览层使用 `playback_url`，下载使用 `download_url` 或 API helper。
 - 网格密度调节和触控捏合只改变展示列数，不重新扫描相册。
-- 多选状态只存储 photo id 集合，避免复制大对象。
+- 多选状态只存储 media id 集合，避免复制大对象；视频可下载但不可加入照片转 3D。
+
+### 视频预览交互
+
+- 视频播放内核使用原生 `<video>` + 自定义 CSS Modules 控制层，不引入重型播放器 UI 框架；解码、缓冲、Range seek 和硬件加速交给浏览器。
+- 移动端视频元素应带 `playsInline`、`webkit-playsinline`、`x5-video-player-type="h5-page"`、`controlsList="nodownload noremoteplayback"`，并禁用画中画/远程播放；这些属性只能尽量降低安卓浏览器接管概率，不能承诺覆盖所有私有浏览器。
+- 播放失败态必须保留下载和关闭操作，并使用项目一致的玻璃态卡片/按钮；不要临时拼一个高饱和胶囊或浏览器原生提示。
+- 移动端可支持长按视频画面横向拖动进行精细 scrub；桌面端不要启用画面拖动 seek，保留进度条和键盘操作。
+- 移动端横屏视频进入全屏时可以尝试 `screen.orientation.lock('landscape')`，失败必须静默降级并释放方向锁。
+- 控制栏需要在 PC、平板竖屏、手机竖屏等中间宽度保持完整：按钮不可截断，文件名不可遮挡控制栏，折叠状态点击非按钮区域只展开控制栏，不强制滚动页面。
 
 ---
 

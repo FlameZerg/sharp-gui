@@ -23,9 +23,8 @@
   padding: 0 11px 0 13px;
   border-radius: var(--radius-lg);
   color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.66);
-  border: 1px solid rgba(255, 255, 255, 0.62);
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.06);
+  /* 与工具栏其它按钮一致的简洁半透明底，去掉白色亮边框与悬浮阴影 */
+  background: rgba(255, 255, 255, 0.58);
   cursor: pointer;
   font-size: 12px;
   font-weight: 700;
@@ -86,6 +85,19 @@
   text-overflow: ellipsis;
 }
 
+.triggerDirection {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  margin-left: -2px;
+  color: var(--text-muted);
+}
+
+.triggerDirection svg {
+  color: currentColor;
+}
+
 .menu {
   position: absolute;
   top: calc(100% + 8px);
@@ -142,6 +154,36 @@
 
 .option svg {
   flex-shrink: 0;
+}
+
+.optionLabel {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.optionText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.optionDirection {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  /* 跟随选项文字色：默认弱化、选中态自动变为品牌蓝，层级清晰 */
+  color: var(--text-muted);
+}
+
+.optionDirection svg {
+  color: currentColor;
+}
+
+.optionSelected .optionDirection {
+  color: var(--accent-blue);
 }
 
 @media (prefers-color-scheme: dark) {

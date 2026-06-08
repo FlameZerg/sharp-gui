@@ -62,6 +62,39 @@ export function DownloadIcon(props: IconProps) {
   );
 }
 
+export function PlayIcon(props: IconProps) {
+  return (
+    <svg fill="currentColor" stroke="none" viewBox="0 0 24 24" {...props}>
+      <path d="M8 5.6v12.8c0 .8.88 1.29 1.55.86l10.05-6.4a1.02 1.02 0 000-1.72L9.55 4.74A1 1 0 008 5.6z" />
+    </svg>
+  );
+}
+
+export function PauseIcon(props: IconProps) {
+  return (
+    <svg fill="currentColor" stroke="none" viewBox="0 0 24 24" {...props}>
+      <path d="M7 5h3.2c.55 0 1 .45 1 1v12c0 .55-.45 1-1 1H7a1 1 0 01-1-1V6c0-.55.45-1 1-1zm7.8 0H18c.55 0 1 .45 1 1v12c0 .55-.45 1-1 1h-3.2a1 1 0 01-1-1V6c0-.55.45-1 1-1z" />
+    </svg>
+  );
+}
+
+export function VolumeIcon(props: IconProps) {
+  return (
+    <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M11 5L6 9H3v6h3l5 4V5z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15.5 8.5a5 5 0 010 7M18 6a8 8 0 010 12" />
+    </svg>
+  );
+}
+
+export function VolumeMutedIcon(props: IconProps) {
+  return (
+    <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M11 5L6 9H3v6h3l5 4V5zM16 9l5 5m0-5l-5 5" />
+    </svg>
+  );
+}
+
 // Delete icon (trash)
 export function DeleteIcon(props: IconProps) {
   return (
@@ -123,15 +156,7 @@ export function FullscreenIcon(props: IconProps) {
 export function ExitFullscreenIcon(props: IconProps) {
   return (
     <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" {...props}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 9L4 4m0 0h4m-4 0v4m16 9l-5-5m0 0h-4m4 0v4m-9 0l-5-5m5 5v-4m0 4h-4m13-13l-5 5m0 0h4m-4 0v-4" />
-      {/* Or better concise path for exit fullscreen (arrows pointing in) */}
-      <path strokeLinecap="round" strokeLinejoin="round" d="M10 14l5-5m0 0l-5-5m5 5h-7m7 5l-5 5m5-5v7" style={{ display: 'none'}} /> 
-      {/* Let's use the standard "arrows pointing in" instead of just reversing. 
-         Standard exit fullscreen is "Fullscren shrink".
-      */}
-       <path strokeLinecap="round" strokeLinejoin="round" d="M4 8v3a1 1 0 001 1h3m10 0h3a1 1 0 001-1V8M4 16v-3a1 1 0 011-1h3m10 0h-3a1 1 0 01-1 1v3" />
-       {/* Actually let's just reverse the arrows of FullscreenIcon */}
-       <path strokeLinecap="round" strokeLinejoin="round" d="M8 3v3a2 2 0 01-2 2H3m18 0h-3a2 2 0 01-2-2V3m0 18v-3a2 2 0 012-2h3M3 16h3a2 2 0 012 2v3" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 3v4a2 2 0 01-2 2H3m12-6v4a2 2 0 002 2h4M9 21v-4a2 2 0 00-2-2H3m12 6v-4a2 2 0 012-2h4" />
     </svg>
   );
 }
@@ -215,6 +240,24 @@ export function SortIcon(props: IconProps) {
   return (
     <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" {...props}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h11m-4-3 4 3-4 3M20 17H9m4-3-4 3 4 3" />
+    </svg>
+  );
+}
+
+// Arrow up (ascending sort direction)
+export function ArrowUpIcon(props: IconProps) {
+  return (
+    <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 19V5m0 0-6 6m6-6 6 6" />
+    </svg>
+  );
+}
+
+// Arrow down (descending sort direction)
+export function ArrowDownIcon(props: IconProps) {
+  return (
+    <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14m0 0 6-6m-6 6-6-6" />
     </svg>
   );
 }

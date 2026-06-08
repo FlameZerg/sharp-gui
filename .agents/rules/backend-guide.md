@@ -8,7 +8,7 @@
 2. **运行时与配置** — `backend/runtime.py` 处理环境变量、verbose 日志、Sharp 命令/设备解析；`backend/config.py` 处理 `config.json` 与 access-control normalize；`backend/paths.py` 派生 workspace 相关路径。
 3. **安全层** — `backend/security/access_control.py` 集中维护 Public / Unlocked / Owner / Conditional 权限矩阵；`backend/security/hooks.py` 注册 `before_request` / `after_request`。
 4. **路由层** — `backend/routes/*` 按 API 域拆分，只处理 Flask request/response。
-5. **服务层** — `backend/services/*` 承载模型图库、照片图库、相册上传、任务队列、导出 HTML、静态文件解析和文件夹选择等可复用逻辑。
+5. **服务层** — `backend/services/*` 承载模型图库、本地媒体图库、相册上传、任务队列、导出 HTML、静态文件解析和文件夹选择等可复用逻辑。
 6. **任务队列** — `backend/services/task_queue.py` 的 `TaskManager` 持有 queue/status/lock/running processes。默认 app import 不启动 worker；只有服务运行入口显式启动，且启动操作幂等。
 
 ---
@@ -48,15 +48,18 @@ Do not grant owner permissions from `X-Forwarded-For`, `Forwarded`, `X-Real-IP`,
 | POST | `/api/restart` | 重启服务器 | Owner |
 | POST | `/api/browse-folder` | 原生文件夹选择 | Owner |
 | GET | `/api/export/<id>` | 导出为 Spark 2.0 独立 HTML（支持 `?format=spz|ply`） | Unlocked |
-| GET | `/api/photo-albums` | 获取本地照片相册列表 | Unlocked |
-| POST | `/api/photo-albums` | 新增照片相册目录配置 | Owner |
-| DELETE | `/api/photo-albums/<album_id>` | 移除照片相册配置，不删除原图 | Owner |
-| POST | `/api/photo-albums/<album_id>/scan` | 重新扫描照片相册 | Owner |
-| GET | `/api/photo-albums/<album_id>/photos` | 分页获取照片，支持时间/名称/大小排序 | Unlocked |
+| GET | `/api/photo-albums` | 获取本地媒体相册列表 | Unlocked |
+| POST | `/api/photo-albums` | 新增本地媒体相册目录配置 | Owner |
+| DELETE | `/api/photo-albums/<album_id>` | 移除本地媒体相册配置，不删除原始文件 | Owner |
+| POST | `/api/photo-albums/<album_id>/scan` | 重新扫描本地媒体相册 | Owner |
+| GET | `/api/photo-albums/<album_id>/photos` | 分页获取相册媒体，支持 `type=all|photo|video` 与时间/名称/大小排序 | Unlocked |
 | POST | `/api/photo-albums/<album_id>/uploads` | 上传照片到当前相册目录 | Unlocked when gate enabled / Owner when gate disabled |
-| GET | `/api/photo-thumbnail/<photo_id>` | 获取或按需生成照片图库缩略图 | Unlocked |
+| GET | `/api/photo-thumbnail/<photo_id>` | 获取或按需生成照片缩略图 | Unlocked |
 | GET | `/api/photo-original/<photo_id>` | 获取照片原图（inline 或 `?download=1` 附件） | Unlocked |
-| POST | `/api/photo-downloads` | 打包下载照片原图 ZIP | Unlocked |
+| GET | `/api/video-poster/<video_id>` | 获取或按需生成视频 poster | Unlocked |
+| GET | `/api/video-original/<video_id>` | 获取视频原文件（inline 或 `?download=1` 附件，支持 Range） | Unlocked |
+| GET | `/api/video-play/<video_id>/<play_token>/<path:filename>` | 使用短期签名票据播放视频原文件（支持 Range） | Public when valid token / otherwise Unlocked |
+| POST | `/api/photo-downloads` | 打包下载选中的照片/视频原文件 ZIP | Unlocked |
 | POST | `/api/photo-conversions` | 将单张/多张照片加入现有 3D 生成队列 | Owner / Conditional |
 
 ### 新增端点规则
@@ -135,6 +138,7 @@ output_folder = os.path.join(workspace_folder, 'outputs')
 thumbnail_folder = os.path.join(input_folder, '.thumbnails')
 photo_gallery_cache_folder = os.path.join(workspace_folder, '.photo-gallery-cache')
 photo_thumbnail_folder = os.path.join(photo_gallery_cache_folder, 'thumbnails')
+video_poster_folder = os.path.join(photo_gallery_cache_folder, 'video-posters')
 ```
 
 ### 规则
@@ -142,10 +146,14 @@ photo_thumbnail_folder = os.path.join(photo_gallery_cache_folder, 'thumbnails')
 - 使用 `os.path` 构造绝对路径，不使用字符串拼接
 - `secure_filename()` 处理用户上传的文件名
 - 缩略图存储在 `{workspace}/inputs/.thumbnails/`
-- 本地照片图库索引与缩略图缓存存储在 `{workspace}/.photo-gallery-cache/`
+- 本地媒体图库索引、照片缩略图、视频 poster 和批量下载临时 ZIP 存储在 `{workspace}/.photo-gallery-cache/`
 - 输出目录同时保留 `.ply` 原始模型和自动生成的 `.spz` 紧凑模型
 - 配置文件 `config.json` 位于项目根目录（`BASE_DIR`）
-- 照片图库 API 只接受 photo id，不接受任意绝对路径；后端必须从索引反查原图并再次校验 root
+- 本地媒体图库 API 只接受 photo/media/video id，不接受任意绝对路径；后端必须从索引反查原始文件并再次校验 root
+- 视频响应优先使用 `send_from_directory(..., conditional=True, download_name=...)`，交给 Werkzeug 生成兼容中文文件名的响应头，不要手写 `Content-Disposition`
+- `/api/video-play/<video_id>/<play_token>/<filename>` 的 token 只授权短期 inline 播放，不能绕过 `/api/video-original/<video_id>?download=1` 的 Unlocked 下载权限
+- 删除相册时必须清理该相册媒体 ID 对应的照片缩略图和视频 poster；不得删除用户相册目录中的原始文件
+- 批量下载生成的 `photo-gallery-*.zip` 是临时文件：响应关闭时尝试删除，创建新 ZIP 前清理过期残留，不能误删索引、缩略图或 poster
 
 ---
 
@@ -181,7 +189,7 @@ photo_thumbnail_folder = os.path.join(photo_gallery_cache_folder, 'thumbnails')
 
 `model_format` 控制前端默认查看和下载格式，当前有效值为 `spz` / `ply`。
 
-`photo_gallery_roots` 控制本地照片图库相册目录；缺省时按空数组处理，不影响旧配置启动。
+`photo_gallery_roots` 控制本地媒体图库相册目录（历史命名保留 photo 前缀）；缺省时按空数组处理，不影响旧配置启动。
 
 `access_control` 控制可选局域网门禁；缺省或 `enabled=false` 时读取资源保持旧的局域网开放行为，但 owner-only 端点仍必须限制真实 localhost。`lan_bind_enabled`（缺省 `true`）决定服务监听 `0.0.0.0`（局域网共享）还是 `127.0.0.1`（仅本机），修改后需重启生效。
 
@@ -272,14 +280,15 @@ if not resolved.startswith(os.path.abspath(workspace)):
     return jsonify({"error": "Invalid path"}), 403
 ```
 
-### 本地照片图库路径安全
+### 本地媒体图库路径安全
 
-- 照片相册新增、删除、重新扫描这类配置写操作必须仅允许 localhost。
-- 原图、缩略图、下载、转换接口必须通过 photo id 解析，不能接受前端传来的绝对路径。
-- 解析 photo id 后必须使用 `os.path.abspath()`、`os.path.realpath()`、`os.path.commonpath()` 和平台大小写归一化确认文件仍在配置 root 内。
+- 相册新增、删除、重新扫描这类配置写操作必须仅允许 localhost。
+- 原图、缩略图、视频 poster、视频播放、下载、转换接口必须通过 media/photo/video id 解析，不能接受前端传来的绝对路径。
+- 解析 media id 后必须使用 `os.path.abspath()`、`os.path.realpath()`、`os.path.commonpath()` 和平台大小写归一化确认文件仍在配置 root 内。
 - Windows 需要避免跨盘符 `commonpath` 抛错导致接口 500；Linux/macOS 需要避免符号链接逃逸相册 root。
-- 原图响应优先使用 `send_from_directory(..., download_name=...)` 交给 Werkzeug 生成兼容的 `Content-Disposition`，不要手写包含中文的 header。
-- `POST /api/photo-albums/<album_id>/uploads` 属于照片图库服务：route 层只读取 multipart `file` 列表并封装响应，`services/photo_gallery.py` 必须负责相册存在/启用/目录可用检查、`PHOTO_MAX_UPLOAD_BATCH`、`secure_filename()`、扩展名白名单、唯一命名、真实路径 root 约束、Pillow `verify()`、失败清理与上传后扫描刷新。
+- 原图/视频响应优先使用 `send_from_directory(..., download_name=...)` 交给 Werkzeug 生成兼容的 `Content-Disposition`，不要手写包含中文的 header；视频 inline 播放必须启用 `conditional=True` 以支持 Range seek。
+- 路径式视频播放 token 必须绑定 video id、过期时间和 access-control session version；修改访问码或撤销会话后旧 token 失效。token 只用于播放，不用于附件下载。
+- `POST /api/photo-albums/<album_id>/uploads` 属于本地媒体图库服务：route 层只读取 multipart `file` 列表并封装响应，`services/photo_gallery.py` 必须负责相册存在/启用/目录可用检查、`PHOTO_MAX_UPLOAD_BATCH`、`secure_filename()`、扩展名白名单、唯一命名、真实路径 root 约束、Pillow `verify()`、失败清理与上传后扫描刷新。
 - 照片相册上传权限必须在集中矩阵中显式列出：门禁开启且远程已解锁时允许，门禁关闭或未解锁时远程拒绝。
 
 ### 其他
