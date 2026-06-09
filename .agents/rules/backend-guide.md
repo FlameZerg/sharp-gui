@@ -137,6 +137,8 @@ input_folder = os.path.join(workspace_folder, 'inputs')
 output_folder = os.path.join(workspace_folder, 'outputs')
 thumbnail_folder = os.path.join(input_folder, '.thumbnails')
 photo_gallery_cache_folder = os.path.join(workspace_folder, '.photo-gallery-cache')
+photo_catalog_file = os.path.join(photo_gallery_cache_folder, 'catalog.json')
+photo_album_index_folder = os.path.join(photo_gallery_cache_folder, 'albums')
 photo_thumbnail_folder = os.path.join(photo_gallery_cache_folder, 'thumbnails')
 video_poster_folder = os.path.join(photo_gallery_cache_folder, 'video-posters')
 ```
@@ -146,10 +148,11 @@ video_poster_folder = os.path.join(photo_gallery_cache_folder, 'video-posters')
 - 使用 `os.path` 构造绝对路径，不使用字符串拼接
 - `secure_filename()` 处理用户上传的文件名
 - 缩略图存储在 `{workspace}/inputs/.thumbnails/`
-- 本地媒体图库索引、照片缩略图、视频 poster 和批量下载临时 ZIP 存储在 `{workspace}/.photo-gallery-cache/`
+- 本地媒体图库 catalog、每相册索引、照片缩略图、视频 poster 和批量下载临时 ZIP 存储在 `{workspace}/.photo-gallery-cache/`
 - 输出目录同时保留 `.ply` 原始模型和自动生成的 `.spz` 紧凑模型
 - 配置文件 `config.json` 位于项目根目录（`BASE_DIR`）
 - 本地媒体图库 API 只接受 photo/media/video id，不接受任意绝对路径；后端必须从索引反查原始文件并再次校验 root
+- 本地媒体图库正常读路径不得依赖全局可变索引文件：相册列表读 `catalog.json`，相册分页/筛选/排序读 `albums/<album_id>.json`，媒体解析通过可解析 media id 定位相册索引
 - 视频响应优先使用 `send_from_directory(..., conditional=True, download_name=...)`，交给 Werkzeug 生成兼容中文文件名的响应头，不要手写 `Content-Disposition`
 - `/api/video-play/<video_id>/<play_token>/<filename>` 的 token 只授权短期 inline 播放，不能绕过 `/api/video-original/<video_id>?download=1` 的 Unlocked 下载权限
 - 删除相册时必须清理该相册媒体 ID 对应的照片缩略图和视频 poster；不得删除用户相册目录中的原始文件
@@ -285,11 +288,22 @@ if not resolved.startswith(os.path.abspath(workspace)):
 - 相册新增、删除、重新扫描这类配置写操作必须仅允许 localhost。
 - 原图、缩略图、视频 poster、视频播放、下载、转换接口必须通过 media/photo/video id 解析，不能接受前端传来的绝对路径。
 - 解析 media id 后必须使用 `os.path.abspath()`、`os.path.realpath()`、`os.path.commonpath()` 和平台大小写归一化确认文件仍在配置 root 内。
+- `media_id` 应内嵌可解析的 `album_id`，不要再引入全局 media lookup 表；解析失败、相册不存在、索引缺失或真实文件不在 root 内时必须返回安全失败。
 - Windows 需要避免跨盘符 `commonpath` 抛错导致接口 500；Linux/macOS 需要避免符号链接逃逸相册 root。
 - 原图/视频响应优先使用 `send_from_directory(..., download_name=...)` 交给 Werkzeug 生成兼容的 `Content-Disposition`，不要手写包含中文的 header；视频 inline 播放必须启用 `conditional=True` 以支持 Range seek。
 - 路径式视频播放 token 必须绑定 video id、过期时间和 access-control session version；修改访问码或撤销会话后旧 token 失效。token 只用于播放，不用于附件下载。
 - `POST /api/photo-albums/<album_id>/uploads` 属于本地媒体图库服务：route 层只读取 multipart `file` 列表并封装响应，`services/photo_gallery.py` 必须负责相册存在/启用/目录可用检查、`PHOTO_MAX_UPLOAD_BATCH`、`secure_filename()`、扩展名白名单、唯一命名、真实路径 root 约束、Pillow `verify()`、失败清理与上传后扫描刷新。
 - 照片相册上传权限必须在集中矩阵中显式列出：门禁开启且远程已解锁时允许，门禁关闭或未解锁时远程拒绝。
+
+### 本地媒体图库索引与性能
+
+- 应用启动和普通 `/api/photo-albums` 列表请求不得扫描所有相册目录；相册摘要通过 `catalog.json` 返回，缺索引时返回待索引/扫描状态并安排低优先级 bootstrap。
+- `GET /api/photo-albums/<album_id>/photos` 的分页、排序、类型筛选应在已存在的每相册索引上完成；暖索引路径不得调用 `os.walk`、不得逐文件 `stat`、不得重写全量 catalog。
+- 只有显式扫描、首次建立相册索引、相册上传后刷新等写路径可以遍历相册目录；遍历时使用相册级锁，不能长时间持有全局锁。
+- 写 JSON 缓存使用原子替换，内容未变时不触盘；避免对所有相册共用一个大 JSON 并在每次分页/排序时全量重写。
+- 旧全局 `index.json` 只能作为迁移源。迁移应一次性折算 catalog 并归档旧索引；旧索引不存在后，不得回退读取所有 `albums/*.json` 来重建全局索引。
+- 视频元数据和图片尺寸复用是性能优化，不是正确性前提；归档后首扫重新计算可接受，但结果必须正确并可继续按需生成缩略图/poster。
+- 清理图库缓存只能删除 `.photo-gallery-cache` 内的 catalog、每相册索引、缩略图、poster 和临时 ZIP，绝不能删除用户相册目录中的原始媒体。
 
 ### 其他
 

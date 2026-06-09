@@ -10,14 +10,18 @@ from backend.services.photo_gallery import (
     MEDIA_TYPE_IMAGE,
     MEDIA_TYPE_VIDEO,
     build_photo_item,
+    clear_photo_gallery_cache,
     convert_photos_to_models,
     create_photo_download_zip,
     cleanup_expired_photo_download_zips,
     delete_photo_album,
     ensure_video_poster,
     get_photo_thumbnail_filename,
+    get_photo_gallery_cache_stats,
     get_video_poster_filename,
     list_album_photos,
+    list_photo_album_responses,
+    load_album_index,
     load_photo_index,
     make_photo_id,
     make_unique_photo_upload_filename,
@@ -459,6 +463,354 @@ def test_invalid_uploaded_photo_is_cleaned_up(config_file, workspace):
     assert status_code == 400
     assert payload["success"] is False
     assert not any(album_dir.iterdir())
+
+
+def test_album_list_and_pagination_use_cache_without_rescan(config_file, workspace, monkeypatch):
+    album_dir = workspace / "album"
+    album_dir.mkdir()
+    photo_path = album_dir / "image.jpg"
+    photo_path.write_bytes(b"fake-image")
+    write_config(
+        config_file,
+        {
+            "workspace_folder": str(workspace),
+            "access_control": {
+                "enabled": False,
+                "password_hash": "",
+                "session_secret": "test-secret",
+                "session_days": 30,
+                "allow_localhost_bypass": True,
+                "allow_remote_generation": False,
+                "session_version": 1,
+                "lan_bind_enabled": True,
+            },
+            "photo_gallery_roots": [{"id": "album1", "name": "Album", "path": str(album_dir), "enabled": True}],
+        },
+    )
+    paths = build_path_context({"workspace_folder": str(workspace)})
+    scan_photo_album(paths, {"id": "album1", "name": "Album", "path": str(album_dir), "enabled": True})
+
+    def fail_scan(*_args, **_kwargs):
+        raise AssertionError("ordinary reads must not rescan albums")
+
+    monkeypatch.setattr("backend.services.photo_gallery.scan_photo_album", fail_scan)
+    payload, status_code = list_album_photos(paths, "album1", "mtime_desc", "0", "20", "all")
+
+    assert status_code == 200
+    assert payload["total"] == 1
+    assert payload["items"][0]["name"] == "image.jpg"
+    assert payload["scan_status"] == "idle"
+
+
+def test_album_pagination_snapshot_is_stable_during_rescan(config_file, workspace):
+    album_dir = workspace / "album"
+    album_dir.mkdir()
+    for index in range(3):
+        (album_dir / f"image-{index}.jpg").write_bytes(f"fake-{index}".encode())
+    write_config(
+        config_file,
+        {
+            "workspace_folder": str(workspace),
+            "access_control": {
+                "enabled": False,
+                "password_hash": "",
+                "session_secret": "test-secret",
+                "session_days": 30,
+                "allow_localhost_bypass": True,
+                "allow_remote_generation": False,
+                "session_version": 1,
+                "lan_bind_enabled": True,
+            },
+            "photo_gallery_roots": [{"id": "album1", "name": "Album", "path": str(album_dir), "enabled": True}],
+        },
+    )
+    paths = build_path_context({"workspace_folder": str(workspace)})
+    scan_photo_album(paths, {"id": "album1", "name": "Album", "path": str(album_dir), "enabled": True})
+
+    first_page, _ = list_album_photos(paths, "album1", "name_asc", "0", "2", "all")
+    snapshot = first_page["snapshot"]
+    (album_dir / "image-9.jpg").write_bytes(b"new")
+    scan_photo_album(paths, {"id": "album1", "name": "Album", "path": str(album_dir), "enabled": True})
+
+    stable_second_page, _ = list_album_photos(paths, "album1", "name_asc", "2", "2", "all", snapshot)
+    fresh_first_page, _ = list_album_photos(paths, "album1", "name_asc", "0", "10", "all")
+
+    assert [item["name"] for item in stable_second_page["items"]] == ["image-2.jpg"]
+    assert "image-9.jpg" in [item["name"] for item in fresh_first_page["items"]]
+
+
+def test_large_warm_album_browsing_does_not_walk_directory(config_file, workspace, monkeypatch):
+    album_dir = workspace / "album"
+    album_dir.mkdir()
+    write_config(
+        config_file,
+        {
+            "workspace_folder": str(workspace),
+            "access_control": {
+                "enabled": False,
+                "password_hash": "",
+                "session_secret": "test-secret",
+                "session_days": 30,
+                "allow_localhost_bypass": True,
+                "allow_remote_generation": False,
+                "session_version": 1,
+                "lan_bind_enabled": True,
+            },
+            "photo_gallery_roots": [{"id": "album1", "name": "Album", "path": str(album_dir), "enabled": True}],
+        },
+    )
+    paths = build_path_context({"workspace_folder": str(workspace)})
+    photos = {}
+    for index in range(1000):
+        relative_path = f"image-{index:04d}.jpg"
+        media_id = make_photo_id("album1", relative_path)
+        photos[media_id] = {
+            "id": media_id,
+            "album_id": "album1",
+            "relative_path": relative_path,
+            "name": relative_path,
+            "media_type": MEDIA_TYPE_IMAGE,
+            "mtime": float(index),
+            "ctime": float(index),
+            "size": index + 1,
+            "width": None,
+            "height": None,
+        }
+    save_photo_index(paths, {"photos": photos})
+
+    def fail_walk(_path):
+        raise AssertionError("warm index browsing must not call os.walk")
+
+    monkeypatch.setattr("backend.services.photo_gallery.os.walk", fail_walk)
+
+    first_page, _ = list_album_photos(paths, "album1", "mtime_desc", "0", "60", "all")
+    sorted_page, _ = list_album_photos(paths, "album1", "size_asc", "120", "60", "all")
+    filtered_page, _ = list_album_photos(paths, "album1", "name_asc", "0", "60", "photo")
+
+    assert first_page["total"] == 1000
+    assert first_page["items"][0]["name"] == "image-0999.jpg"
+    assert sorted_page["items"][0]["name"] == "image-0120.jpg"
+    assert filtered_page["media_counts"]["image"] == 1000
+
+
+def test_first_scan_reuses_legacy_index_metadata_without_ffprobe(config_file, workspace, monkeypatch):
+    album_dir = workspace / "album"
+    album_dir.mkdir()
+    video_path = album_dir / "clip.mp4"
+    video_path.write_bytes(b"fake-video")
+    write_config(
+        config_file,
+        {
+            "workspace_folder": str(workspace),
+            "access_control": {
+                "enabled": False,
+                "password_hash": "",
+                "session_secret": "test-secret",
+                "session_days": 30,
+                "allow_localhost_bypass": True,
+                "allow_remote_generation": False,
+                "session_version": 1,
+                "lan_bind_enabled": True,
+            },
+            "photo_gallery_roots": [{"id": "album1", "name": "Album", "path": str(album_dir), "enabled": True}],
+        },
+    )
+    paths = build_path_context({"workspace_folder": str(workspace)})
+    stat = video_path.stat()
+    legacy_id = "legacy-video-id"
+    save_photo_index(paths, {
+        "photos": {
+            legacy_id: {
+                "id": legacy_id,
+                "album_id": "album1",
+                "relative_path": "clip.mp4",
+                "name": "clip.mp4",
+                "media_type": MEDIA_TYPE_VIDEO,
+                "mtime": stat.st_mtime,
+                "ctime": stat.st_ctime,
+                "size": stat.st_size,
+                "width": 1920,
+                "height": 1080,
+                "duration": 12.5,
+                "video_codec": "h264",
+                "audio_codec": "aac",
+                "bitrate": 6000000,
+            },
+        },
+    })
+    os.remove(getattr(paths, "photo_album_index_folder") + "/album1.json")
+
+    def fail_probe(_path):
+        raise AssertionError("unchanged legacy video metadata should avoid ffprobe")
+
+    monkeypatch.setattr("backend.services.photo_gallery.probe_video_metadata", fail_probe)
+    media_items, status, error = scan_photo_album(paths, {"id": "album1", "name": "Album", "path": str(album_dir), "enabled": True})
+    index_data = load_album_index(paths, "album1")
+
+    assert status == "idle"
+    assert error is None
+    assert len(media_items) == 1
+    assert media_items[0]["id"] == make_photo_id("album1", "clip.mp4")
+    assert media_items[0]["duration"] == 12.5
+    assert media_items[0]["width"] == 1920
+    assert index_data["media"][media_items[0]["id"]]["video_codec"] == "h264"
+    assert not os.path.exists(paths.photo_index_file)
+    assert os.path.exists(f"{paths.photo_index_file}.bak")
+
+
+def test_scan_after_legacy_archive_does_not_rebuild_global_index(config_file, workspace, monkeypatch):
+    album_one_dir = workspace / "album-one"
+    album_two_dir = workspace / "album-two"
+    album_one_dir.mkdir()
+    album_two_dir.mkdir()
+    album_one_photo = album_one_dir / "image.jpg"
+    album_two_photo = album_two_dir / "fresh.jpg"
+    album_one_photo.write_bytes(b"old")
+    album_two_photo.write_bytes(b"new")
+    write_config(
+        config_file,
+        {
+            "workspace_folder": str(workspace),
+            "access_control": {
+                "enabled": False,
+                "password_hash": "",
+                "session_secret": "test-secret",
+                "session_days": 30,
+                "allow_localhost_bypass": True,
+                "allow_remote_generation": False,
+                "session_version": 1,
+                "lan_bind_enabled": True,
+            },
+            "photo_gallery_roots": [
+                {"id": "album1", "name": "Album One", "path": str(album_one_dir), "enabled": True},
+                {"id": "album2", "name": "Album Two", "path": str(album_two_dir), "enabled": True},
+            ],
+        },
+    )
+    paths = build_path_context({"workspace_folder": str(workspace)})
+    album_one_meta = photo_meta_from_path({"id": "album1", "path": str(album_one_dir)}, str(album_one_photo))
+    save_photo_index(paths, {"photos": {album_one_meta["id"]: album_one_meta}})
+    os.replace(paths.photo_index_file, f"{paths.photo_index_file}.bak")
+
+    def fail_load_index(_paths):
+        raise AssertionError("scan after legacy archive must not rebuild a global index")
+
+    monkeypatch.setattr("backend.services.photo_gallery.load_photo_index", fail_load_index)
+    media_items, status, error = scan_photo_album(
+        paths,
+        {"id": "album2", "name": "Album Two", "path": str(album_two_dir), "enabled": True},
+    )
+
+    assert status == "idle"
+    assert error is None
+    assert [item["id"] for item in media_items] == [make_photo_id("album2", "fresh.jpg")]
+    assert os.path.exists(f"{paths.photo_index_file}.bak")
+    assert not os.path.exists(paths.photo_index_file)
+
+
+def test_album_list_migrates_once_and_avoids_legacy_rebuild(config_file, workspace, monkeypatch):
+    album_dir = workspace / "album"
+    album_dir.mkdir()
+    photo_path = album_dir / "image.jpg"
+    photo_path.write_bytes(b"fake-image")
+    write_config(
+        config_file,
+        {
+            "workspace_folder": str(workspace),
+            "access_control": {
+                "enabled": False,
+                "password_hash": "",
+                "session_secret": "test-secret",
+                "session_days": 30,
+                "allow_localhost_bypass": True,
+                "allow_remote_generation": False,
+                "session_version": 1,
+                "lan_bind_enabled": True,
+            },
+            "photo_gallery_roots": [{"id": "album1", "name": "Album", "path": str(album_dir), "enabled": True}],
+        },
+    )
+    paths = build_path_context({"workspace_folder": str(workspace)})
+
+    # 模拟升级前的 workspace：仅保留旧全局 index.json，移除镜像出的每相册索引与 catalog
+    stat = photo_path.stat()
+    save_photo_index(paths, {
+        "photos": {
+            "legacy-image-id": {
+                "id": "legacy-image-id",
+                "album_id": "album1",
+                "relative_path": "image.jpg",
+                "name": "image.jpg",
+                "media_type": MEDIA_TYPE_IMAGE,
+                "mtime": stat.st_mtime,
+                "ctime": stat.st_ctime,
+                "size": stat.st_size,
+                "width": 800,
+                "height": 600,
+            },
+        },
+    })
+    os.remove(f"{paths.photo_album_index_folder}/album1.json")
+    if os.path.exists(paths.photo_catalog_file):
+        os.remove(paths.photo_catalog_file)
+
+    # 首次列表触发一次性迁移：折算 catalog 并归档旧索引
+    albums = list_photo_album_responses(paths)
+    assert len(albums) == 1
+    assert albums[0]["media_count"] == 1
+    assert albums[0]["scan_status"] == "stale"
+    assert not os.path.exists(paths.photo_index_file)
+    assert os.path.exists(f"{paths.photo_index_file}.bak")
+
+    # 迁移后再次请求列表不得回退去重建式读取旧索引（避免 O(N^2) 读放大）
+    def fail_load_index(_paths):
+        raise AssertionError("list must not rebuild from legacy index after migration")
+
+    monkeypatch.setattr("backend.services.photo_gallery.load_photo_index", fail_load_index)
+    albums_again = list_photo_album_responses(paths)
+    assert len(albums_again) == 1
+    assert albums_again[0]["scan_status"] == "stale"
+
+
+def test_photo_gallery_cache_stats_and_clear_do_not_delete_originals(config_file, workspace):
+    album_dir = workspace / "album"
+    album_dir.mkdir()
+    photo_path = album_dir / "image.jpg"
+    photo_path.write_bytes(b"original")
+    write_config(
+        config_file,
+        {
+            "workspace_folder": str(workspace),
+            "access_control": {
+                "enabled": False,
+                "password_hash": "",
+                "session_secret": "test-secret",
+                "session_days": 30,
+                "allow_localhost_bypass": True,
+                "allow_remote_generation": False,
+                "session_version": 1,
+                "lan_bind_enabled": True,
+            },
+            "photo_gallery_roots": [{"id": "album1", "name": "Album", "path": str(album_dir), "enabled": True}],
+        },
+    )
+    paths = build_path_context({"workspace_folder": str(workspace)})
+    meta = photo_meta_from_path({"id": "album1", "path": str(album_dir)}, str(photo_path))
+    save_photo_index(paths, {"photos": {meta["id"]: meta}})
+    os.makedirs(paths.photo_thumbnail_folder, exist_ok=True)
+    thumb_path = os.path.join(paths.photo_thumbnail_folder, get_photo_thumbnail_filename(meta["id"], meta))
+    with open(thumb_path, "wb") as f:
+        f.write(b"thumb")
+
+    stats = get_photo_gallery_cache_stats(paths)
+    payload, status_code = clear_photo_gallery_cache(paths, "generated")
+
+    assert stats["total"]["files"] >= 2
+    assert status_code == 200
+    assert payload["success"] is True
+    assert payload["removed"]["files"] >= 2
+    assert photo_path.exists()
+    assert list(album_dir.iterdir()) == [photo_path]
 
 
 def test_task_manager_enqueue_and_cancel_without_worker(workspace):

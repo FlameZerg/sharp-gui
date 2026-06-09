@@ -22,6 +22,7 @@ EXPECTED_ROUTES = {
     ("/api/photo-albums/<album_id>/photos", ("GET",)),
     ("/api/photo-albums/<album_id>/scan", ("POST",)),
     ("/api/photo-albums/<album_id>/uploads", ("POST",)),
+    ("/api/photo-gallery/cache", ("DELETE", "GET")),
     ("/api/photo-conversions", ("POST",)),
     ("/api/photo-downloads", ("POST",)),
     ("/api/photo-original/<photo_id>", ("GET",)),

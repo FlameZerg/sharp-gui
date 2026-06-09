@@ -14,6 +14,8 @@ class PathContext:
     photo_thumbnail_folder: str
     video_poster_folder: str
     photo_index_file: str
+    photo_catalog_file: str
+    photo_album_index_folder: str
 
     @property
     def allowed_file_serve_roots(self):
@@ -29,6 +31,8 @@ def build_path_context(config_data):
     photo_thumbnail_folder = os.path.join(photo_gallery_cache_folder, "thumbnails")
     video_poster_folder = os.path.join(photo_gallery_cache_folder, "video-posters")
     photo_index_file = os.path.join(photo_gallery_cache_folder, "index.json")
+    photo_catalog_file = os.path.join(photo_gallery_cache_folder, "catalog.json")
+    photo_album_index_folder = os.path.join(photo_gallery_cache_folder, "albums")
 
     return PathContext(
         workspace_folder=workspace_folder,
@@ -39,6 +43,8 @@ def build_path_context(config_data):
         photo_thumbnail_folder=photo_thumbnail_folder,
         video_poster_folder=video_poster_folder,
         photo_index_file=photo_index_file,
+        photo_catalog_file=photo_catalog_file,
+        photo_album_index_folder=photo_album_index_folder,
     )
 
 
@@ -48,6 +54,7 @@ def ensure_runtime_directories(paths):
     os.makedirs(paths.thumbnail_folder, exist_ok=True)
     os.makedirs(paths.photo_thumbnail_folder, exist_ok=True)
     os.makedirs(paths.video_poster_folder, exist_ok=True)
+    os.makedirs(paths.photo_album_index_folder, exist_ok=True)
 
 
 def install_path_config(app, paths):
@@ -59,3 +66,5 @@ def install_path_config(app, paths):
     app.config["PHOTO_GALLERY_CACHE_FOLDER"] = paths.photo_gallery_cache_folder
     app.config["PHOTO_THUMBNAIL_FOLDER"] = paths.photo_thumbnail_folder
     app.config["VIDEO_POSTER_FOLDER"] = paths.video_poster_folder
+    app.config["PHOTO_CATALOG_FILE"] = paths.photo_catalog_file
+    app.config["PHOTO_ALBUM_INDEX_FOLDER"] = paths.photo_album_index_folder

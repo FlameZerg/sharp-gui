@@ -11,6 +11,7 @@ import {
   downloadPhotos,
   fetchPhotoAlbumPhotos,
   fetchPhotoAlbums,
+  rescanPhotoAlbum,
   uploadPhotosToGallery,
 } from '@/api';
 import { ChevronUpIcon, CloseIcon } from '@/components/common/Icons';
@@ -93,9 +94,12 @@ export function PhotoGalleryView() {
 
   const {
     photoAlbums,
+    photoAlbumsLoaded,
+    photoAlbumsLoading,
     currentPhotoAlbumId,
     photoItems,
     photoNextCursor,
+    photoSnapshot,
     photoTotal,
     photoMediaType,
     photoMediaCounts,
@@ -105,6 +109,7 @@ export function PhotoGalleryView() {
     authStatus,
     sidebarCollapsed,
     setPhotoAlbums,
+    setPhotoAlbumsLoading,
     setPhotoItems,
     clearPhotoItems,
     setPhotoMediaType,
@@ -117,9 +122,12 @@ export function PhotoGalleryView() {
   } = useAppStore(
     useShallow((state) => ({
       photoAlbums: state.photoAlbums,
+      photoAlbumsLoaded: state.photoAlbumsLoaded,
+      photoAlbumsLoading: state.photoAlbumsLoading,
       currentPhotoAlbumId: state.currentPhotoAlbumId,
       photoItems: state.photoItems,
       photoNextCursor: state.photoNextCursor,
+      photoSnapshot: state.photoSnapshot,
       photoTotal: state.photoTotal,
       photoMediaType: state.photoMediaType,
       photoMediaCounts: state.photoMediaCounts,
@@ -129,6 +137,7 @@ export function PhotoGalleryView() {
       authStatus: state.authStatus,
       sidebarCollapsed: state.sidebarCollapsed,
       setPhotoAlbums: state.setPhotoAlbums,
+      setPhotoAlbumsLoading: state.setPhotoAlbumsLoading,
       setPhotoItems: state.setPhotoItems,
       clearPhotoItems: state.clearPhotoItems,
       setPhotoMediaType: state.setPhotoMediaType,
@@ -142,6 +151,9 @@ export function PhotoGalleryView() {
   );
 
   const currentAlbum = photoAlbums.find((album) => album.id === currentPhotoAlbumId) ?? null;
+  const currentAlbumIsIndexing = Boolean(
+    currentAlbum && ['needs_index', 'indexing', 'scanning'].includes(currentAlbum.scan_status),
+  );
   const selectedPhotoIdSet = useMemo(() => new Set(selectedPhotoIds), [selectedPhotoIds]);
   const selectedItems = useMemo(
     () => photoItems.filter((photo) => selectedPhotoIdSet.has(photo.id)),
@@ -227,9 +239,26 @@ export function PhotoGalleryView() {
   }, [isUploadingPhotos, notice]);
 
   const refreshAlbums = useCallback(async () => {
-    const response = await fetchPhotoAlbums();
-    setPhotoAlbums(response.albums);
-  }, [setPhotoAlbums]);
+    setPhotoAlbumsLoading(true);
+    try {
+      const response = await fetchPhotoAlbums();
+      setPhotoAlbums(response.albums);
+    } catch (refreshError) {
+      setPhotoAlbumsLoading(false);
+      throw refreshError;
+    }
+  }, [setPhotoAlbums, setPhotoAlbumsLoading]);
+
+  useEffect(() => {
+    if (photoAlbumsLoaded || photoAlbumsLoading) {
+      return;
+    }
+
+    void refreshAlbums().catch((loadError) => {
+      const message = loadError instanceof Error ? loadError.message : t('photoAlbumsLoadFailed');
+      setError(message);
+    });
+  }, [photoAlbumsLoaded, photoAlbumsLoading, refreshAlbums, t]);
 
   const loadPhotos = useCallback(async (
     cursor: string | null,
@@ -249,8 +278,22 @@ export function PhotoGalleryView() {
       }
       setError(null);
 
-      const response = await fetchPhotoAlbumPhotos(albumId, cursor, 60, sort, photoMediaType);
-      setPhotoItems(response.items, response.next_cursor, response.total, append, response.media_counts);
+      const response = await fetchPhotoAlbumPhotos(
+        albumId,
+        cursor,
+        60,
+        sort,
+        photoMediaType,
+        append ? photoSnapshot : null,
+      );
+      setPhotoItems(
+        response.items,
+        response.next_cursor,
+        response.total,
+        append,
+        response.media_counts,
+        response.snapshot ?? null,
+      );
       if (response.error) {
         setError(response.error);
       }
@@ -264,7 +307,7 @@ export function PhotoGalleryView() {
       setIsLoading(false);
       setIsLoadingMore(false);
     }
-  }, [clearPhotoItems, currentPhotoAlbumId, photoMediaType, setPhotoItems, sort, t]);
+  }, [clearPhotoItems, currentPhotoAlbumId, photoMediaType, photoSnapshot, setPhotoItems, sort, t]);
 
   useEffect(() => {
     scrollStateRef.current = {
@@ -280,6 +323,19 @@ export function PhotoGalleryView() {
   useEffect(() => {
     void loadPhotos(null, false);
   }, [loadPhotos]);
+
+  useEffect(() => {
+    if (!currentAlbum || !['needs_index', 'indexing', 'scanning'].includes(currentAlbum.scan_status)) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      void refreshAlbums().catch(() => {
+        // Keep the current cached UI; manual refresh can surface the error.
+      });
+    }, 1600);
+    return () => window.clearInterval(interval);
+  }, [currentAlbum, refreshAlbums]);
 
   const handleScroll = useCallback(() => {
     if (scrollFrameRef.current !== null) {
@@ -374,9 +430,12 @@ export function PhotoGalleryView() {
   }, [isLocalAccess, submitAlbumPath, t]);
 
   const handleRefresh = useCallback(async () => {
+    if (currentAlbum) {
+      await rescanPhotoAlbum(currentAlbum.id);
+    }
     await refreshAlbums();
     await loadPhotos(null, false);
-  }, [loadPhotos, refreshAlbums]);
+  }, [currentAlbum, loadPhotos, refreshAlbums]);
 
   const handleUploadPhotos = useCallback(async (files: FileList | File[]) => {
     if (!currentAlbum) {
@@ -608,6 +667,13 @@ export function PhotoGalleryView() {
         />
 
         {error ? <div className={styles.error}>{error}</div> : null}
+        {!error && currentAlbumIsIndexing ? (
+          <div className={styles.error}>
+            {currentAlbum?.scan_status === 'needs_index'
+              ? t('photoAlbumNeedsIndex')
+              : t('photoAlbumIndexing')}
+          </div>
+        ) : null}
 
         <PhotoMasonryGrid
           items={photoItems}

@@ -141,8 +141,9 @@ The system SHALL maintain media indexes that allow album listing, paging, filter
 
 #### Scenario: Cached index uses old global format
 - **WHEN** an existing workspace has the legacy global photo gallery index format
-- **THEN** the system SHALL build per-album indexes and a catalog summary so existing media can still be listed, previewed, downloaded, and converted
-- **AND** the system SHALL reuse already-cached image dimensions and video metadata from the legacy index without re-reading media files when the source file is unchanged
+- **THEN** the system SHALL derive a catalog summary (counts and cover) from the legacy index without reading media files, so the album list stays usable
+- **AND** the system SHALL build each album's media index on demand when the album is first browsed, so existing media can still be listed, previewed, downloaded, and converted
+- **AND** the system MAY reuse already-cached image dimensions and video metadata from the legacy index to avoid recomputation, but is not required to preserve them across all albums
 - **AND** the system SHALL NOT delete original photos or videos
 - **AND** thumbnail or video poster cache entries keyed by the previous media ID format MAY be invalidated and regenerated on demand
 

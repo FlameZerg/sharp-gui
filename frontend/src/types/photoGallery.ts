@@ -1,6 +1,6 @@
 export type AppView = 'models' | 'photos';
 
-export type PhotoAlbumScanStatus = 'idle' | 'scanning' | 'error';
+export type PhotoAlbumScanStatus = 'idle' | 'scanning' | 'indexing' | 'needs_index' | 'stale' | 'error';
 export type PhotoMediaType = 'all' | 'image' | 'video';
 export type PhotoItemMediaType = 'image' | 'video';
 
@@ -22,6 +22,8 @@ export interface PhotoAlbum {
   enabled: boolean;
   scan_status: PhotoAlbumScanStatus;
   updated_at: string | null;
+  last_scanned_at?: string | null;
+  index_version?: number;
   error?: string | null;
 }
 
@@ -53,6 +55,37 @@ export interface PhotoAlbumsResponse {
   is_local?: boolean;
 }
 
+export interface PhotoGalleryCacheBucket {
+  files: number;
+  bytes: number;
+}
+
+export interface PhotoGalleryCacheStats {
+  success: boolean;
+  index_version: number;
+  indexes: PhotoGalleryCacheBucket;
+  thumbnails: PhotoGalleryCacheBucket;
+  video_posters: PhotoGalleryCacheBucket;
+  downloads: PhotoGalleryCacheBucket;
+  total: PhotoGalleryCacheBucket;
+}
+
+export type PhotoGalleryCacheClearScope =
+  | 'generated'
+  | 'indexes'
+  | 'thumbnails'
+  | 'posters'
+  | 'downloads'
+  | 'all';
+
+export interface PhotoGalleryCacheClearResponse {
+  success: boolean;
+  scope: PhotoGalleryCacheClearScope;
+  removed: PhotoGalleryCacheBucket;
+  stats: PhotoGalleryCacheStats;
+  error?: string;
+}
+
 export interface AddPhotoAlbumRequest {
   path: string;
   name?: string;
@@ -72,6 +105,8 @@ export interface PhotoListResponse {
   total: number;
   media_counts?: PhotoMediaCounts;
   scan_status: PhotoAlbumScanStatus;
+  snapshot?: string | null;
+  index_version?: number;
   error?: string | null;
 }
 

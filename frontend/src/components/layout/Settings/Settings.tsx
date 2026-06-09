@@ -4,7 +4,9 @@ import { useAppStore } from '@/store/useAppStore';
 import {
     ApiError,
     fetchAuthStatus,
+    fetchPhotoGalleryCacheStats,
     fetchSettings,
+    clearPhotoGalleryCache,
     logoutAccessSession,
     restartServer,
     revokeAccessSessions,
@@ -14,7 +16,8 @@ import {
     convertAllToSpz,
     updateAuthSettings,
 } from '@/api';
-import type { AuthStatusResponse, ModelFormat } from '@/types';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
+import type { AuthStatusResponse, ModelFormat, PhotoGalleryCacheStats } from '@/types';
 import {
     REVEAL_EFFECT_SETTINGS_OPTIONS,
     type RevealEffectPreferenceId,
@@ -84,6 +87,11 @@ export const Settings: React.FC = () => {
     const [isRevokingSessions, setIsRevokingSessions] = useState(false);
     const [isLoggingOut, setIsLoggingOut] = useState(false);
     const [accessMessage, setAccessMessage] = useState<string | null>(null);
+    const [photoCacheStats, setPhotoCacheStats] = useState<PhotoGalleryCacheStats | null>(null);
+    const [isPhotoCacheLoading, setIsPhotoCacheLoading] = useState(false);
+    const [isPhotoCacheClearing, setIsPhotoCacheClearing] = useState(false);
+    const [photoCacheMessage, setPhotoCacheMessage] = useState<string | null>(null);
+    const [photoCacheConfirmOpen, setPhotoCacheConfirmOpen] = useState(false);
 
     // Track if workspace_folder changed (needs restart)
     const [originalWorkspace, setOriginalWorkspace] = useState('');
@@ -141,6 +149,21 @@ export const Settings: React.FC = () => {
         }
     }, [applyAccessStatus]);
 
+    const loadPhotoCacheStats = useCallback(async () => {
+        if (!isLocalAccess) return;
+        setIsPhotoCacheLoading(true);
+        try {
+            const stats = await fetchPhotoGalleryCacheStats();
+            setPhotoCacheStats(stats);
+            setPhotoCacheMessage(null);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : t('photoCacheLoadFailed');
+            setPhotoCacheMessage(message);
+        } finally {
+            setIsPhotoCacheLoading(false);
+        }
+    }, [isLocalAccess, t]);
+
     // Load settings when modal opens
     useEffect(() => {
         if (settingsModalOpen) {
@@ -148,8 +171,9 @@ export const Settings: React.FC = () => {
             setDefaultRevealEffect(viewerDefaultRevealEffect);
             setAccessMessage(null);
             loadSettings();
+            void loadPhotoCacheStats();
         }
-    }, [settingsModalOpen, effectiveModelFormat, viewerDefaultRevealEffect, loadSettings]);
+    }, [settingsModalOpen, effectiveModelFormat, viewerDefaultRevealEffect, loadSettings, loadPhotoCacheStats]);
 
     const handleClose = () => {
         setSettingsModalOpen(false);
@@ -275,6 +299,30 @@ export const Settings: React.FC = () => {
             alert('Batch conversion failed');
         } finally {
             setIsConverting(false);
+        }
+    };
+
+    const handleClearPhotoCache = async () => {
+        if (!isLocalAccess || isPhotoCacheClearing) return;
+        setIsPhotoCacheClearing(true);
+        setPhotoCacheMessage(null);
+        try {
+            const result = await clearPhotoGalleryCache('generated');
+            setPhotoCacheStats(result.stats);
+            setPhotoCacheMessage(t('photoCacheClearComplete', {
+                files: result.removed.files,
+                size: formatCacheSize(result.removed.bytes),
+            }));
+            setPhotoCacheConfirmOpen(false);
+        } catch (error) {
+            const message = error instanceof ApiError && error.status === 403
+                ? t('ownerOnlyAction')
+                : error instanceof Error
+                    ? error.message
+                    : t('photoCacheClearFailed');
+            setPhotoCacheMessage(message);
+        } finally {
+            setIsPhotoCacheClearing(false);
         }
     };
 
@@ -575,6 +623,68 @@ export const Settings: React.FC = () => {
                         <p className={styles.hint}>
                             📁 inputs/ ({t('images') || '图片'}) &nbsp;&nbsp; 📁 outputs/ ({t('models') || '模型'})
                         </p>
+                    </div>
+                )}
+
+                {isLocalAccess && (
+                    <div className={styles.group}>
+                        <label className={styles.label}>{t('photoCacheTitle')}</label>
+                        <div className={styles.cacheCard}>
+                            <div className={styles.cacheHeader}>
+                                <div>
+                                    <span className={styles.cacheTitle}>{t('photoCacheGenerated')}</span>
+                                    <p>{t('photoCacheDescription')}</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    className={styles.browseBtn}
+                                    onClick={loadPhotoCacheStats}
+                                    disabled={isPhotoCacheLoading || isPhotoCacheClearing}
+                                >
+                                    {isPhotoCacheLoading ? t('loading') : t('photoCacheRefresh')}
+                                </button>
+                            </div>
+
+                            <div className={styles.cacheStats}>
+                                <span>
+                                    <strong>{formatCacheSize(photoCacheStats?.indexes.bytes ?? 0)}</strong>
+                                    {t('photoCacheIndexes')}
+                                </span>
+                                <span>
+                                    <strong>{formatCacheSize(photoCacheStats?.thumbnails.bytes ?? 0)}</strong>
+                                    {t('photoCacheThumbnails')}
+                                </span>
+                                <span>
+                                    <strong>{formatCacheSize(photoCacheStats?.video_posters.bytes ?? 0)}</strong>
+                                    {t('photoCachePosters')}
+                                </span>
+                                <span>
+                                    <strong>{formatCacheSize(photoCacheStats?.downloads.bytes ?? 0)}</strong>
+                                    {t('photoCacheDownloads')}
+                                </span>
+                            </div>
+
+                            <div className={styles.cacheFooter}>
+                                <span>
+                                    {photoCacheStats
+                                        ? t('photoCacheTotal', {
+                                            files: photoCacheStats.total.files,
+                                            size: formatCacheSize(photoCacheStats.total.bytes),
+                                        })
+                                        : t('photoCacheNotLoaded')}
+                                </span>
+                                <button
+                                    type="button"
+                                    className={styles.dangerBtn}
+                                    onClick={() => setPhotoCacheConfirmOpen(true)}
+                                    disabled={isPhotoCacheLoading || isPhotoCacheClearing}
+                                >
+                                    {isPhotoCacheClearing ? t('saving') : t('photoCacheClear')}
+                                </button>
+                            </div>
+
+                            {photoCacheMessage ? <p className={styles.message}>{photoCacheMessage}</p> : null}
+                        </div>
                     </div>
                 )}
 
@@ -937,7 +1047,32 @@ export const Settings: React.FC = () => {
                         {isSaving ? '...' : t('save')}
                     </button>
                 </div>
+
+                <ConfirmDialog
+                    isOpen={photoCacheConfirmOpen}
+                    title={t('photoCacheClear')}
+                    message={t('photoCacheClearConfirm')}
+                    confirmLabel={t('photoCacheClear')}
+                    isBusy={isPhotoCacheClearing}
+                    danger
+                    onConfirm={handleClearPhotoCache}
+                    onClose={() => setPhotoCacheConfirmOpen(false)}
+                />
             </div>
         </div>
     );
 };
+
+function formatCacheSize(bytes: number): string {
+    if (!Number.isFinite(bytes) || bytes <= 0) {
+        return '0 B';
+    }
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let value = bytes;
+    let unitIndex = 0;
+    while (value >= 1024 && unitIndex < units.length - 1) {
+        value /= 1024;
+        unitIndex += 1;
+    }
+    return `${value >= 10 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
+}

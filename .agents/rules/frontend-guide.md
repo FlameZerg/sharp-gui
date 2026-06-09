@@ -283,11 +283,14 @@ export type { CameraConfig } from './viewer';
 
 ### 本地媒体图库性能
 
+- 应用 boot 不应 await 本地媒体图库相册内容；默认只完成认证、设置、模型等必要数据，图库摘要在进入 `photos` 视图后按需加载。
+- 相册入口页只请求相册摘要、封面和扫描状态，不应预拉每个相册的媒体列表。
 - 相册媒体列表必须分页加载，不要一次性把大目录全部塞进 DOM。
 - 瀑布流图片使用 `thumb_url`、视频使用 `poster_url` 或 fallback 卡片，配合 `loading="lazy"`、`decoding="async"` 和稳定 `aspect-ratio`。
 - 列表与离屏卡片不能加载完整视频文件；只有进入视频预览时才使用 `playback_url` 请求视频流。
 - 图片预览层使用 `full_url` / `preview_url` 原图地址，不能复用缩略图放大；视频预览层使用 `playback_url`，下载使用 `download_url` 或 API helper。
 - 网格密度调节和触控捏合只改变展示列数，不重新扫描相册。
+- 切换类型筛选、排序、网格密度或多选状态不得触发重新扫描；只应重置/请求当前相册分页数据。
 - 多选状态只存储 media id 集合，避免复制大对象；视频可下载但不可加入照片转 3D。
 
 ### 视频预览交互

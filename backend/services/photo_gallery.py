@@ -27,9 +27,16 @@ PHOTO_MAX_CONVERSION_BATCH = 100
 PHOTO_MAX_DOWNLOAD_BATCH = 200
 PHOTO_MAX_UPLOAD_BATCH = 100
 PHOTO_DOWNLOAD_ZIP_TTL_SECONDS = 24 * 60 * 60
+PHOTO_INDEX_VERSION = 2
 MEDIA_TYPE_ALL = "all"
 MEDIA_TYPE_IMAGE = "image"
 MEDIA_TYPE_VIDEO = "video"
+PHOTO_SCAN_STATUS_IDLE = "idle"
+PHOTO_SCAN_STATUS_SCANNING = "scanning"
+PHOTO_SCAN_STATUS_INDEXING = "indexing"
+PHOTO_SCAN_STATUS_NEEDS_INDEX = "needs_index"
+PHOTO_SCAN_STATUS_STALE = "stale"
+PHOTO_SCAN_STATUS_ERROR = "error"
 
 PHOTO_UPLOAD_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
@@ -41,7 +48,22 @@ VIDEO_MIME_TYPES = {
     ".webm": "video/webm",
 }
 
-photo_index_lock = threading.Lock()
+catalog_lock = threading.Lock()
+album_locks_lock = threading.Lock()
+album_locks = {}
+album_index_cache_lock = threading.Lock()
+album_index_cache = {}
+album_snapshot_cache = {}
+thumbnail_generation_semaphore = threading.BoundedSemaphore(2)
+bootstrap_lock = threading.Lock()
+bootstrap_album_ids = set()
+
+
+def get_album_lock(album_id):
+    with album_locks_lock:
+        if album_id not in album_locks:
+            album_locks[album_id] = threading.Lock()
+        return album_locks[album_id]
 
 
 def build_video_playback_url(video_id, filename):
@@ -107,34 +129,371 @@ def find_photo_album(album_id):
     return None
 
 
-def load_photo_index(paths):
-    """读取照片图库轻量索引。"""
-    if not os.path.exists(paths.photo_index_file):
-        return {"photos": {}}
+def safe_load_json(path, fallback):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            loaded = json.load(f)
+        return loaded if isinstance(loaded, dict) else fallback
+    except Exception as exc:
+        if os.path.exists(path):
+            print(f"⚠️ Failed to load JSON cache {path}: {exc}")
+    return fallback
+
+
+def dump_json_stable(data):
+    return json.dumps(
+        data,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def atomic_write_json_if_changed(path, data):
+    """原子写 JSON；内容未变则不触盘，返回是否发生写入。"""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    next_payload = dump_json_stable(data)
 
     try:
-        with open(paths.photo_index_file, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        if isinstance(data, dict) and isinstance(data.get("photos"), dict):
-            return migrate_index_data(data)
-    except Exception as exc:
-        print(f"⚠️ Failed to load photo index: {exc}")
+        with open(path, "r", encoding="utf-8") as f:
+            if f.read() == next_payload:
+                return False
+    except OSError:
+        pass
+
+    temp_path = f"{path}.tmp-{uuid.uuid4().hex[:8]}"
+    with open(temp_path, "w", encoding="utf-8") as f:
+        f.write(next_payload)
+    os.replace(temp_path, path)
+    return True
+
+
+def get_album_index_path(paths, album_id):
+    safe_album_id = "".join(ch for ch in str(album_id) if ch.isalnum() or ch in ("-", "_"))[:64]
+    return os.path.join(paths.photo_album_index_folder, f"{safe_album_id}.json")
+
+
+def normalize_album_index(data, album_id):
+    if not isinstance(data, dict):
+        data = {}
+
+    media = data.get("media") if isinstance(data.get("media"), dict) else {}
+    normalized_media = {}
+    for media_id, meta in media.items():
+        if not isinstance(meta, dict):
+            continue
+        normalized = dict(meta)
+        normalized["id"] = normalized.get("id") or str(media_id)
+        normalized["album_id"] = normalized.get("album_id") or album_id
+        if "media_type" not in normalized:
+            normalized["media_type"] = MEDIA_TYPE_IMAGE
+        if normalized.get("media_type") == "photo":
+            normalized["media_type"] = MEDIA_TYPE_IMAGE
+        normalized_media[normalized["id"]] = normalized
+
+    return {
+        "index_version": int(data.get("index_version") or PHOTO_INDEX_VERSION),
+        "album_id": data.get("album_id") or album_id,
+        "media": normalized_media,
+        "scan_status": data.get("scan_status") or PHOTO_SCAN_STATUS_IDLE,
+        "last_scanned_at": data.get("last_scanned_at"),
+        "updated_at": data.get("updated_at"),
+        "error": data.get("error"),
+    }
+
+
+def load_album_index_from_disk(paths, album_id):
+    index_path = get_album_index_path(paths, album_id)
+    if not os.path.exists(index_path):
+        return None
+    return normalize_album_index(safe_load_json(index_path, {}), album_id)
+
+
+def get_album_index_file_mtime(paths, album_id):
+    try:
+        return os.path.getmtime(get_album_index_path(paths, album_id))
+    except OSError:
+        return None
+
+
+def make_snapshot_token(mtime):
+    try:
+        return str(int(float(mtime) * 1_000_000_000))
+    except (TypeError, ValueError):
+        return None
+
+
+def remember_album_snapshot(album_id, token, data):
+    if not token:
+        return
+    snapshots = album_snapshot_cache.setdefault(album_id, {})
+    snapshots[token] = data
+    if len(snapshots) <= 4:
+        return
+    for stale_token in list(snapshots.keys())[:-4]:
+        snapshots.pop(stale_token, None)
+
+
+def load_album_index(paths, album_id):
+    """读取单相册索引，带进程内 mtime 缓存。"""
+    index_path = get_album_index_path(paths, album_id)
+    try:
+        mtime = os.path.getmtime(index_path)
+    except OSError:
+        with album_index_cache_lock:
+            album_index_cache.pop(album_id, None)
+        return None
+
+    with album_index_cache_lock:
+        cached = album_index_cache.get(album_id)
+        if cached and cached.get("mtime") == mtime:
+            return cached.get("data")
+
+    data = load_album_index_from_disk(paths, album_id)
+    if data is None:
+        return None
+    token = make_snapshot_token(mtime)
+    data["_snapshot_token"] = token
+
+    with album_index_cache_lock:
+        album_index_cache[album_id] = {"mtime": mtime, "data": data}
+        remember_album_snapshot(album_id, token, data)
+    return data
+
+
+def save_album_index(paths, album_id, index_data):
+    normalized = normalize_album_index(index_data, album_id)
+    index_path = get_album_index_path(paths, album_id)
+    changed = atomic_write_json_if_changed(index_path, normalized)
+
+    with album_index_cache_lock:
+        try:
+            mtime = os.path.getmtime(index_path)
+        except OSError:
+            mtime = None
+        token = make_snapshot_token(mtime)
+        normalized["_snapshot_token"] = token
+        album_index_cache[album_id] = {"mtime": mtime, "data": normalized}
+        remember_album_snapshot(album_id, token, normalized)
+
+    return changed
+
+
+def get_album_index_snapshot(paths, album_id, snapshot_token=None):
+    index_data = None
+    if snapshot_token:
+        with album_index_cache_lock:
+            index_data = album_snapshot_cache.get(album_id, {}).get(snapshot_token)
+    if index_data is None:
+        index_data = load_album_index(paths, album_id)
+    if not index_data:
+        return None
+    media = [
+        dict(meta)
+        for meta in index_data.get("media", {}).values()
+        if isinstance(meta, dict)
+    ]
+    return {
+        "index_version": index_data.get("index_version"),
+        "scan_status": index_data.get("scan_status") or PHOTO_SCAN_STATUS_IDLE,
+        "last_scanned_at": index_data.get("last_scanned_at"),
+        "updated_at": index_data.get("updated_at"),
+        "error": index_data.get("error"),
+        "snapshot_token": index_data.get("_snapshot_token"),
+        "media": media,
+    }
+
+
+def normalize_catalog(data):
+    if not isinstance(data, dict):
+        data = {}
+    albums = data.get("albums") if isinstance(data.get("albums"), dict) else {}
+    return {
+        "index_version": int(data.get("index_version") or PHOTO_INDEX_VERSION),
+        "albums": {
+            str(album_id): summary
+            for album_id, summary in albums.items()
+            if isinstance(summary, dict)
+        },
+        "updated_at": data.get("updated_at"),
+    }
+
+
+def load_catalog(paths):
+    return normalize_catalog(safe_load_json(paths.photo_catalog_file, {}))
+
+
+def save_catalog(paths, catalog_data):
+    normalized = normalize_catalog(catalog_data)
+    normalized["updated_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    with catalog_lock:
+        return atomic_write_json_if_changed(paths.photo_catalog_file, normalized)
+
+
+def iso_from_timestamp(timestamp):
+    if not timestamp:
+        return None
+    try:
+        return datetime.datetime.fromtimestamp(
+            float(timestamp),
+            tz=datetime.timezone.utc,
+        ).isoformat()
+    except (TypeError, ValueError, OSError):
+        return None
+
+
+def build_catalog_summary_from_media(album, media_items, scan_status=PHOTO_SCAN_STATUS_IDLE, error=None):
+    image_count = sum(1 for item in media_items if item.get("media_type") == MEDIA_TYPE_IMAGE)
+    video_count = sum(1 for item in media_items if item.get("media_type") == MEDIA_TYPE_VIDEO)
+    sorted_items = sorted(media_items, key=lambda item: item.get("mtime", 0), reverse=True)
+    cover = sorted_items[0] if sorted_items else None
+    updated_mtime = max((item.get("mtime", 0) for item in media_items), default=None)
+    cover_thumb_url = None
+    cover_id = None
+    cover_media_type = None
+    if cover:
+        cover_id = cover.get("id")
+        cover_media_type = cover.get("media_type") or MEDIA_TYPE_IMAGE
+        if cover_media_type == MEDIA_TYPE_VIDEO:
+            cover_thumb_url = f"/api/video-poster/{cover_id}"
+        else:
+            cover_thumb_url = f"/api/photo-thumbnail/{cover_id}"
+
+    return {
+        "id": album["id"],
+        "name": album.get("name") or os.path.basename(os.path.normpath(album.get("path", ""))) or album["id"],
+        "cover_id": cover_id,
+        "cover_media_type": cover_media_type,
+        "cover_thumb_url": cover_thumb_url,
+        "photo_count": image_count if scan_status != PHOTO_SCAN_STATUS_ERROR else None,
+        "media_count": len(media_items) if scan_status != PHOTO_SCAN_STATUS_ERROR else None,
+        "video_count": video_count if scan_status != PHOTO_SCAN_STATUS_ERROR else None,
+        "recursive": album.get("recursive", True),
+        "enabled": album.get("enabled", True),
+        "scan_status": scan_status,
+        "updated_at": iso_from_timestamp(updated_mtime),
+        "last_scanned_at": datetime.datetime.now(datetime.timezone.utc).isoformat()
+        if scan_status == PHOTO_SCAN_STATUS_IDLE
+        else None,
+        "error": error,
+        "index_version": PHOTO_INDEX_VERSION,
+    }
+
+
+def build_catalog_summary_for_unindexed_album(album, scan_status=None, error=None):
+    status = scan_status or (
+        PHOTO_SCAN_STATUS_ERROR
+        if error
+        else PHOTO_SCAN_STATUS_NEEDS_INDEX
+    )
+    return {
+        "id": album["id"],
+        "name": album.get("name") or os.path.basename(os.path.normpath(album.get("path", ""))) or album["id"],
+        "cover_id": None,
+        "cover_media_type": None,
+        "cover_thumb_url": None,
+        "photo_count": None,
+        "media_count": None,
+        "video_count": None,
+        "recursive": album.get("recursive", True),
+        "enabled": album.get("enabled", True),
+        "scan_status": status,
+        "updated_at": None,
+        "last_scanned_at": None,
+        "error": error,
+        "index_version": PHOTO_INDEX_VERSION,
+    }
+
+
+def update_catalog_album(paths, album, media_items=None, scan_status=None, error=None, summary=None):
+    catalog = load_catalog(paths)
+    if summary is None:
+        if media_items is None:
+            summary = build_catalog_summary_for_unindexed_album(album, scan_status=scan_status, error=error)
+        else:
+            summary = build_catalog_summary_from_media(
+                album,
+                media_items,
+                scan_status=scan_status or PHOTO_SCAN_STATUS_IDLE,
+                error=error,
+            )
+    summary["id"] = album["id"]
+    summary["name"] = album.get("name") or os.path.basename(os.path.normpath(album.get("path", ""))) or album["id"]
+    summary["recursive"] = album.get("recursive", True)
+    summary["enabled"] = album.get("enabled", True)
+    catalog.setdefault("albums", {})[album["id"]] = summary
+    save_catalog(paths, catalog)
+    return summary
+
+
+def load_photo_index(paths):
+    """兼容读取旧全局索引。新代码仅把它作为迁移源或测试辅助。"""
+    if os.path.exists(paths.photo_index_file):
+        data = safe_load_json(paths.photo_index_file, {"photos": {}})
+    else:
+        photos = {}
+        if os.path.isdir(paths.photo_album_index_folder):
+            for filename in os.listdir(paths.photo_album_index_folder):
+                if not filename.endswith(".json"):
+                    continue
+                album_id = filename[:-5]
+                index_data = load_album_index(paths, album_id)
+                if index_data:
+                    photos.update(index_data.get("media", {}))
+        data = {"photos": photos}
+    if isinstance(data, dict) and isinstance(data.get("photos"), dict):
+        return migrate_index_data(data)
 
     return {"photos": {}}
 
 
 def save_photo_index(paths, index_data):
-    """保存照片图库轻量索引。"""
+    """兼容保存旧全局索引，同时镜像到新相册索引方便旧测试和迁移。"""
     os.makedirs(paths.photo_gallery_cache_folder, exist_ok=True)
-    with open(paths.photo_index_file, "w", encoding="utf-8") as f:
-        json.dump(index_data, f, ensure_ascii=False, indent=2)
+    index_data = migrate_index_data(index_data if isinstance(index_data, dict) else {"photos": {}})
+    atomic_write_json_if_changed(paths.photo_index_file, index_data)
+
+    grouped = {}
+    for meta in index_data.get("photos", {}).values():
+        if not isinstance(meta, dict):
+            continue
+        album_id = meta.get("album_id")
+        if not album_id:
+            continue
+        grouped.setdefault(album_id, {})[meta["id"]] = meta
+
+    for album_id, media in grouped.items():
+        existing = load_album_index(paths, album_id) or {
+            "index_version": PHOTO_INDEX_VERSION,
+            "album_id": album_id,
+            "media": {},
+            "scan_status": PHOTO_SCAN_STATUS_IDLE,
+        }
+        existing["media"] = media
+        existing["scan_status"] = existing.get("scan_status") or PHOTO_SCAN_STATUS_IDLE
+        save_album_index(paths, album_id, existing)
+
+        album = find_photo_album(album_id)
+        if album:
+            update_catalog_album(paths, album, list(media.values()))
 
 
 def make_photo_id(album_id, relative_path):
     """根据相册与相对路径生成不暴露路径的照片 ID。"""
     normalized_relative = to_url_path(relative_path)
-    payload = f"{album_id}\0{normalized_relative}"
-    return hashlib.sha256(payload.encode("utf-8", "surrogatepass")).hexdigest()[:32]
+    digest = hashlib.sha256(normalized_relative.encode("utf-8", "surrogatepass")).hexdigest()[:24]
+    return f"{album_id}_{digest}"
+
+
+def parse_media_id(media_id):
+    if not isinstance(media_id, str) or "_" not in media_id:
+        return None
+    album_id, digest = media_id.rsplit("_", 1)
+    if not album_id or not digest:
+        return None
+    if not all(ch.isalnum() or ch in ("-", "_") for ch in album_id):
+        return None
+    return album_id
 
 
 def get_file_extension(filename):
@@ -292,15 +651,27 @@ def apply_cached_video_metadata(meta, existing_meta, stat):
 
 
 def update_index_meta(paths, meta):
-    with photo_index_lock:
-        index_data = load_photo_index(paths)
-        index_data.setdefault("photos", {})[meta["id"]] = meta
-        save_photo_index(paths, index_data)
+    album_id = meta.get("album_id") or parse_media_id(meta.get("id"))
+    if not album_id:
+        return
+    with get_album_lock(album_id):
+        index_data = load_album_index(paths, album_id) or {
+            "index_version": PHOTO_INDEX_VERSION,
+            "album_id": album_id,
+            "media": {},
+            "scan_status": PHOTO_SCAN_STATUS_IDLE,
+        }
+        index_data.setdefault("media", {})[meta["id"]] = meta
+        save_album_index(paths, album_id, index_data)
+
+        album = find_photo_album(album_id)
+        if album:
+            update_catalog_album(paths, album, list(index_data.get("media", {}).values()))
 
 
-def photo_meta_from_path(album, full_path, existing_meta=None):
+def photo_meta_from_path(album, full_path, existing_meta=None, root_path=None):
     """根据文件路径构建媒体索引元数据。"""
-    root_path = os.path.realpath(album["path"])
+    root_path = root_path or os.path.realpath(album["path"])
     real_path = os.path.realpath(full_path)
     if not is_real_path_inside(real_path, root_path):
         return None
@@ -370,51 +741,153 @@ def iter_album_photo_paths(album):
                 yield full_path
 
 
+def build_legacy_meta_lookup(paths):
+    if not os.path.exists(paths.photo_index_file):
+        return {}
+
+    legacy_index = load_photo_index(paths)
+    lookup = {}
+    for meta in legacy_index.get("photos", {}).values():
+        if not isinstance(meta, dict):
+            continue
+        album_id = meta.get("album_id")
+        relative_path = meta.get("relative_path")
+        if not album_id or not relative_path:
+            continue
+        lookup[(album_id, to_url_path(relative_path))] = meta
+    return lookup
+
+
+def archive_legacy_photo_index(paths):
+    if not os.path.exists(paths.photo_index_file):
+        return
+    backup_path = f"{paths.photo_index_file}.bak"
+    try:
+        if os.path.exists(backup_path):
+            os.remove(backup_path)
+        os.replace(paths.photo_index_file, backup_path)
+    except OSError as exc:
+        print(f"⚠️ Failed to archive legacy photo index: {exc}")
+
+
+def build_catalog_from_legacy_index(paths):
+    """一次性从旧全局索引折算 catalog 并归档旧索引；旧索引不存在时直接返回现有 catalog。
+
+    迁移是一次性动作：折算完成后立即归档 ``index.json``，因此正常列表请求不会再
+    走"重建式读取每相册索引"的回退路径（避免列表接口出现 O(N^2) 读放大）。
+    """
+    if not os.path.exists(paths.photo_index_file):
+        return load_catalog(paths)
+
+    catalog = load_catalog(paths)
+    albums_by_id = {album["id"]: album for album in normalize_photo_album_roots()}
+    grouped = {}
+    for meta in load_photo_index(paths).get("photos", {}).values():
+        if not isinstance(meta, dict):
+            continue
+        album_id = meta.get("album_id")
+        if album_id in albums_by_id:
+            grouped.setdefault(album_id, []).append(meta)
+
+    for album_id, media_items in grouped.items():
+        if album_id in catalog.get("albums", {}):
+            continue
+        catalog.setdefault("albums", {})[album_id] = build_catalog_summary_from_media(
+            albums_by_id[album_id],
+            media_items,
+            scan_status=PHOTO_SCAN_STATUS_STALE,
+        )
+
+    save_catalog(paths, catalog)
+    archive_legacy_photo_index(paths)
+    return catalog
+
+
 def scan_photo_album(paths, album):
     """扫描相册并刷新轻量索引。"""
     if not album.get("enabled", True):
-        return [], "error", "Album disabled"
+        update_catalog_album(paths, album, [], scan_status=PHOTO_SCAN_STATUS_ERROR, error="Album disabled")
+        return [], PHOTO_SCAN_STATUS_ERROR, "Album disabled"
 
     if not os.path.isdir(album["path"]):
-        return [], "error", "Album path is not available"
+        update_catalog_album(paths, album, [], scan_status=PHOTO_SCAN_STATUS_ERROR, error="Album path is not available")
+        return [], PHOTO_SCAN_STATUS_ERROR, "Album path is not available"
 
-    with photo_index_lock:
-        index_data = load_photo_index(paths)
-        photos = index_data.setdefault("photos", {})
-        previous_by_key = {
-            (meta.get("album_id"), meta.get("relative_path")): meta
-            for meta in photos.values()
-            if isinstance(meta, dict)
-        }
+    album_lock = get_album_lock(album["id"])
+    with album_lock:
+        existing_index = load_album_index(paths, album["id"])
+        previous_by_key = {}
+        if existing_index:
+            previous_by_key.update({
+                (meta.get("album_id"), meta.get("relative_path")): meta
+                for meta in existing_index.get("media", {}).values()
+                if isinstance(meta, dict)
+            })
+        if not existing_index:
+            previous_by_key.update(build_legacy_meta_lookup(paths))
 
-        album_photo_ids = set()
         album_photos = []
         try:
+            root_path = os.path.realpath(album["path"])
             for full_path in iter_album_photo_paths(album):
-                root_path = os.path.realpath(album["path"])
-                relative_path = to_url_path(os.path.relpath(os.path.realpath(full_path), root_path))
+                real_path = os.path.realpath(full_path)
+                relative_path = to_url_path(os.path.relpath(real_path, root_path))
                 existing = previous_by_key.get((album["id"], relative_path))
-                meta = photo_meta_from_path(album, full_path, existing_meta=existing)
+                meta = photo_meta_from_path(album, full_path, existing_meta=existing, root_path=root_path)
                 if not meta:
                     continue
-                photos[meta["id"]] = meta
-                album_photo_ids.add(meta["id"])
                 album_photos.append(meta)
         except Exception as exc:
-            save_photo_index(paths, index_data)
-            return [], "error", str(exc)
+            update_catalog_album(paths, album, [], scan_status=PHOTO_SCAN_STATUS_ERROR, error=str(exc))
+            return [], PHOTO_SCAN_STATUS_ERROR, str(exc)
 
-        stale_ids = [
-            photo_id for photo_id, meta in photos.items()
-            if meta.get("album_id") == album["id"] and photo_id not in album_photo_ids
-        ]
-        for photo_id in stale_ids:
-            photos.pop(photo_id, None)
-
-        save_photo_index(paths, index_data)
+        media_by_id = {meta["id"]: meta for meta in album_photos}
+        now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        updated_at = iso_from_timestamp(max((meta.get("mtime", 0) for meta in album_photos), default=0))
+        save_album_index(paths, album["id"], {
+            "index_version": PHOTO_INDEX_VERSION,
+            "album_id": album["id"],
+            "media": media_by_id,
+            "scan_status": PHOTO_SCAN_STATUS_IDLE,
+            "last_scanned_at": now_iso,
+            "updated_at": updated_at,
+            "error": None,
+        })
+        update_catalog_album(paths, album, album_photos)
+        if os.path.exists(paths.photo_index_file):
+            archive_legacy_photo_index(paths)
 
     album_photos.sort(key=lambda item: item.get("mtime", 0), reverse=True)
-    return album_photos, "idle", None
+    return album_photos, PHOTO_SCAN_STATUS_IDLE, None
+
+
+def schedule_album_bootstrap(paths, album):
+    """低优先级后台建立相册索引；普通读取不等待它。"""
+    album_id = album.get("id")
+    if not album_id:
+        return False
+    if load_album_index(paths, album_id):
+        return False
+
+    with bootstrap_lock:
+        if album_id in bootstrap_album_ids:
+            return False
+        bootstrap_album_ids.add(album_id)
+
+    def worker():
+        try:
+            scan_photo_album(paths, album)
+        finally:
+            with bootstrap_lock:
+                bootstrap_album_ids.discard(album_id)
+
+    thread = threading.Thread(
+        target=worker,
+        name=f"photo-gallery-bootstrap-{album_id}",
+        daemon=True,
+    )
+    thread.start()
+    return True
 
 
 def get_photo_dimensions(full_path):
@@ -526,9 +999,12 @@ def ensure_video_poster(paths, video_id):
 
 def resolve_media_path(paths, media_id, expected_type=None, allow_stale=False):
     """根据媒体 ID 解析真实路径，并验证仍在配置目录内。"""
-    with photo_index_lock:
-        index_data = load_photo_index(paths)
-        meta = index_data.get("photos", {}).get(media_id)
+    album_id = parse_media_id(media_id)
+    if not album_id:
+        return None
+
+    index_data = load_album_index(paths, album_id)
+    meta = index_data.get("media", {}).get(media_id) if index_data else None
 
     if not isinstance(meta, dict):
         return None
@@ -536,7 +1012,7 @@ def resolve_media_path(paths, media_id, expected_type=None, allow_stale=False):
     if expected_type and media_type != expected_type:
         return None
 
-    album = find_photo_album(meta.get("album_id"))
+    album = find_photo_album(album_id)
     if not album:
         return None
 
@@ -568,10 +1044,7 @@ def resolve_media_path(paths, media_id, expected_type=None, allow_stale=False):
             current_meta["video_codec"] = None
             current_meta["audio_codec"] = None
             current_meta["bitrate"] = None
-        with photo_index_lock:
-            index_data = load_photo_index(paths)
-            index_data.setdefault("photos", {})[media_id] = current_meta
-            save_photo_index(paths, index_data)
+        update_index_meta(paths, current_meta)
 
     return album, full_path, current_meta
 
@@ -591,20 +1064,7 @@ def build_photo_item(paths, meta):
     media_type = meta.get("media_type") or MEDIA_TYPE_IMAGE
     width = meta.get("width")
     height = meta.get("height")
-    if media_type == MEDIA_TYPE_IMAGE and (not width or not height):
-        resolved = resolve_photo_path(paths, meta["id"], allow_stale=True)
-        if resolved:
-            _, full_path, current_meta = resolved
-            width, height = get_photo_dimensions(full_path)
-            if width and height:
-                current_meta["width"] = width
-                current_meta["height"] = height
-                with photo_index_lock:
-                    index_data = load_photo_index(paths)
-                    index_data.setdefault("photos", {})[meta["id"]] = current_meta
-                    save_photo_index(paths, index_data)
-                meta = current_meta
-    elif media_type == MEDIA_TYPE_VIDEO:
+    if media_type == MEDIA_TYPE_VIDEO:
         meta = get_video_metadata_for_response(paths, meta)
         width = meta.get("width")
         height = meta.get("height")
@@ -678,60 +1138,77 @@ def ensure_photo_thumbnail(paths, photo_id):
 
     try:
         os.makedirs(paths.photo_thumbnail_folder, exist_ok=True)
-        with Image.open(full_path) as img:
-            img = ImageOps.exif_transpose(img)
-            meta["width"], meta["height"] = img.size
-            img.thumbnail((PHOTO_THUMBNAIL_WIDTH, PHOTO_THUMBNAIL_WIDTH * 3), Image.LANCZOS)
-            if img.mode in ("RGBA", "LA"):
-                background = Image.new("RGB", img.size, (255, 255, 255))
-                background.paste(img, mask=img.getchannel("A"))
-                img = background
-            elif img.mode != "RGB":
-                img = img.convert("RGB")
-            img.save(thumb_path, "JPEG", quality=82, optimize=True)
+        with thumbnail_generation_semaphore:
+            if os.path.exists(thumb_path):
+                return thumb_path
+            with Image.open(full_path) as img:
+                img = ImageOps.exif_transpose(img)
+                meta["width"], meta["height"] = img.size
+                img.thumbnail((PHOTO_THUMBNAIL_WIDTH, PHOTO_THUMBNAIL_WIDTH * 3), Image.LANCZOS)
+                if img.mode in ("RGBA", "LA"):
+                    background = Image.new("RGB", img.size, (255, 255, 255))
+                    background.paste(img, mask=img.getchannel("A"))
+                    img = background
+                elif img.mode != "RGB":
+                    img = img.convert("RGB")
+                temp_path = f"{thumb_path}.tmp-{uuid.uuid4().hex[:8]}.jpg"
+                img.save(temp_path, "JPEG", quality=82, optimize=True)
+                os.replace(temp_path, thumb_path)
 
-        with photo_index_lock:
-            index_data = load_photo_index(paths)
-            index_data.setdefault("photos", {})[photo_id] = meta
-            save_photo_index(paths, index_data)
+        update_index_meta(paths, meta)
         return thumb_path
     except Exception as exc:
         print(f"⚠️ Photo thumbnail generation failed for {photo_id}: {exc}")
         return None
 
 
-def build_photo_album_response(paths, album):
+def build_photo_album_response(paths, album, catalog=None):
     """构建相册响应数据。"""
-    media_items, scan_status, error = scan_photo_album(paths, album)
-    cover = media_items[0] if media_items else None
-    image_count = sum(1 for item in media_items if item.get("media_type") == MEDIA_TYPE_IMAGE)
-    video_count = sum(1 for item in media_items if item.get("media_type") == MEDIA_TYPE_VIDEO)
-    updated_at = None
-    if media_items:
-        updated_at = datetime.datetime.fromtimestamp(
-            max(item.get("mtime", 0) for item in media_items),
-            tz=datetime.timezone.utc,
-        ).isoformat()
-    cover_thumb_url = None
-    if cover:
-        if cover.get("media_type") == MEDIA_TYPE_VIDEO:
-            cover_thumb_url = f"/api/video-poster/{cover['id']}"
+    if catalog is None:
+        catalog = build_catalog_from_legacy_index(paths)
+    summary = catalog.get("albums", {}).get(album["id"])
+    if not summary:
+        index_data = load_album_index(paths, album["id"])
+        if index_data:
+            summary = update_catalog_album(paths, album, list(index_data.get("media", {}).values()))
         else:
-            cover_thumb_url = f"/api/photo-thumbnail/{cover['id']}"
+            error = None
+            status = PHOTO_SCAN_STATUS_NEEDS_INDEX
+            if not album.get("enabled", True):
+                error = "Album disabled"
+                status = PHOTO_SCAN_STATUS_ERROR
+            elif not os.path.isdir(album["path"]):
+                error = "Album path is not available"
+                status = PHOTO_SCAN_STATUS_ERROR
+            summary = update_catalog_album(paths, album, scan_status=status, error=error)
+            if status == PHOTO_SCAN_STATUS_NEEDS_INDEX:
+                schedule_album_bootstrap(paths, album)
 
     return {
         "id": album["id"],
         "name": album["name"],
-        "cover_thumb_url": cover_thumb_url,
-        "photo_count": image_count if scan_status != "error" else None,
-        "media_count": len(media_items) if scan_status != "error" else None,
-        "video_count": video_count if scan_status != "error" else None,
+        "cover_thumb_url": summary.get("cover_thumb_url"),
+        "photo_count": summary.get("photo_count"),
+        "media_count": summary.get("media_count"),
+        "video_count": summary.get("video_count"),
         "recursive": album.get("recursive", True),
         "enabled": album.get("enabled", True),
-        "scan_status": scan_status,
-        "updated_at": updated_at,
-        "error": error,
+        "scan_status": summary.get("scan_status") or PHOTO_SCAN_STATUS_NEEDS_INDEX,
+        "updated_at": summary.get("updated_at"),
+        "last_scanned_at": summary.get("last_scanned_at"),
+        "error": summary.get("error"),
+        "index_version": summary.get("index_version") or PHOTO_INDEX_VERSION,
     }
+
+
+def list_photo_album_responses(paths):
+    # 每次列表请求只折算一次 catalog（迁移在首次调用时一次性完成并归档旧索引），
+    # 各相册仅从 catalog 读取摘要，避免对每个相册重复重建式读取索引。
+    catalog = build_catalog_from_legacy_index(paths)
+    return [
+        build_photo_album_response(paths, album, catalog)
+        for album in normalize_photo_album_roots()
+    ]
 
 
 def add_photo_album(paths, data):
@@ -775,6 +1252,8 @@ def add_photo_album(paths, data):
     ] + [new_album]
     save_config(current_config)
 
+    update_catalog_album(paths, new_album, scan_status=PHOTO_SCAN_STATUS_NEEDS_INDEX)
+    schedule_album_bootstrap(paths, new_album)
     return {"success": True, "album": build_photo_album_response(paths, new_album)}, 200
 
 
@@ -788,18 +1267,32 @@ def delete_photo_album(paths, album_id):
     current_config["photo_gallery_roots"] = next_albums
     save_config(current_config)
 
-    with photo_index_lock:
-        index_data = load_photo_index(paths)
-        photos = index_data.setdefault("photos", {})
-        stale_items = [
-            (photo_id, meta.get("media_type") or MEDIA_TYPE_IMAGE)
-            for photo_id, meta in photos.items()
-            if isinstance(meta, dict) and meta.get("album_id") == album_id
-        ]
-        stale_ids = [photo_id for photo_id, _media_type in stale_items]
-        for photo_id in stale_ids:
-            photos.pop(photo_id, None)
-        save_photo_index(paths, index_data)
+    index_data = load_album_index(paths, album_id)
+    stale_items = [
+        (photo_id, meta.get("media_type") or MEDIA_TYPE_IMAGE)
+        for photo_id, meta in (index_data or {}).get("media", {}).items()
+        if isinstance(meta, dict)
+    ]
+
+    try:
+        os.remove(get_album_index_path(paths, album_id))
+    except OSError:
+        pass
+
+    if os.path.exists(paths.photo_index_file):
+        legacy_index = load_photo_index(paths)
+        legacy_photos = legacy_index.setdefault("photos", {})
+        for photo_id, meta in list(legacy_photos.items()):
+            if isinstance(meta, dict) and meta.get("album_id") == album_id:
+                legacy_photos.pop(photo_id, None)
+        atomic_write_json_if_changed(paths.photo_index_file, legacy_index)
+
+    with album_index_cache_lock:
+        album_index_cache.pop(album_id, None)
+
+    catalog = load_catalog(paths)
+    if catalog.get("albums", {}).pop(album_id, None) is not None:
+        save_catalog(paths, catalog)
 
     cleanup_album_media_cache(paths, stale_items)
     return {"success": True}, 200
@@ -846,20 +1339,56 @@ def get_media_counts(media_items):
     }
 
 
-def list_album_photos(paths, album_id, sort, cursor_value, limit_value, media_type_value=MEDIA_TYPE_ALL):
+def list_album_photos(
+    paths,
+    album_id,
+    sort,
+    cursor_value,
+    limit_value,
+    media_type_value=MEDIA_TYPE_ALL,
+    snapshot_token=None,
+):
     album = find_photo_album(album_id)
     if not album:
         return {"error": "Album not found"}, 404
 
-    media_items, scan_status, error = scan_photo_album(paths, album)
+    snapshot = get_album_index_snapshot(paths, album_id, snapshot_token=snapshot_token)
+    if snapshot is None:
+        error = None
+        scan_status = PHOTO_SCAN_STATUS_NEEDS_INDEX
+        if not album.get("enabled", True):
+            error = "Album disabled"
+            scan_status = PHOTO_SCAN_STATUS_ERROR
+        elif not os.path.isdir(album["path"]):
+            error = "Album path is not available"
+            scan_status = PHOTO_SCAN_STATUS_ERROR
+        else:
+            schedule_album_bootstrap(paths, album)
+        summary = update_catalog_album(paths, album, scan_status=scan_status, error=error)
+        return {
+            "items": [],
+            "next_cursor": None,
+            "total": 0,
+            "media_counts": get_media_counts([]),
+            "scan_status": summary.get("scan_status") or scan_status,
+            "index_version": summary.get("index_version") or PHOTO_INDEX_VERSION,
+            "snapshot": None,
+            "error": error,
+        }, 200
+
+    media_items = snapshot["media"]
+    scan_status = snapshot.get("scan_status") or PHOTO_SCAN_STATUS_IDLE
+    error = snapshot.get("error")
     media_counts = get_media_counts(media_items)
-    if scan_status == "error":
+    if scan_status == PHOTO_SCAN_STATUS_ERROR:
         return {
             "items": [],
             "next_cursor": None,
             "total": 0,
             "media_counts": media_counts,
             "scan_status": scan_status,
+            "index_version": snapshot.get("index_version") or PHOTO_INDEX_VERSION,
+            "snapshot": snapshot.get("snapshot_token"),
             "error": error,
         }, 200
 
@@ -907,6 +1436,8 @@ def list_album_photos(paths, album_id, sort, cursor_value, limit_value, media_ty
         "total": len(media_items),
         "media_counts": media_counts,
         "scan_status": scan_status,
+        "index_version": snapshot.get("index_version") or PHOTO_INDEX_VERSION,
+        "snapshot": snapshot.get("snapshot_token"),
         "error": error,
     }, 200
 
@@ -1007,6 +1538,26 @@ def upload_photos_to_album(paths, album_id, files):
         "uploaded": uploaded,
         "failed": failed,
         "album": build_photo_album_response(paths, album),
+    }, 200
+
+
+def rescan_photo_album(paths, album_id):
+    album = find_photo_album(album_id)
+    if not album:
+        return {"error": "Album not found"}, 404
+
+    media_items, scan_status, error = scan_photo_album(paths, album)
+    if scan_status == PHOTO_SCAN_STATUS_ERROR:
+        return {
+            "success": False,
+            "album": build_photo_album_response(paths, album),
+            "error": error,
+        }, 200
+
+    return {
+        "success": True,
+        "album": build_photo_album_response(paths, album),
+        "media_count": len(media_items),
     }, 200
 
 
@@ -1164,3 +1715,163 @@ def convert_photos_to_models(paths, task_manager, photo_ids):
         "tasks": created_tasks,
         "failed": failed,
     }
+
+
+def collect_cache_folder_stats(folder, predicate=None):
+    stats = {"files": 0, "bytes": 0}
+    if not os.path.isdir(folder):
+        return stats
+
+    for current_root, _dirnames, filenames in os.walk(folder):
+        for filename in filenames:
+            if predicate and not predicate(filename):
+                continue
+            path = os.path.join(current_root, filename)
+            try:
+                stat = os.stat(path)
+            except OSError:
+                continue
+            stats["files"] += 1
+            stats["bytes"] += stat.st_size
+    return stats
+
+
+def get_photo_gallery_cache_stats(paths):
+    index_stats = {"files": 0, "bytes": 0}
+    for path in (paths.photo_catalog_file, paths.photo_index_file, f"{paths.photo_index_file}.bak"):
+        try:
+            stat = os.stat(path)
+        except OSError:
+            continue
+        index_stats["files"] += 1
+        index_stats["bytes"] += stat.st_size
+
+    album_index_stats = collect_cache_folder_stats(
+        paths.photo_album_index_folder,
+        lambda filename: filename.endswith(".json"),
+    )
+    index_stats["files"] += album_index_stats["files"]
+    index_stats["bytes"] += album_index_stats["bytes"]
+
+    thumbnail_stats = collect_cache_folder_stats(paths.photo_thumbnail_folder)
+    poster_stats = collect_cache_folder_stats(paths.video_poster_folder)
+    download_stats = collect_cache_folder_stats(
+        paths.photo_gallery_cache_folder,
+        lambda filename: filename.startswith("photo-gallery-") and filename.endswith(".zip"),
+    )
+    total = {
+        "files": index_stats["files"] + thumbnail_stats["files"] + poster_stats["files"] + download_stats["files"],
+        "bytes": index_stats["bytes"] + thumbnail_stats["bytes"] + poster_stats["bytes"] + download_stats["bytes"],
+    }
+    return {
+        "success": True,
+        "index_version": PHOTO_INDEX_VERSION,
+        "indexes": index_stats,
+        "thumbnails": thumbnail_stats,
+        "video_posters": poster_stats,
+        "downloads": download_stats,
+        "total": total,
+    }
+
+
+def remove_tree_contents(folder):
+    removed = {"files": 0, "bytes": 0}
+    if not os.path.isdir(folder):
+        return removed
+
+    for current_root, dirnames, filenames in os.walk(folder, topdown=False):
+        for filename in filenames:
+            path = os.path.join(current_root, filename)
+            try:
+                stat = os.stat(path)
+                os.remove(path)
+                removed["files"] += 1
+                removed["bytes"] += stat.st_size
+            except OSError:
+                pass
+        for dirname in dirnames:
+            try:
+                os.rmdir(os.path.join(current_root, dirname))
+            except OSError:
+                pass
+    return removed
+
+
+def remove_matching_cache_files(folder, predicate):
+    removed = {"files": 0, "bytes": 0}
+    if not os.path.isdir(folder):
+        return removed
+
+    try:
+        filenames = os.listdir(folder)
+    except OSError:
+        return removed
+
+    for filename in filenames:
+        if not predicate(filename):
+            continue
+        path = os.path.join(folder, filename)
+        try:
+            stat = os.stat(path)
+            if os.path.isfile(path):
+                os.remove(path)
+                removed["files"] += 1
+                removed["bytes"] += stat.st_size
+        except OSError:
+            pass
+    return removed
+
+
+def merge_removed_stats(target, source):
+    target["files"] += source["files"]
+    target["bytes"] += source["bytes"]
+
+
+def clear_photo_gallery_cache(paths, scope="generated"):
+    """清理图库生成缓存；永远不删除配置相册中的原始媒体。"""
+    normalized_scope = str(scope or "generated").strip().lower()
+    allowed_scopes = {"generated", "indexes", "thumbnails", "posters", "downloads", "all"}
+    if normalized_scope not in allowed_scopes:
+        return {"success": False, "error": "Unsupported cache cleanup scope"}, 400
+
+    removed = {"files": 0, "bytes": 0}
+
+    if normalized_scope in {"generated", "all", "indexes"}:
+        for path in (paths.photo_catalog_file, paths.photo_index_file, f"{paths.photo_index_file}.bak"):
+            try:
+                stat = os.stat(path)
+                os.remove(path)
+                removed["files"] += 1
+                removed["bytes"] += stat.st_size
+            except OSError:
+                pass
+        merge_removed_stats(removed, remove_tree_contents(paths.photo_album_index_folder))
+        with album_index_cache_lock:
+            album_index_cache.clear()
+            album_snapshot_cache.clear()
+
+    if normalized_scope in {"generated", "all", "thumbnails"}:
+        merge_removed_stats(removed, remove_tree_contents(paths.photo_thumbnail_folder))
+
+    if normalized_scope in {"generated", "all", "posters"}:
+        merge_removed_stats(removed, remove_tree_contents(paths.video_poster_folder))
+
+    if normalized_scope in {"generated", "all", "downloads"}:
+        merge_removed_stats(
+            removed,
+            remove_matching_cache_files(
+                paths.photo_gallery_cache_folder,
+                lambda filename: filename.startswith("photo-gallery-") and filename.endswith(".zip"),
+            ),
+        )
+
+    os.makedirs(paths.photo_album_index_folder, exist_ok=True)
+    os.makedirs(paths.photo_thumbnail_folder, exist_ok=True)
+    os.makedirs(paths.video_poster_folder, exist_ok=True)
+
+    return {
+        "success": True,
+        "scope": normalized_scope,
+        "removed": removed,
+        "stats": get_photo_gallery_cache_stats(paths),
+    }, 200

@@ -3,6 +3,9 @@ import type {
   AddPhotoAlbumRequest,
   AddPhotoAlbumResponse,
   PhotoAlbumsResponse,
+  PhotoGalleryCacheClearResponse,
+  PhotoGalleryCacheClearScope,
+  PhotoGalleryCacheStats,
   PhotoConversionResponse,
   PhotoMediaType,
   PhotoListResponse,
@@ -11,6 +14,18 @@ import type {
 
 export async function fetchPhotoAlbums(): Promise<PhotoAlbumsResponse> {
   return apiGet<PhotoAlbumsResponse>('/api/photo-albums');
+}
+
+export async function fetchPhotoGalleryCacheStats(): Promise<PhotoGalleryCacheStats> {
+  return apiGet<PhotoGalleryCacheStats>('/api/photo-gallery/cache');
+}
+
+export async function clearPhotoGalleryCache(
+  scope: PhotoGalleryCacheClearScope = 'generated',
+): Promise<PhotoGalleryCacheClearResponse> {
+  return apiDelete<PhotoGalleryCacheClearResponse>(
+    `/api/photo-gallery/cache?scope=${encodeURIComponent(scope)}`,
+  );
 }
 
 export async function addPhotoAlbum(
@@ -37,6 +52,7 @@ export async function fetchPhotoAlbumPhotos(
   limit = 60,
   sort = 'mtime_desc',
   mediaType: PhotoMediaType = 'all',
+  snapshot?: string | null,
 ): Promise<PhotoListResponse> {
   const params = new URLSearchParams({
     limit: String(limit),
@@ -45,6 +61,9 @@ export async function fetchPhotoAlbumPhotos(
   });
   if (cursor) {
     params.set('cursor', cursor);
+  }
+  if (snapshot) {
+    params.set('snapshot', snapshot);
   }
 
   return apiGet<PhotoListResponse>(

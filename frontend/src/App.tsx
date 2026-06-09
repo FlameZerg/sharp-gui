@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
 
-import { ApiError, fetchAuthStatus, fetchGallery, fetchPhotoAlbums, fetchSettings, fetchTasks, generateFromImages } from '@/api';
+import { ApiError, fetchAuthStatus, fetchGallery, fetchSettings, fetchTasks, generateFromImages } from '@/api';
 import { AccessGate, AccessSetupPrompt } from '@/components/auth';
 import { GalleryList } from '@/components/gallery';
 import { ImageViewer, Loading } from '@/components/common';
@@ -52,7 +52,6 @@ function App() {
     setBootError,
     setAuthStatus,
     setGalleryItems,
-    setPhotoAlbums,
     setTasks,
     setLocalAccess,
     setLoading,
@@ -78,7 +77,6 @@ function App() {
       setBootError: state.setBootError,
       setAuthStatus: state.setAuthStatus,
       setGalleryItems: state.setGalleryItems,
-      setPhotoAlbums: state.setPhotoAlbums,
       setTasks: state.setTasks,
       setLocalAccess: state.setLocalAccess,
       setLoading: state.setLoading,
@@ -95,9 +93,6 @@ function App() {
     const gallery = await fetchGallery();
     setGalleryItems(gallery);
 
-    const photoAlbums = await fetchPhotoAlbums();
-    setPhotoAlbums(photoAlbums.albums);
-
     const tasksData = await fetchTasks();
     setTasks(tasksData.tasks, tasksData.has_active);
 
@@ -106,7 +101,7 @@ function App() {
     if (settings.model_format) {
       setServerModelFormat(settings.model_format);
     }
-  }, [setGalleryItems, setPhotoAlbums, setTasks, setLocalAccess, setServerModelFormat]);
+  }, [setGalleryItems, setTasks, setLocalAccess, setServerModelFormat]);
 
   useEffect(() => {
     async function init() {

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
@@ -34,24 +34,47 @@ export function PhotoAlbumList() {
 
   const {
     photoAlbums,
+    photoAlbumsLoaded,
+    photoAlbumsLoading,
     currentPhotoAlbumId,
     isLocalAccess,
     setPhotoAlbums,
+    setPhotoAlbumsLoading,
     setCurrentPhotoAlbum,
   } = useAppStore(
     useShallow((state) => ({
       photoAlbums: state.photoAlbums,
+      photoAlbumsLoaded: state.photoAlbumsLoaded,
+      photoAlbumsLoading: state.photoAlbumsLoading,
       currentPhotoAlbumId: state.currentPhotoAlbumId,
       isLocalAccess: state.isLocalAccess,
       setPhotoAlbums: state.setPhotoAlbums,
+      setPhotoAlbumsLoading: state.setPhotoAlbumsLoading,
       setCurrentPhotoAlbum: state.setCurrentPhotoAlbum,
     })),
   );
 
   const refreshAlbums = useCallback(async () => {
-    const response = await fetchPhotoAlbums();
-    setPhotoAlbums(response.albums);
-  }, [setPhotoAlbums]);
+    setPhotoAlbumsLoading(true);
+    try {
+      const response = await fetchPhotoAlbums();
+      setPhotoAlbums(response.albums);
+    } catch (error) {
+      setPhotoAlbumsLoading(false);
+      throw error;
+    }
+  }, [setPhotoAlbums, setPhotoAlbumsLoading]);
+
+  useEffect(() => {
+    if (photoAlbumsLoaded || photoAlbumsLoading) {
+      return;
+    }
+
+    void refreshAlbums().catch((error) => {
+      const errorMessage = error instanceof Error ? error.message : t('photoAlbumsLoadFailed');
+      setMessage(errorMessage);
+    });
+  }, [photoAlbumsLoaded, photoAlbumsLoading, refreshAlbums, t]);
 
   const submitAlbumPath = useCallback(async (selectedPath: string) => {
     if (!selectedPath.trim() || isBusy) {
@@ -201,7 +224,11 @@ export function PhotoAlbumList() {
       {photoAlbums.length === 0 ? (
         <div className={styles.empty}>
           <FolderIcon width={28} height={28} />
-          <p>{isLocalAccess ? t('photoNoAlbums') : t('photoNoAlbumsRemote')}</p>
+          <p>
+            {photoAlbumsLoading
+              ? t('photoAlbumsLoading')
+              : isLocalAccess ? t('photoNoAlbums') : t('photoNoAlbumsRemote')}
+          </p>
           {isLocalAccess ? (
             <button className={styles.emptyBtn} onClick={handleAddAlbum} type="button">
               {t('photoAddAlbum')}
@@ -237,9 +264,7 @@ export function PhotoAlbumList() {
                 <div className={styles.info}>
                   <span className={styles.name}>{album.name}</span>
                   <span className={styles.meta}>
-                    {album.scan_status === 'error'
-                      ? t('photoAlbumUnavailable')
-                      : t('photoMediaCount', { count: album.media_count ?? album.photo_count ?? 0 })}
+                    {getAlbumMetaLabel(t, album)}
                   </span>
                 </div>
 
@@ -298,4 +323,24 @@ export function PhotoAlbumList() {
       />
     </section>
   );
+}
+
+function getAlbumMetaLabel(
+  t: (key: string, options?: Record<string, unknown>) => string,
+  album: PhotoAlbum,
+) {
+  if (album.scan_status === 'error') {
+    return album.error || t('photoAlbumUnavailable');
+  }
+  if (album.scan_status === 'needs_index') {
+    return t('photoAlbumNeedsIndex');
+  }
+  if (album.scan_status === 'indexing' || album.scan_status === 'scanning') {
+    return t('photoAlbumIndexing');
+  }
+  if (album.scan_status === 'stale') {
+    const count = album.media_count ?? album.photo_count ?? 0;
+    return t('photoAlbumCachedCount', { count });
+  }
+  return t('photoMediaCount', { count: album.media_count ?? album.photo_count ?? 0 });
 }

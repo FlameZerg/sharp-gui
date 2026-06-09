@@ -402,9 +402,12 @@ interface AppState {
   // Photo Gallery
   activeView: AppView;
   photoAlbums: PhotoAlbum[];
+  photoAlbumsLoaded: boolean;
+  photoAlbumsLoading: boolean;
   currentPhotoAlbumId: string | null;
   photoItems: PhotoItem[];
   photoNextCursor: string | null;
+  photoSnapshot: string | null;
   photoTotal: number;
   photoMediaType: PhotoMediaType;
   photoMediaCounts: PhotoMediaCounts;
@@ -477,6 +480,8 @@ interface AppState {
 
   setActiveView: (view: AppView) => void;
   setPhotoAlbums: (albums: PhotoAlbum[]) => void;
+  setPhotoAlbumsLoading: (loading: boolean) => void;
+  resetPhotoAlbumsLoaded: () => void;
   setCurrentPhotoAlbum: (albumId: string | null) => void;
   setPhotoMediaType: (mediaType: PhotoMediaType) => void;
   setPhotoItems: (
@@ -485,6 +490,7 @@ interface AppState {
     total: number,
     append?: boolean,
     mediaCounts?: PhotoMediaCounts,
+    snapshot?: string | null,
   ) => void;
   clearPhotoItems: () => void;
   setPhotoSelectionMode: (enabled: boolean) => void;
@@ -556,9 +562,12 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   activeView: 'models',
   photoAlbums: [],
+  photoAlbumsLoaded: false,
+  photoAlbumsLoading: false,
   currentPhotoAlbumId: null,
   photoItems: [],
   photoNextCursor: null,
+  photoSnapshot: null,
   photoTotal: 0,
   photoMediaType: 'all',
   photoMediaCounts: { ...DEFAULT_PHOTO_MEDIA_COUNTS },
@@ -740,9 +749,12 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     return {
       photoAlbums: albums,
+      photoAlbumsLoaded: true,
+      photoAlbumsLoading: false,
       currentPhotoAlbumId,
       photoItems: currentPhotoAlbumId === state.currentPhotoAlbumId ? state.photoItems : [],
       photoNextCursor: currentPhotoAlbumId === state.currentPhotoAlbumId ? state.photoNextCursor : null,
+      photoSnapshot: currentPhotoAlbumId === state.currentPhotoAlbumId ? state.photoSnapshot : null,
       photoTotal: currentPhotoAlbumId === state.currentPhotoAlbumId ? state.photoTotal : 0,
       photoMediaCounts: currentPhotoAlbumId === state.currentPhotoAlbumId
         ? state.photoMediaCounts
@@ -751,6 +763,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       previewPhoto: currentPhotoAlbumId === state.previewPhoto?.album_id ? state.previewPhoto : null,
     };
   }),
+  setPhotoAlbumsLoading: (loading) => set({ photoAlbumsLoading: loading }),
+  resetPhotoAlbumsLoaded: () => set({ photoAlbumsLoaded: false }),
   setCurrentPhotoAlbum: (albumId) => set((state) => {
     if (state.currentPhotoAlbumId === albumId) {
       return state;
@@ -760,6 +774,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       currentPhotoAlbumId: albumId,
       photoItems: [],
       photoNextCursor: null,
+      photoSnapshot: null,
       photoTotal: 0,
       photoMediaCounts: { ...DEFAULT_PHOTO_MEDIA_COUNTS },
       selectedPhotoIds: [],
@@ -776,13 +791,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       photoMediaType: mediaType,
       photoItems: [],
       photoNextCursor: null,
+      photoSnapshot: null,
       photoTotal: 0,
       selectedPhotoIds: [],
       photoSelectionMode: false,
       previewPhoto: null,
     };
   }),
-  setPhotoItems: (items, nextCursor, total, append = false, mediaCounts) => set((state) => {
+  setPhotoItems: (items, nextCursor, total, append = false, mediaCounts, snapshot) => set((state) => {
     const nextItems = append
       ? [
           ...state.photoItems,
@@ -793,6 +809,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     return {
       photoItems: nextItems,
       photoNextCursor: nextCursor,
+      photoSnapshot: snapshot ?? (append ? state.photoSnapshot : null),
       photoTotal: total,
       photoMediaCounts: mediaCounts ?? state.photoMediaCounts,
       selectedPhotoIds: state.selectedPhotoIds.filter((photoId) =>
@@ -803,6 +820,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   clearPhotoItems: () => set({
     photoItems: [],
     photoNextCursor: null,
+    photoSnapshot: null,
     photoTotal: 0,
     photoMediaCounts: { ...DEFAULT_PHOTO_MEDIA_COUNTS },
     selectedPhotoIds: [],

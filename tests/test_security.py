@@ -179,3 +179,32 @@ def test_video_play_token_allows_inline_stream_without_cookie_but_not_download(c
         expired_stream = remote_get(client, f"/api/video-play/{video_id}/{expired}/clip.mp4")
         assert expired_stream.status_code == 401
         assert expired_stream.get_json()["code"] == "AUTH_REQUIRED"
+
+
+def test_remote_unlocked_client_cannot_clear_photo_gallery_cache(config_file, workspace):
+    config = {
+        "workspace_folder": str(workspace),
+        "access_control": make_access_config(
+            enabled=True,
+            password_hash=generate_password_hash("password123"),
+        ),
+        "photo_gallery_roots": [],
+    }
+    write_config(config_file, config)
+    app = create_app()
+    app.config["TESTING"] = True
+
+    with app.test_client() as client:
+        login = remote_post(client, "/api/auth/login", json={"password": "password123"})
+        assert login.status_code == 200
+
+        stats = remote_get(client, "/api/photo-gallery/cache")
+        assert stats.status_code == 200
+
+        clear = client.delete(
+            "/api/photo-gallery/cache",
+            base_url="http://192.168.1.2",
+            environ_overrides={"REMOTE_ADDR": "192.168.1.50"},
+        )
+        assert clear.status_code == 403
+        assert clear.get_json()["code"] == "OWNER_REQUIRED"

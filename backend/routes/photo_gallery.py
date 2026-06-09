@@ -16,10 +16,7 @@ def photo_albums():
     """照片相册列表与新增配置。"""
     paths = get_paths()
     if request.method == "GET":
-        albums = [
-            photo_gallery.build_photo_album_response(paths, album)
-            for album in photo_gallery.normalize_photo_album_roots()
-        ]
+        albums = photo_gallery.list_photo_album_responses(paths)
         return jsonify({"albums": albums, "is_local": g.is_owner})
 
     if not g.is_owner:
@@ -45,12 +42,26 @@ def scan_photo_album_endpoint(album_id):
     if not g.is_owner:
         return jsonify({"error": "Photo albums can only be rescanned from localhost"}), 403
 
-    paths = get_paths()
-    album = photo_gallery.find_photo_album(album_id)
-    if not album:
-        return jsonify({"error": "Album not found"}), 404
+    payload, status_code = photo_gallery.rescan_photo_album(get_paths(), album_id)
+    return jsonify(payload), status_code
 
-    return jsonify({"success": True, "album": photo_gallery.build_photo_album_response(paths, album)})
+
+@bp.route("/api/photo-gallery/cache", methods=["GET", "DELETE"])
+def photo_gallery_cache():
+    """图库生成缓存统计与清理。"""
+    paths = get_paths()
+    if request.method == "GET":
+        return jsonify(photo_gallery.get_photo_gallery_cache_stats(paths))
+
+    if not g.is_owner:
+        return jsonify({"error": "Photo gallery cache can only be managed from localhost"}), 403
+
+    scope = request.args.get("scope")
+    if not scope:
+        data = request.get_json(silent=True) or {}
+        scope = data.get("scope", "generated")
+    payload, status_code = photo_gallery.clear_photo_gallery_cache(paths, scope)
+    return jsonify(payload), status_code
 
 
 @bp.route("/api/photo-albums/<album_id>/photos")
@@ -63,6 +74,7 @@ def get_photo_album_photos(album_id):
         request.args.get("cursor", "0"),
         request.args.get("limit", str(photo_gallery.PHOTO_DEFAULT_PAGE_SIZE)),
         request.args.get("type", photo_gallery.MEDIA_TYPE_ALL),
+        request.args.get("snapshot"),
     )
     return jsonify(payload), status_code
 

@@ -40,7 +40,7 @@ python -m pytest -q
 - app import：`from app import app` 不启动 worker/cleanup 线程。
 - LAN 门禁：门禁开/关、owner-only、远程生成条件、转发头不能提权。
 - 静态文件：模型文件允许访问，敏感文件和路径穿越拒绝。
-- 本地媒体图库：media/photo/video id 解析、视频扫描、poster/metadata 降级、Range 播放、相册上传文件名净化/扩展名白名单/无效图片清理。
+- 本地媒体图库：media/photo/video id 解析、缓存优先分页、迁移后不重建全局索引、视频扫描、poster/metadata 降级、Range 播放、相册上传文件名净化/扩展名白名单/无效图片清理。
 - 任务队列：无需真实推理即可验证入队、列出、取消和状态变更。
 
 ### 本地媒体图库 smoke checklist
@@ -48,6 +48,9 @@ python -m pytest -q
 本地媒体图库属于大功能，当前若暂不引入测试框架，至少应手动或脚本化验证：
 
 - `GET/POST/DELETE /api/photo-albums`、`POST /scan`、`GET /photos?type=all|photo|video`、`GET /photo-thumbnail`、`GET /photo-original`、`GET /video-poster`、`GET /video-original`、`GET /video-play/<id>/<token>/<filename>`、`POST /api/photo-downloads`、`POST /api/photo-conversions` 的成功与错误路径。
+- 应用启动不应因为配置大量相册而等待媒体扫描；进入模型页不应触发本地媒体目录 `os.walk`。
+- 相册列表应只读 catalog 摘要；旧 `index.json` 迁移归档后，多次请求列表或扫描新相册不得回退读取所有 `albums/*.json` 来重建全局索引。
+- 已建立索引的相册，翻页、排序和 `type=all|photo|video` 筛选必须走每相册索引，测试可用 monkeypatch 断言不调用 `os.walk`。
 - 列表返回 `thumb_url`，预览/下载使用 `full_url` 或 `preview_url` 原图地址，不能把缩略图放大当原图。
 - 视频列表返回 `poster_url`、`playback_url`、`download_url` 和可选元数据；列表滚动不能加载完整视频文件。
 - 中文、空格、大小写混合文件名可以生成缩略图、打开原图、下载和加入 3D 队列。

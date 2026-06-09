@@ -281,6 +281,8 @@ def get_required_access_level(access_config=None):
         return ACCESS_OWNER
     if path == "/api/photo-albums" and method != "GET":
         return ACCESS_OWNER
+    if path == "/api/photo-gallery/cache":
+        return ACCESS_OWNER if method != "GET" else ACCESS_UNLOCKED
     if path.startswith("/api/photo-albums/") and (method == "DELETE" or path.endswith("/scan")):
         return ACCESS_OWNER
     if path.startswith("/api/photo-albums/") and path.endswith("/uploads"):
