@@ -15,6 +15,10 @@ import {
   VolumeIcon,
   VolumeMutedIcon,
 } from '@/components/common/Icons';
+import {
+  createChromeSafePhotoPreviewUrl,
+  shouldUseChromeSafePhotoPreview,
+} from '@/utils/ultraHdrPreview';
 import styles from './ImageViewer.module.css';
 
 const VIDEO_LONG_PRESS_MS = 260;
@@ -88,6 +92,7 @@ export function ImageViewer() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [isConverting, setIsConverting] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const [chromeSafeImage, setChromeSafeImage] = useState<{ sourceUrl: string; objectUrl: string } | null>(null);
   const [notice, setNotice] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   const [videoDuration, setVideoDuration] = useState(0);
@@ -130,6 +135,13 @@ export function ImageViewer() {
   const activePreview = previewPhoto ?? previewImage;
   const isPhotoPreview = Boolean(previewPhoto);
   const isVideoPreview = previewPhoto?.media_type === 'video';
+  const activeName = previewPhoto?.name ?? previewImage?.name ?? '';
+  const rawImageUrl = activePreview && !isVideoPreview
+    ? previewPhoto
+      ? (previewPhoto.full_url ?? previewPhoto.preview_url)
+      : `/api/original/${encodeURIComponent(previewImage?.id ?? '')}`
+    : null;
+  const shouldUseSafePhotoPreview = shouldUseChromeSafePhotoPreview(rawImageUrl, activeName);
 
   const releaseVideoOrientationLock = useCallback(() => {
     if (!videoOrientationLocked.current) {
@@ -617,6 +629,41 @@ export function ImageViewer() {
     videoError,
   ]);
 
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    let cancelled = false;
+
+    setChromeSafeImage(null);
+    if (!rawImageUrl || !shouldUseSafePhotoPreview) {
+      return undefined;
+    }
+
+    void createChromeSafePhotoPreviewUrl(rawImageUrl)
+      .then((url) => {
+        if (cancelled) {
+          URL.revokeObjectURL(url);
+          return;
+        }
+
+        objectUrl = url;
+        setChromeSafeImage({ sourceUrl: rawImageUrl, objectUrl: url });
+      })
+      .catch((error: unknown) => {
+        console.warn('Chrome-safe photo preview failed:', error);
+        if (!cancelled) {
+          setIsLoaded(true);
+          setImageError(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [rawImageUrl, shouldUseSafePhotoPreview]);
+
   if (!activePreview) return null;
 
   const handleOverlayClick = () => {
@@ -847,12 +894,13 @@ export function ImageViewer() {
     e.stopPropagation();
   };
 
-  // The actual high quality image URL
-  const imageUrl = previewPhoto
-    ? (previewPhoto.full_url ?? previewPhoto.preview_url)
-    : `/api/original/${encodeURIComponent(previewImage?.id ?? '')}`;
+  // The actual high quality image URL, or an Android Chrome SDR-safe Blob URL.
+  const chromeSafeImageUrl = chromeSafeImage?.sourceUrl === rawImageUrl
+    ? chromeSafeImage.objectUrl
+    : null;
+  const imageUrl = shouldUseSafePhotoPreview ? chromeSafeImageUrl : rawImageUrl;
+  const isWaitingForSafeImage = shouldUseSafePhotoPreview && !chromeSafeImageUrl && !imageError;
   const videoUrl = isVideoPreview ? previewPhoto?.playback_url ?? previewPhoto?.preview_url : null;
-  const activeName = previewPhoto?.name ?? previewImage?.name ?? '';
   const photoIndex = previewPhoto
     ? photoItems.findIndex((photo) => photo.id === previewPhoto.id)
     : -1;
@@ -1180,20 +1228,22 @@ export function ImageViewer() {
           <div className={styles.imageWrapper}>
             {!isLoaded && <div className={styles.loadingSpinner} />}
             {imageError ? <div className={styles.imageError}>{t('photoOriginalLoadFailed')}</div> : null}
-            <img
-              src={imageUrl}
-              alt={activeName}
-              className={`${styles.image} ${isLoaded ? styles.loaded : ''}`}
-              onLoad={() => {
-                setIsLoaded(true);
-                setImageError(false);
-              }}
-              onError={() => {
-                setIsLoaded(true);
-                setImageError(true);
-              }}
-              draggable={false}
-            />
+            {imageUrl && !isWaitingForSafeImage ? (
+              <img
+                src={imageUrl}
+                alt={activeName}
+                className={`${styles.image} ${isLoaded ? styles.loaded : ''}`}
+                onLoad={() => {
+                  setIsLoaded(true);
+                  setImageError(false);
+                }}
+                onError={() => {
+                  setIsLoaded(true);
+                  setImageError(true);
+                }}
+                draggable={false}
+              />
+            ) : null}
           </div>
         )}
       </div>
