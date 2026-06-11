@@ -58,7 +58,7 @@ Built on [Apple ml-sharp](https://github.com/apple/ml-sharp). No cloud uploads n
 
 <br>
 
-[What's New in v1.1.0](#-whats-new-in-v110)<br>
+[Recent Highlights](#-recent-highlights)<br>
 [Quick Start](#-quick-start)<br>
 [Usage Guide](#-usage)
 
@@ -114,22 +114,24 @@ Built on [Apple ml-sharp](https://github.com/apple/ml-sharp). No cloud uploads n
 
 ---
 
-## 🆕 What's New in v1.1.0
+## 🆕 Recent Highlights
 
 <details open>
-<summary><b>Click to collapse — the biggest update since 1.0</b></summary>
+<summary><b>Click to collapse — user-facing highlights</b></summary>
 
 <br>
 
-**🖼️ Local Photo Gallery** — Configure local, external-drive, mounted, or NAS folders as albums. Browse cached-thumbnail masonry, open originals for preview/download, and convert one or many photos to 3D in a single click.
+**🗂️ Local Media Gallery** — Configure local, external-drive, or NAS folders as albums. Browse, filter, preview, and download photos and videos together; photos can be converted to 3D one by one or in batches, while videos can be played, scrubbed, and viewed fullscreen.
 
-**🔐 Optional LAN Access Gate** — Remote devices unlock with an access code and persist via an HttpOnly cookie. The local host stays the always-on owner; settings, deletion, and folder management remain local-only.
+**📥 Upload Into Current Album** — Add photos directly to the current album with file picker or drag-and-drop; the album refreshes automatically after upload.
 
-**🎬 Intro Video & Verbose Logging** — New HyperFrames intro video project plus `run_verbose.bat` / `run_verbose.sh` for one-shot diagnostic logs when reporting issues.
+**⚡ Faster Gallery Startup** — Gallery indexing now loads on demand, so startup no longer waits for a full album scan and large libraries show the first screen faster.
+
+**🔐 Safer LAN Access** — Optional access-code gate, real LAN bind toggle, sensitive-file protection, and debug mode off by default make long-running home LAN use safer.
 
 **📦 Windows Full Portable Bundles** — Two flavours, `cu128-rtx50` and `cu126-mainstream`, ship Python + PyTorch + model cache out of the box (downloaded from the cloud-drive link in the Release notes, with matching `.sha256.txt`).
 
-Full release notes → **[v1.1.0 on GitHub](https://github.com/lueluelue12138/sharp-gui/releases/latest)**
+Full release notes → **[Latest Release](https://github.com/lueluelue12138/sharp-gui/releases/latest)**
 
 </details>
 
@@ -147,7 +149,7 @@ No need to install apps on every device. Run Sharp GUI on one computer, and any 
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **📸 Image to 3D**         | Upload any image; Apple ML-Sharp generates a 3D Gaussian Splatting model. The ~500MB model is pre-downloaded during install.                                             |
 | **🖼️ Modern Workflow**     | Multi-select / drag-and-drop upload, virtualized gallery, in-app original viewer, smart task queue (2s while active, 10s idle), slide-out delete, cancellable jobs.      |
-| **🗂️ Local Photo Gallery** | Configure multiple folders as albums, browse cached-thumbnail masonry, open/download originals, convert one or many to 3D. Density slider on desktop, pinch on mobile, sort by mtime / ctime / name / size. |
+| **🗂️ Local Media Gallery** | Configure multiple local/NAS folders as albums, browse and filter photos/videos together, preview and download media, convert photos to 3D, and play videos directly. |
 | **👁️ Real-time Viewer**    | Three.js + Spark 2.0 WASM-accelerated viewer with mouse / touch / keyboard (WASD) / gyroscope controls, click-to-focus with a GPU focus ring, quick transform panel.     |
 | **🎭 Reveal Effects**      | Magic / Spread / Unroll / Twister / Rain entrance animations with replay support.                                                                                        |
 | **📱 Mobile Optimized**    | Phones / tablets get gyroscope controls (iOS-style indicator ball), virtual joystick, touch gestures, and a drawer-style sidebar.                                        |
@@ -194,13 +196,13 @@ Built with Apple Human Interface Guidelines for a premium feel:
 
 <p align="center"><i>Sidebar gallery + 3D model preview + glassmorphism control bar</i></p>
 
-### Local Photo Gallery
+### Local Media Gallery
 
 <p align="center">
-  <img src="docs/images/photo-gallery.png" width="800" alt="Local photo gallery interface">
+  <img src="docs/images/photo-gallery.png" width="800" alt="Local media gallery interface">
 </p>
 
-<p align="center"><i>Multi-folder albums, masonry thumbnails, density slider, multi-select to 3D</i></p>
+<p align="center"><i>Multi-folder albums, mixed photo/video browsing, media preview, multi-select to 3D</i></p>
 
 ### Mobile Adaptation
 
@@ -375,12 +377,13 @@ rm -rf sharp-gui/
 2. **Wait for Processing** - Watch queue progress (first run downloads ~500MB model)
 3. **Preview Model** - Click gallery items to view 3D
 
-### Browse Local Photo Albums
+### Browse Local Media Albums
 
-1. **Switch to Photos** - Use the sidebar `Models / Photos` entry to open the photo gallery
+1. **Switch to Gallery** - Use the sidebar `Models / Photos` entry to open the local media gallery
 2. **Add Folder** - From localhost, add Windows / Linux / macOS paths; each folder is shown as an album
-3. **Open Originals** - The grid uses cached thumbnails for speed; opening a photo loads the original image and supports download
-4. **Convert to 3D** - Convert one photo from a card or preview, or multi-select and queue a batch into the existing generation workflow
+3. **Browse Media** - Photos use cached thumbnails and open originals on demand; videos can be previewed, scrubbed, viewed fullscreen, and downloaded
+4. **Upload to Album** - Pick or drag photos into the current album; the album refreshes automatically
+5. **Convert to 3D** - Convert photos from cards or the preview layer, or multi-select and queue a batch into the existing workflow
 
 ### 3D Interaction Controls
 
