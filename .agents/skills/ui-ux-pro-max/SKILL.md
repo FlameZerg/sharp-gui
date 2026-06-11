@@ -1,12 +1,12 @@
 ---
 name: ui-ux-pro-max
-description: UI/UX design intelligence. 50 styles, 21 palettes, 50 font pairings, 20 charts, 9 stacks.
+description: UI/UX design intelligence. 67 styles, 161 palettes, 57 font pairings, 25 charts, 16 stacks.
 ---
 # ui-ux-pro-max
 
-Comprehensive design guide for web and mobile applications. Contains 67 styles, 96 color palettes, 57 font pairings, 99 UX guidelines, and 25 chart types across 13 technology stacks. Searchable database with priority-based recommendations.
+Comprehensive design guide for web and mobile applications. Contains 67 styles, 161 color palettes, 57 font pairings, 99 UX guidelines, and 25 chart types across 16 technology stacks. Searchable database with priority-based recommendations.
 
-## Prerequisites
+# Prerequisites
 
 Check if Python is installed:
 
@@ -35,15 +35,29 @@ winget install Python.Python.3.12
 
 ## How to Use This Skill
 
-When user requests UI/UX work (design, build, create, implement, review, fix, improve), follow this workflow:
+Use this skill when the user requests any of the following:
+
+| Scenario | Trigger Examples | Start From |
+|----------|-----------------|------------|
+| **New project / page** | "做一个 landing page"、"Build a dashboard" | Step 1 → Step 2 (design system) |
+| **New component** | "Create a pricing card"、"Add a modal" | Step 3 (domain search: style, ux) |
+| **Choose style / color / font** | "What style fits a fintech app?"、"推荐配色" | Step 2 (design system) |
+| **Review existing UI** | "Review this page for UX issues"、"检查无障碍" | Search Reference + Common Rules checklist below |
+| **Fix a UI bug** | "Button hover is broken"、"Layout shifts on load" | Search Reference → relevant domain/Common Rules |
+| **Improve / optimize** | "Make this faster"、"Improve mobile experience" | Step 3 (domain search: ux, react) |
+| **Implement dark mode** | "Add dark mode support" | Step 3 (domain: style "dark mode") |
+| **Add charts / data viz** | "Add an analytics dashboard chart" | Step 3 (domain: chart) |
+| **Stack best practices** | "React performance tips"、"SwiftUI navigation" | Step 4 (stack search) |
+
+Follow this workflow:
 
 ### Step 1: Analyze User Requirements
 
 Extract key information from user request:
-- **Product type**: SaaS, e-commerce, portfolio, dashboard, landing page, etc.
-- **Style keywords**: minimal, playful, professional, elegant, dark mode, etc.
-- **Industry**: healthcare, fintech, gaming, education, etc.
-- **Stack**: React, Vue, Next.js, or default to `html-tailwind`
+- **Product type**: 3D Gaussian Splatting GUI, local/NAS photo gallery, creator workflow dashboard, SaaS/admin/portfolio/landing page, or hybrid
+- **Target audience**: Sharp GUI users working with image-to-3D workflows, generated 3D models, and local/NAS photo libraries; otherwise infer from the request
+- **Style keywords**: Apple glass, professional, minimal, content-first, immersive 3D, gallery-focused, dark mode, etc.
+- **Stack**: React + TypeScript + Vite with CSS Modules/CSS Variables for Sharp GUI; otherwise infer the requested stack
 
 ### Step 2: Generate Design System (REQUIRED)
 
@@ -54,7 +68,7 @@ python3 skills/ui-ux-pro-max/scripts/search.py "<product_type> <industry> <keywo
 ```
 
 This command:
-1. Searches 5 domains in parallel (product, style, color, landing, typography)
+1. Searches domains in parallel (product, style, color, landing, typography)
 2. Applies reasoning rules from `ui-reasoning.csv` to select best matches
 3. Returns complete design system: pattern, style, colors, typography, effects
 4. Includes anti-patterns to avoid
@@ -66,7 +80,7 @@ python3 skills/ui-ux-pro-max/scripts/search.py "beauty spa wellness service" --d
 
 ### Step 2b: Persist Design System (Master + Overrides Pattern)
 
-To save the design system for hierarchical retrieval across sessions, add `--persist`:
+To save the design system for **hierarchical retrieval across sessions**, add `--persist`:
 
 ```bash
 python3 skills/ui-ux-pro-max/scripts/search.py "<query>" --design-system --persist -p "Project Name"
@@ -89,6 +103,15 @@ This also creates:
 2. If the page file exists, its rules **override** the Master file
 3. If not, use `design-system/MASTER.md` exclusively
 
+**Context-aware retrieval prompt:**
+```
+I am building the [Page Name] page. Please read design-system/MASTER.md.
+Also check if design-system/pages/[page-name].md exists.
+If the page file exists, prioritize its rules.
+If not, use the Master rules exclusively.
+Now, generate the code...
+```
+
 ### Step 3: Supplement with Detailed Searches (as needed)
 
 After getting the design system, use domain searches to get additional details:
@@ -101,21 +124,25 @@ python3 skills/ui-ux-pro-max/scripts/search.py "<keyword>" --domain <domain> [-n
 
 | Need | Domain | Example |
 |------|--------|---------|
+| Product type patterns | `product` | `--domain product "3D gallery dashboard creator tool"` |
 | More style options | `style` | `--domain style "glassmorphism dark"` |
+| Color palettes | `color` | `--domain color "entertainment vibrant"` |
+| Font pairings | `typography` | `--domain typography "playful modern"` |
+| Individual Google Fonts | `google-fonts` | `--domain google-fonts "modern sans variable"` |
+| Icon selection | `icons` | `--domain icons "settings upload gallery"` |
 | Chart recommendations | `chart` | `--domain chart "real-time dashboard"` |
 | UX best practices | `ux` | `--domain ux "animation accessibility"` |
-| Alternative fonts | `typography` | `--domain typography "elegant luxury"` |
 | Landing structure | `landing` | `--domain landing "hero social-proof"` |
+| React performance | `react` | `--domain react "rerender memo list"` |
+| App/web interface a11y | `web` | `--domain web "accessibility touch safe-areas"` |
 
-### Step 4: Stack Guidelines (Default: html-tailwind)
+### Step 4: Stack Guidelines (Sharp GUI default: React)
 
-Get implementation-specific best practices. If user doesn't specify a stack, **default to `html-tailwind`**.
+Get implementation-specific best practices for the active stack:
 
 ```bash
-python3 skills/ui-ux-pro-max/scripts/search.py "<keyword>" --stack html-tailwind
+python3 skills/ui-ux-pro-max/scripts/search.py "<keyword>" --stack react
 ```
-
-Available stacks: `html-tailwind`, `react`, `nextjs`, `vue`, `svelte`, `swiftui`, `react-native`, `flutter`, `shadcn`, `jetpack-compose`
 
 ---
 
@@ -126,47 +153,54 @@ Available stacks: `html-tailwind`, `react`, `nextjs`, `vue`, `svelte`, `swiftui`
 | Domain | Use For | Example Keywords |
 |--------|---------|------------------|
 | `product` | Product type recommendations | SaaS, e-commerce, portfolio, healthcare, beauty, service |
-| `style` | UI styles, colors, effects | glassmorphism, minimalism, dark mode, brutalism |
-| `typography` | Font pairings, Google Fonts | elegant, playful, professional, modern |
+| `style` | UI styles, colors, effects, AI prompt keywords | glassmorphism, minimalism, dark mode, brutalism |
+| `typography` | Font pairings | elegant, playful, professional, modern |
+| `google-fonts` | Individual Google Fonts lookup | variable font, sans serif, monospace, japanese |
+| `icons` | Icon semantics and library suggestions | settings, upload, gallery, navigation |
 | `color` | Color palettes by product type | saas, ecommerce, healthcare, beauty, fintech, service |
 | `landing` | Page structure, CTA strategies | hero, hero-centric, testimonial, pricing, social-proof |
 | `chart` | Chart types, library recommendations | trend, comparison, timeline, funnel, pie |
 | `ux` | Best practices, anti-patterns | animation, accessibility, z-index, loading |
 | `react` | React/Next.js performance | waterfall, bundle, suspense, memo, rerender, cache |
-| `web` | Web interface guidelines | aria, focus, keyboard, semantic, virtualize |
-| `prompt` | AI prompts, CSS keywords | (style name) |
+| `web` | App/web interface guidelines | accessibility, touch targets, safe areas, responsive forms |
 
 ### Available Stacks
 
 | Stack | Focus |
 |-------|-------|
-| `html-tailwind` | Tailwind utilities, responsive, a11y (DEFAULT) |
-| `react` | State, hooks, performance, patterns |
-| `nextjs` | SSR, routing, images, API routes |
-| `vue` | Composition API, Pinia, Vue Router |
-| `svelte` | Runes, stores, SvelteKit |
-| `swiftui` | Views, State, Navigation, Animation |
-| `react-native` | Components, Navigation, Lists |
-| `flutter` | Widgets, State, Layout, Theming |
-| `shadcn` | shadcn/ui components, theming, forms, patterns |
-| `jetpack-compose` | Composables, Modifiers, State Hoisting, Recomposition |
+| `react` | Components, hooks, rendering performance |
+| `nextjs` | App Router, SSR/SSG, server/client boundaries |
+| `vue` | Composition API, components, reactivity |
+| `svelte` | Stores, transitions, component patterns |
+| `astro` | Content sites, islands, static performance |
+| `swiftui` | Native Apple UI patterns |
+| `react-native` | Mobile components, navigation, lists |
+| `flutter` | Widgets, Material/Cupertino, layout |
+| `nuxtjs` | Vue SSR, routing, modules |
+| `nuxt-ui` | Nuxt UI components and theming |
+| `html-tailwind` | Static HTML/Tailwind prototypes |
+| `shadcn` | shadcn/ui components and tokens |
+| `jetpack-compose` | Android Compose UI patterns |
+| `threejs` | 3D scenes, cameras, rendering performance |
+| `angular` | Angular components, signals, forms |
+| `laravel` | Blade/Livewire/Inertia UI patterns |
 
 ---
 
 ## Example Workflow
 
-**User request:** "Làm landing page cho dịch vụ chăm sóc da chuyên nghiệp"
+**User request:** "Make an AI search homepage。"
 
 ### Step 1: Analyze Requirements
-- Product type: Beauty/Spa service
-- Style keywords: elegant, professional, soft
-- Industry: Beauty/Wellness
-- Stack: html-tailwind (default)
+- Product type: Tool (3D model generation and photo gallery)
+- Target audience: creators and operators managing image-to-3D generation workflows
+- Style keywords: modern, minimal, content-first, dark mode
+- Stack: React + TypeScript + Vite
 
 ### Step 2: Generate Design System (REQUIRED)
 
 ```bash
-python3 skills/ui-ux-pro-max/scripts/search.py "beauty spa wellness service elegant" --design-system -p "Serenity Spa"
+python3 skills/ui-ux-pro-max/scripts/search.py "AI search tool modern minimal" --design-system -p "AI Search"
 ```
 
 **Output:** Complete design system with pattern, style, colors, typography, effects, and anti-patterns.
@@ -174,17 +208,17 @@ python3 skills/ui-ux-pro-max/scripts/search.py "beauty spa wellness service eleg
 ### Step 3: Supplement with Detailed Searches (as needed)
 
 ```bash
-# Get UX guidelines for animation and accessibility
-python3 skills/ui-ux-pro-max/scripts/search.py "animation accessibility" --domain ux
+# Get style options for a modern tool product
+python3 skills/ui-ux-pro-max/scripts/search.py "minimalism dark mode" --domain style
 
-# Get alternative typography options if needed
-python3 skills/ui-ux-pro-max/scripts/search.py "elegant luxury serif" --domain typography
+# Get UX best practices for search interaction and loading
+python3 skills/ui-ux-pro-max/scripts/search.py "search loading animation" --domain ux
 ```
 
 ### Step 4: Stack Guidelines
 
 ```bash
-python3 skills/ui-ux-pro-max/scripts/search.py "layout responsive form" --stack html-tailwind
+python3 skills/ui-ux-pro-max/scripts/search.py "list performance navigation" --stack react
 ```
 
 **Then:** Synthesize design system + detailed searches and implement the design.
@@ -207,86 +241,139 @@ python3 skills/ui-ux-pro-max/scripts/search.py "fintech crypto" --design-system 
 
 ## Tips for Better Results
 
-1. **Be specific with keywords** - "healthcare SaaS dashboard" > "app"
-2. **Search multiple times** - Different keywords reveal different insights
-3. **Combine domains** - Style + Typography + Color = Complete design system
-4. **Always check UX** - Search "animation", "z-index", "accessibility" for common issues
-5. **Use stack flag** - Get implementation-specific best practices
-6. **Iterate** - If first search doesn't match, try different keywords
+### Query Strategy
+
+- Use **multi-dimensional keywords** — combine product + industry + tone + density: `"entertainment social vibrant content-dense"` not just `"app"`
+- Try different keywords for the same need: `"playful neon"` → `"vibrant dark"` → `"content-first minimal"`
+- Use `--design-system` first for full recommendations, then `--domain` to deep-dive any dimension you're unsure about
+- Always add `--stack react` for implementation-specific guidance
+
+### Common Sticking Points
+
+| Problem | What to Do |
+|---------|------------|
+| Can't decide on style/color | Re-run `--design-system` with different keywords |
+| Dark mode contrast issues | Search `--domain ux "dark mode contrast"` + Common Rules: Light/Dark Mode Contrast |
+| Animations feel unnatural | Search `--domain ux "animation reduced motion"` + Common Rules: Interaction |
+| Form UX is poor | Search `--domain ux "form error focus"` + Common Rules: Interaction |
+| Navigation feels confusing | Search `--domain ux "navigation back behavior"` + stack guidance |
+| Layout breaks on small screens | Search `--domain ux "responsive spacing layout"` + Common Rules: Layout & Spacing |
+| Performance / jank | Search `--domain react "rerender memo list"` + stack guidance |
+
+### Pre-Delivery Checklist
+
+- Run `--domain ux "animation accessibility z-index loading"` as a UX validation pass before implementation
+- Run through Common Rules and the Pre-Delivery Checklist below as a final review
+- Test on 375px (small phone) and landscape orientation
+- Verify behavior with **reduced-motion** enabled and **Dynamic Type** at largest size
+- Check dark mode contrast independently (don't assume light mode values work)
+- Confirm all touch targets ≥44pt and no content hidden behind safe areas
 
 ---
 
 ## Common Rules for Professional UI
 
 These are frequently overlooked issues that make UI look unprofessional:
+Scope notice: The rules below cover app UI patterns; for Sharp GUI prioritize desktop-web and responsive browser interaction patterns.
 
 ### Icons & Visual Elements
 
+- 默认图标库使用 **Phosphor (`@phosphor-icons/react`)**。`src/ui-ux-pro-max/data/icons.csv` 中列出的只是常用推荐图标，不是完整集合。
+- 当推荐表中找不到合适的图标时：
+  - **优先继续从 Phosphor 的完整图标集中选择任何语义更贴切的图标**；
+  - 如果 Phosphor 也没有理想选项，可以使用 **Heroicons (`@heroicons/react`)** 作为备选，注意保持风格一致（线性/填充、笔画粗细、圆角风格）。
+
+| Rule | Standard | Avoid | Why It Matters |
+|------|----------|--------|----------------|
+| **No Emoji as Structural Icons** | Use vector-based icons (e.g., Phosphor `@phosphor-icons/react`, Heroicons `@heroicons/react`, @phosphor-icons/react, @heroicons/react). | Using emojis (🎨 🚀 ⚙️) for navigation, settings, or system controls. | Emojis are font-dependent, inconsistent across platforms, and cannot be controlled via design tokens. |
+| **Vector-Only Assets** | Use SVG or platform vector icons that scale cleanly and support theming. | Raster PNG icons that blur or pixelate. | Ensures scalability, crisp rendering, and dark/light mode adaptability. |
+| **Stable Interaction States** | Use color, opacity, or elevation transitions for press states without changing layout bounds. | Layout-shifting transforms that move surrounding content or trigger visual jitter. | Prevents unstable interactions and preserves smooth motion/perceived quality on mobile. |
+| **Correct Brand Logos** | Use official brand assets and follow their usage guidelines (spacing, color, clear space). | Guessing logo paths, recoloring unofficially, or modifying proportions. | Prevents brand misuse and ensures legal/platform compliance. |
+| **Consistent Icon Sizing** | Define icon sizes as design tokens (e.g., icon-sm, icon-md = 24pt, icon-lg). | Mixing arbitrary values like 20pt / 24pt / 28pt randomly. | Maintains rhythm and visual hierarchy across the interface. |
+| **Stroke Consistency** | Use a consistent stroke width within the same visual layer (e.g., 1.5px or 2px). | Mixing thick and thin stroke styles arbitrarily. | Inconsistent strokes reduce perceived polish and cohesion. |
+| **Filled vs Outline Discipline** | Use one icon style per hierarchy level. | Mixing filled and outline icons at the same hierarchy level. | Maintains semantic clarity and stylistic coherence. |
+| **Touch Target Minimum** | Minimum 44×44pt interactive area (use hitSlop if icon is smaller). | Small icons without expanded tap area. | Meets accessibility and platform usability standards. |
+| **Icon Alignment** | Align icons to text baseline and maintain consistent padding. | Misaligned icons or inconsistent spacing around them. | Prevents subtle visual imbalance that reduces perceived quality. |
+| **Icon Contrast** | Follow WCAG contrast standards: 4.5:1 for small elements, 3:1 minimum for larger UI glyphs. | Low-contrast icons that blend into the background. | Ensures accessibility in both light and dark modes. |
+
+
+### Interaction (App)
+
 | Rule | Do | Don't |
 |------|----|----- |
-| **No emoji icons** | Use SVG icons (Heroicons, Lucide, Simple Icons) | Use emojis like 🎨 🚀 ⚙️ as UI icons |
-| **Stable hover states** | Use color/opacity transitions on hover | Use scale transforms that shift layout |
-| **Correct brand logos** | Research official SVG from Simple Icons | Guess or use incorrect logo paths |
-| **Consistent icon sizing** | Use fixed viewBox (24x24) with w-6 h-6 | Mix different icon sizes randomly |
-
-### Interaction & Cursor
-
-| Rule | Do | Don't |
-|------|----|----- |
-| **Cursor pointer** | Add `cursor-pointer` to all clickable/hoverable cards | Leave default cursor on interactive elements |
-| **Hover feedback** | Provide visual feedback (color, shadow, border) | No indication element is interactive |
-| **Smooth transitions** | Use `transition-colors duration-200` | Instant state changes or too slow (>500ms) |
+| **Tap feedback** | Provide clear pressed feedback (ripple/opacity/elevation) within 80-150ms | No visual response on tap |
+| **Animation timing** | Keep micro-interactions around 150-300ms with platform-native easing | Instant transitions or slow animations (>500ms) |
+| **Accessibility focus** | Ensure screen reader focus order matches visual order and labels are descriptive | Unlabeled controls or confusing focus traversal |
+| **Disabled state clarity** | Use disabled semantics (`disabled`/native disabled props), reduced emphasis, and no tap action | Controls that look tappable but do nothing |
+| **Touch target minimum** | Keep tap areas >=44x44pt (iOS) or >=48x48dp (Android), expand hit area when icon is smaller | Tiny tap targets or icon-only hit areas without padding |
+| **Gesture conflict prevention** | Keep one primary gesture per region and avoid nested tap/drag conflicts | Overlapping gestures causing accidental actions |
+| **Semantic native controls** | Prefer native interactive primitives (`Button`, `Pressable`, platform equivalents) with proper accessibility roles | Generic containers used as primary controls without semantics |
 
 ### Light/Dark Mode Contrast
 
 | Rule | Do | Don't |
 |------|----|----- |
-| **Glass card light mode** | Use `bg-white/80` or higher opacity | Use `bg-white/10` (too transparent) |
-| **Text contrast light** | Use `#0F172A` (slate-900) for text | Use `#94A3B8` (slate-400) for body text |
-| **Muted text light** | Use `#475569` (slate-600) minimum | Use gray-400 or lighter |
-| **Border visibility** | Use `border-gray-200` in light mode | Use `border-white/10` (invisible) |
+| **Surface readability (light)** | Keep cards/surfaces clearly separated from background with sufficient opacity/elevation | Overly transparent surfaces that blur hierarchy |
+| **Text contrast (light)** | Maintain body text contrast >=4.5:1 against light surfaces | Low-contrast gray body text |
+| **Text contrast (dark)** | Maintain primary text contrast >=4.5:1 and secondary text >=3:1 on dark surfaces | Dark mode text that blends into background |
+| **Border and divider visibility** | Ensure separators are visible in both themes (not just light mode) | Theme-specific borders disappearing in one mode |
+| **State contrast parity** | Keep pressed/focused/disabled states equally distinguishable in light and dark themes | Defining interaction states for one theme only |
+| **Token-driven theming** | Use semantic color tokens mapped per theme across app surfaces/text/icons | Hardcoded per-screen hex values |
+| **Scrim and modal legibility** | Use a modal scrim strong enough to isolate foreground content (typically 40-60% black) | Weak scrim that leaves background visually competing |
 
 ### Layout & Spacing
 
 | Rule | Do | Don't |
 |------|----|----- |
-| **Floating navbar** | Add `top-4 left-4 right-4` spacing | Stick navbar to `top-0 left-0 right-0` |
-| **Content padding** | Account for fixed navbar height | Let content hide behind fixed elements |
-| **Consistent max-width** | Use same `max-w-6xl` or `max-w-7xl` | Mix different container widths |
+| **Safe-area compliance** | Respect top/bottom safe areas for all fixed headers, tab bars, and CTA bars | Placing fixed UI under notch, status bar, or gesture area |
+| **System bar clearance** | Add spacing for status/navigation bars and gesture home indicator | Let tappable content collide with OS chrome |
+| **Consistent content width** | Keep predictable content width per device class (phone/tablet) | Mixing arbitrary widths between screens |
+| **8dp spacing rhythm** | Use a consistent 4/8dp spacing system for padding/gaps/section spacing | Random spacing increments with no rhythm |
+| **Readable text measure** | Keep long-form text readable on large devices (avoid edge-to-edge paragraphs on tablets) | Full-width long text that hurts readability |
+| **Section spacing hierarchy** | Define clear vertical rhythm tiers (e.g., 16/24/32/48) by hierarchy | Similar UI levels with inconsistent spacing |
+| **Adaptive gutters by breakpoint** | Increase horizontal insets on larger widths and in landscape | Same narrow gutter on all device sizes/orientations |
+| **Scroll and fixed element coexistence** | Add bottom/top content insets so lists are not hidden behind fixed bars | Scroll content obscured by sticky headers/footers |
 
 ---
 
 ## Pre-Delivery Checklist
 
 Before delivering UI code, verify these items:
+Scope notice: This checklist is for app UI quality; for Sharp GUI prioritize desktop-web and responsive browser quality.
 
 ### Visual Quality
 - [ ] No emojis used as icons (use SVG instead)
-- [ ] All icons from consistent icon set (Heroicons/Lucide)
-- [ ] Brand logos are correct (verified from Simple Icons)
-- [ ] Hover states don't cause layout shift
-- [ ] Use theme colors directly (bg-primary) not var() wrapper
+- [ ] All icons come from a consistent icon family and style
+- [ ] Official brand assets are used with correct proportions and clear space
+- [ ] Pressed-state visuals do not shift layout bounds or cause jitter
+- [ ] Semantic theme tokens are used consistently (no ad-hoc per-screen hardcoded colors)
 
 ### Interaction
-- [ ] All clickable elements have `cursor-pointer`
-- [ ] Hover states provide clear visual feedback
-- [ ] Transitions are smooth (150-300ms)
-- [ ] Focus states visible for keyboard navigation
+- [ ] All tappable elements provide clear pressed feedback (ripple/opacity/elevation)
+- [ ] Touch targets meet minimum size (>=44x44pt iOS, >=48x48dp Android)
+- [ ] Micro-interaction timing stays in the 150-300ms range with native-feeling easing
+- [ ] Disabled states are visually clear and non-interactive
+- [ ] Screen reader focus order matches visual order, and interactive labels are descriptive
+- [ ] Gesture regions avoid nested/conflicting interactions (tap/drag/back-swipe conflicts)
 
 ### Light/Dark Mode
-- [ ] Light mode text has sufficient contrast (4.5:1 minimum)
-- [ ] Glass/transparent elements visible in light mode
-- [ ] Borders visible in both modes
-- [ ] Test both modes before delivery
+- [ ] Primary text contrast >=4.5:1 in both light and dark mode
+- [ ] Secondary text contrast >=3:1 in both light and dark mode
+- [ ] Dividers/borders and interaction states are distinguishable in both modes
+- [ ] Modal/drawer scrim opacity is strong enough to preserve foreground legibility (typically 40-60% black)
+- [ ] Both themes are tested before delivery (not inferred from a single theme)
 
 ### Layout
-- [ ] Floating elements have proper spacing from edges
-- [ ] No content hidden behind fixed navbars
-- [ ] Responsive at 375px, 768px, 1024px, 1440px
-- [ ] No horizontal scroll on mobile
+- [ ] Safe areas are respected for headers, tab bars, and bottom CTA bars
+- [ ] Scroll content is not hidden behind fixed/sticky bars
+- [ ] Verified on small phone, large phone, and tablet (portrait + landscape)
+- [ ] Horizontal insets/gutters adapt correctly by device size and orientation
+- [ ] 4/8dp spacing rhythm is maintained across component, section, and page levels
+- [ ] Long-form text measure remains readable on larger devices (no edge-to-edge paragraphs)
 
 ### Accessibility
-- [ ] All images have alt text
-- [ ] Form inputs have labels
+- [ ] All meaningful images/icons have accessibility labels
+- [ ] Form fields have labels, hints, and clear error messages
 - [ ] Color is not the only indicator
-- [ ] `prefers-reduced-motion` respected
+- [ ] Reduced motion and dynamic text size are supported without layout breakage
+- [ ] Accessibility traits/roles/states (selected, disabled, expanded) are announced correctly
