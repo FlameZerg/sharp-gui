@@ -6,6 +6,7 @@ import {
     fetchAuthStatus,
     fetchPhotoGalleryCacheStats,
     fetchSettings,
+    fetchVideoReconstructionStatus,
     clearPhotoGalleryCache,
     logoutAccessSession,
     restartServer,
@@ -17,7 +18,16 @@ import {
     updateAuthSettings,
 } from '@/api';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
-import type { AuthStatusResponse, ModelFormat, PhotoGalleryCacheStats } from '@/types';
+import type {
+    AuthStatusResponse,
+    ModelFormat,
+    PhotoGalleryCacheStats,
+    VideoReconstructionConfig,
+    VideoReconstructionDependencies,
+    VideoReconstructionEngine,
+    VideoReconstructionQuality,
+    VideoReconstructionVramBudget,
+} from '@/types';
 import {
     REVEAL_EFFECT_SETTINGS_OPTIONS,
     type RevealEffectPreferenceId,
@@ -30,6 +40,13 @@ const FolderIcon = () => (
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
     </svg>
 );
+
+const DEFAULT_VIDEO_CONFIG: VideoReconstructionConfig = {
+    default_quality: 'high',
+    default_engine: 'auto',
+    vram_budget: '12gb',
+    keep_intermediate_files: false,
+};
 
 export const Settings: React.FC = () => {
     const { t } = useTranslation();
@@ -92,6 +109,11 @@ export const Settings: React.FC = () => {
     const [isPhotoCacheClearing, setIsPhotoCacheClearing] = useState(false);
     const [photoCacheMessage, setPhotoCacheMessage] = useState<string | null>(null);
     const [photoCacheConfirmOpen, setPhotoCacheConfirmOpen] = useState(false);
+    const [videoConfig, setVideoConfig] = useState<VideoReconstructionConfig>(DEFAULT_VIDEO_CONFIG);
+    const [savedVideoConfig, setSavedVideoConfig] = useState<VideoReconstructionConfig>(DEFAULT_VIDEO_CONFIG);
+    const [videoDependencies, setVideoDependencies] = useState<VideoReconstructionDependencies | null>(null);
+    const [videoStatusLoading, setVideoStatusLoading] = useState(false);
+    const [videoMessage, setVideoMessage] = useState<string | null>(null);
 
     // Track if workspace_folder changed (needs restart)
     const [originalWorkspace, setOriginalWorkspace] = useState('');
@@ -140,6 +162,10 @@ export const Settings: React.FC = () => {
                 setWorkspaceFolder(data.workspace_folder);
                 setOriginalWorkspace(data.workspace_folder);
             }
+            if (data.video_reconstruction) {
+                setVideoConfig(data.video_reconstruction);
+                setSavedVideoConfig(data.video_reconstruction);
+            }
             const nextAuthStatus = await fetchAuthStatus();
             applyAccessStatus(nextAuthStatus);
             // We do not overwrite modelFormat here because effectiveModelFormat() 
@@ -164,6 +190,22 @@ export const Settings: React.FC = () => {
         }
     }, [isLocalAccess, t]);
 
+    const loadVideoReconstructionStatus = useCallback(async () => {
+        setVideoStatusLoading(true);
+        try {
+            const status = await fetchVideoReconstructionStatus();
+            setVideoConfig(status.config);
+            setSavedVideoConfig(status.config);
+            setVideoDependencies(status.dependencies);
+            setVideoMessage(null);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : t('videoReconStatusLoadFailed');
+            setVideoMessage(message);
+        } finally {
+            setVideoStatusLoading(false);
+        }
+    }, [t]);
+
     // Load settings when modal opens
     useEffect(() => {
         if (settingsModalOpen) {
@@ -172,8 +214,16 @@ export const Settings: React.FC = () => {
             setAccessMessage(null);
             loadSettings();
             void loadPhotoCacheStats();
+            void loadVideoReconstructionStatus();
         }
-    }, [settingsModalOpen, effectiveModelFormat, viewerDefaultRevealEffect, loadSettings, loadPhotoCacheStats]);
+    }, [
+        settingsModalOpen,
+        effectiveModelFormat,
+        viewerDefaultRevealEffect,
+        loadSettings,
+        loadPhotoCacheStats,
+        loadVideoReconstructionStatus,
+    ]);
 
     const handleClose = () => {
         setSettingsModalOpen(false);
@@ -210,7 +260,11 @@ export const Settings: React.FC = () => {
                 return;
             }
 
-            const payload: Record<string, string> = {};
+            const payload: {
+                model_format?: ModelFormat;
+                workspace_folder?: string;
+                video_reconstruction?: VideoReconstructionConfig;
+            } = {};
 
             // Always save model_format
             if (modelFormat !== serverModelFormat) {
@@ -221,6 +275,10 @@ export const Settings: React.FC = () => {
             const workspaceChanged = workspaceFolder !== originalWorkspace;
             if (workspaceChanged) {
                 payload.workspace_folder = workspaceFolder;
+            }
+
+            if (isLocalAccess && hasVideoSettingsChanges) {
+                payload.video_reconstruction = videoConfig;
             }
 
             // 切换局域网监听绑定需要重启服务才能生效（与工作目录一致的体验）
@@ -254,6 +312,10 @@ export const Settings: React.FC = () => {
                 if (payload.model_format) {
                     setServerModelFormat(modelFormat);
                     setLocalModelFormat(null);
+                }
+                if (payload.video_reconstruction) {
+                    setSavedVideoConfig(payload.video_reconstruction);
+                    setVideoMessage(t('videoReconSettingsSaved'));
                 }
                 needsServerRestart = needsServerRestart || Boolean(result.needs_restart);
             }
@@ -326,6 +388,28 @@ export const Settings: React.FC = () => {
         }
     };
 
+    const updateVideoConfig = (patch: Partial<VideoReconstructionConfig>) => {
+        setVideoConfig((current) => ({ ...current, ...patch }));
+    };
+
+    const renderDependencyGroup = (
+        groupKey: 'required' | 'stable' | 'experimental',
+        group?: VideoReconstructionDependencies['required'],
+    ) => {
+        const available = Boolean(group?.available);
+        return (
+            <div className={styles.dependencyRow}>
+                <div>
+                    <span className={styles.dependencyTitle}>{t(`videoReconDependency.${groupKey}`)}</span>
+                    <p>{group?.message || t(`videoReconDependencyHint.${groupKey}`)}</p>
+                </div>
+                <span className={`${styles.statusPill} ${available ? styles.statusOk : styles.statusWarn}`}>
+                    {available ? t('videoReconDependencyAvailable') : t('videoReconDependencyMissing')}
+                </span>
+            </div>
+        );
+    };
+
     const getAccessErrorMessage = (error: unknown) => {
         if (error instanceof ApiError) {
             if (error.status === 403) {
@@ -344,6 +428,11 @@ export const Settings: React.FC = () => {
         sessionDays !== savedSessionDays ||
         allowRemoteGeneration !== savedAllowRemoteGeneration ||
         lanBindEnabled !== savedLanBindEnabled;
+    const hasVideoSettingsChanges =
+        videoConfig.default_quality !== savedVideoConfig.default_quality ||
+        videoConfig.default_engine !== savedVideoConfig.default_engine ||
+        videoConfig.vram_budget !== savedVideoConfig.vram_budget ||
+        videoConfig.keep_intermediate_files !== savedVideoConfig.keep_intermediate_files;
 
     const accessSettingsStateText = (() => {
         if (hasAccessSettingsChanges) {
@@ -687,6 +776,103 @@ export const Settings: React.FC = () => {
                         </div>
                     </div>
                 )}
+
+                <div className={styles.group}>
+                    <label className={styles.label}>{t('videoReconSettingsTitle')}</label>
+                    <div className={styles.cacheCard}>
+                        <div className={styles.cacheHeader}>
+                            <div>
+                                <span className={styles.cacheTitle}>{t('videoReconSettingsDefaults')}</span>
+                                <p>{t('videoReconSettingsHint')}</p>
+                            </div>
+                            <button
+                                type="button"
+                                className={styles.browseBtn}
+                                onClick={loadVideoReconstructionStatus}
+                                disabled={videoStatusLoading}
+                            >
+                                {videoStatusLoading ? t('loading') : t('videoReconRefreshDiagnostics')}
+                            </button>
+                        </div>
+
+                        <div className={styles.videoSettingsGrid}>
+                            <div>
+                                <label className={styles.label}>{t('videoReconDefaultQuality')}</label>
+                                <div className={styles.segmentedControl}>
+                                    {(['preview', 'high', 'extreme'] as VideoReconstructionQuality[]).map((quality) => (
+                                        <button
+                                            key={quality}
+                                            type="button"
+                                            className={`${styles.segmentBtn} ${videoConfig.default_quality === quality ? styles.segmentActive : ''}`}
+                                            disabled={!isLocalAccess}
+                                            onClick={() => updateVideoConfig({ default_quality: quality })}
+                                        >
+                                            {t(`videoReconQuality.${quality}`)}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className={styles.label}>{t('videoReconDefaultEngine')}</label>
+                                <div className={styles.segmentedControl}>
+                                    {(['auto', 'stable', 'experimental'] as VideoReconstructionEngine[]).map((engine) => (
+                                        <button
+                                            key={engine}
+                                            type="button"
+                                            className={`${styles.segmentBtn} ${videoConfig.default_engine === engine ? styles.segmentActive : ''}`}
+                                            disabled={!isLocalAccess}
+                                            onClick={() => updateVideoConfig({ default_engine: engine })}
+                                        >
+                                            {t(`videoReconEngine.${engine}`)}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className={styles.label}>{t('videoReconVramBudget')}</label>
+                                <div className={`${styles.segmentedControl} ${styles.segmentedControlWrap}`}>
+                                    {(['auto', '8gb', '12gb', '16gb', '24gb'] as VideoReconstructionVramBudget[]).map((budget) => (
+                                        <button
+                                            key={budget}
+                                            type="button"
+                                            className={`${styles.segmentBtn} ${videoConfig.vram_budget === budget ? styles.segmentActive : ''}`}
+                                            disabled={!isLocalAccess}
+                                            onClick={() => updateVideoConfig({ vram_budget: budget })}
+                                        >
+                                            {t(`videoReconVram.${budget}`)}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <label className={styles.videoToggleRow}>
+                                <span>
+                                    <strong>{t('videoReconKeepIntermediate')}</strong>
+                                    <small>{t('videoReconKeepIntermediateHint')}</small>
+                                </span>
+                                <input
+                                    type="checkbox"
+                                    checked={videoConfig.keep_intermediate_files}
+                                    disabled={!isLocalAccess}
+                                    onChange={(event) => updateVideoConfig({ keep_intermediate_files: event.target.checked })}
+                                />
+                            </label>
+                        </div>
+
+                        <div className={styles.dependencyList}>
+                            {renderDependencyGroup('required', videoDependencies?.required)}
+                            {renderDependencyGroup('stable', videoDependencies?.stable)}
+                            {renderDependencyGroup('experimental', videoDependencies?.experimental)}
+                        </div>
+
+                        <p className={`${styles.settingState} ${hasVideoSettingsChanges ? styles.settingStatePending : styles.settingStateSaved}`}>
+                            {hasVideoSettingsChanges ? t('videoReconSettingsUnsaved') : t('videoReconSettingsCurrent')}
+                        </p>
+                        {videoMessage ? <p className={styles.message}>{videoMessage}</p> : null}
+                    </div>
+                </div>
 
                 {/* Quick Preset */}
                 <div className={styles.group}>

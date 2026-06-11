@@ -409,5 +409,110 @@
   "photoVideoVolume": "视频音量",
   "photoVideoFullscreen": "全屏",
   "photoVideoExitFullscreen": "退出全屏",
-  "photoDownloadVideo": "下载视频"
+  "photoDownloadVideo": "下载视频",
+
+  "videoReconGenerate3d": "生成 3D",
+  "videoReconSingleVideoOnly": "选择单个视频",
+  "videoReconDialogTitle": "视频生成 3D",
+  "videoReconStatusLoadFailed": "加载视频重建议诊断失败。",
+  "videoReconCheckingDependencies": "正在检查本机重建工具...",
+  "videoReconRequiredMissing": "缺少 ffmpeg 或 ffprobe，无法启动视频重建。",
+  "videoReconStableMissing": "缺少 Nerfstudio / Splatfacto 命令行工具，请安装后再开始重建。",
+  "videoReconExperimentalUnavailableStableOk": "实验初始化不可用；自动模式将使用稳定 Splatfacto 路线。",
+  "videoReconDependenciesReady": "稳定重建路线已就绪。",
+  "videoReconQueued": "视频重建任务已加入队列。",
+  "videoReconCreateFailed": "创建视频重建任务失败。",
+  "videoReconRecommended": "默认",
+  "videoReconModeLabel": "模式",
+  "videoReconQualityLabel": "质量",
+  "videoReconOutputName": "输出名称",
+  "videoReconOutputPlaceholder": "模型图库中的名称",
+  "videoReconAdvanced": "高级",
+  "videoReconEngineLabel": "引擎",
+  "videoReconKeepIntermediate": "保留中间文件",
+  "videoReconKeepIntermediateHint": "便于排查抽帧、位姿和 Nerfstudio 日志，但会占用更多磁盘空间。",
+  "videoReconVramBudget": "显存预算",
+  "videoReconStart": "开始",
+  "videoReconSubmitting": "提交中...",
+  "videoReconSettingsTitle": "视频重建",
+  "videoReconSettingsDefaults": "默认值与诊断",
+  "videoReconSettingsHint": "控制本地视频生成 Gaussian Splat 模型时默认使用的预设。",
+  "videoReconRefreshDiagnostics": "刷新",
+  "videoReconDefaultQuality": "默认质量",
+  "videoReconDefaultEngine": "默认引擎",
+  "videoReconSettingsSaved": "视频重建设置已保存。",
+  "videoReconSettingsUnsaved": "视频重建设置有未保存更改",
+  "videoReconSettingsCurrent": "已保存：视频重建默认值为最新",
+  "videoReconDependencyAvailable": "可用",
+  "videoReconDependencyMissing": "缺失",
+  "videoReconMode": {
+    "auto": "自动",
+    "object": "物品",
+    "environment": "环境"
+  },
+  "videoReconQuality": {
+    "preview": "快速预览",
+    "high": "高质量",
+    "extreme": "极致"
+  },
+  "videoReconEngine": {
+    "auto": "自动",
+    "stable": "稳定",
+    "experimental": "实验"
+  },
+  "videoReconVram": {
+    "auto": "自动",
+    "8gb": "8 GB",
+    "12gb": "12 GB",
+    "16gb": "16 GB",
+    "24gb": "24 GB"
+  },
+  "videoReconDependency": {
+    "required": "视频基础工具",
+    "stable": "稳定 3DGS 路线",
+    "experimental": "实验初始化"
+  },
+  "videoReconDependencyHint": {
+    "required": "ffmpeg 和 ffprobe 用于读取元数据与抽帧。",
+    "stable": "Nerfstudio Splatfacto 用于训练并导出 Gaussian Splat 模型。",
+    "experimental": "VGGT 类初始化为可选增强，系统不会自动下载受限模型。"
+  },
+  "videoReconError": {
+    "video_reconstruction_dependency_missing": "缺少视频重建必需依赖。",
+    "video_reconstruction_stable_unavailable": "稳定 Nerfstudio / Splatfacto 路线不可用。",
+    "video_reconstruction_experimental_unavailable": "本机尚未配置实验初始化。",
+    "video_reconstruction_invalid_request": "视频重建请求包含非法选项。",
+    "video_reconstruction_source_unavailable": "源视频不可用，或已不在配置的相册中。",
+    "video_reconstruction_cancelled": "视频重建已取消。",
+    "video_reconstruction_oom": "GPU 显存不足。请降低质量档位或减少帧数。",
+    "video_reconstruction_output_missing": "重建完成但没有得到可用的 PLY 输出。",
+    "video_reconstruction_spz_failed": "SPZ 压缩失败，但已保留 PLY 输出。"
+  },
+  "taskStatus": {
+    "pending": "等待中",
+    "running": "运行中",
+    "processing": "处理中",
+    "completed": "已完成",
+    "failed": "失败",
+    "cancelled": "已取消"
+  },
+  "taskStage": {
+    "starting": "启动中",
+    "downloading": "下载中",
+    "loading": "加载中",
+    "processing": "处理中",
+    "preprocessing": "预处理",
+    "inference": "推理中",
+    "postprocessing": "后处理",
+    "saving": "保存中",
+    "done": "完成",
+    "video_prepare": "准备视频",
+    "video_extract_frames": "抽取关键帧",
+    "video_foreground": "前景处理",
+    "video_geometry": "估计几何",
+    "video_optimize": "优化高斯",
+    "video_export": "导出 PLY",
+    "video_compress_spz": "压缩 SPZ",
+    "video_done": "完成"
+  }
 }

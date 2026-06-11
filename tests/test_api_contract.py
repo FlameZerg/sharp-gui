@@ -1,5 +1,6 @@
 import os
 
+from backend.services.photo_gallery import photo_meta_from_path, save_photo_index
 from tests.conftest import write_config
 
 
@@ -38,6 +39,11 @@ def test_core_read_apis_return_expected_shapes(client, app):
     settings_payload = settings.get_json()
     assert settings_payload["model_format"] == "spz"
     assert settings_payload["workspace_folder"] == paths.workspace_folder
+    assert settings_payload["video_reconstruction"]["default_quality"] == "high"
+
+    video_status = client.get("/api/video-reconstructions/status")
+    assert video_status.status_code == 200
+    assert "dependencies" in video_status.get_json()
 
 
 def test_export_missing_model_returns_json_error(client):
@@ -65,6 +71,12 @@ def test_photo_album_media_api_lists_videos_and_supports_range(client, app, conf
                 "allow_remote_generation": False,
                 "session_version": 1,
                 "lan_bind_enabled": True,
+            },
+            "video_reconstruction": {
+                "default_quality": "high",
+                "default_engine": "auto",
+                "vram_budget": "8gb",
+                "keep_intermediate_files": False,
             },
             "photo_gallery_roots": [{"id": "album1", "name": "Album", "path": str(album_dir), "enabled": True}],
         },
@@ -112,3 +124,125 @@ def test_photo_album_media_api_lists_videos_and_supports_range(client, app, conf
     download = client.get(item["download_url"])
     assert download.status_code == 200
     assert "attachment" in download.headers["Content-Disposition"]
+
+
+def test_video_reconstruction_api_rejects_invalid_and_missing_dependencies(client, app, config_file, workspace, monkeypatch):
+    album_dir = workspace / "album"
+    album_dir.mkdir()
+    image_path = album_dir / "image.jpg"
+    video_path = album_dir / "clip.mp4"
+    image_path.write_bytes(b"fake-image")
+    video_path.write_bytes(b"fake-video")
+    write_config(
+        config_file,
+        {
+            "workspace_folder": str(workspace),
+            "model_format": "spz",
+            "access_control": {
+                "enabled": False,
+                "password_hash": "",
+                "session_secret": "test-secret",
+                "session_days": 30,
+                "allow_localhost_bypass": True,
+                "allow_remote_generation": False,
+                "session_version": 1,
+                "lan_bind_enabled": True,
+            },
+            "video_reconstruction": {
+                "default_quality": "high",
+                "default_engine": "auto",
+                "vram_budget": "8gb",
+                "keep_intermediate_files": False,
+            },
+            "photo_gallery_roots": [{"id": "album1", "name": "Album", "path": str(album_dir), "enabled": True}],
+        },
+    )
+    paths = app.config["PATH_CONTEXT"]
+    image_meta = photo_meta_from_path({"id": "album1", "path": str(album_dir)}, str(image_path))
+    video_meta = photo_meta_from_path({"id": "album1", "path": str(album_dir)}, str(video_path))
+    save_photo_index(paths, {"photos": {image_meta["id"]: image_meta, video_meta["id"]: video_meta}})
+
+    photo_response = client.post("/api/video-reconstructions", json={"video_id": image_meta["id"]})
+    assert photo_response.status_code == 404
+    assert photo_response.get_json()["code"] == "video_reconstruction_source_unavailable"
+
+    monkeypatch.setattr("backend.services.video_reconstruction.check_dependencies", lambda: {
+        "required": {"available": False, "tools": [], "message": "missing"},
+        "stable": {"available": False, "tools": [], "message": "missing"},
+        "experimental": {"available": False, "tools": [], "message": "missing"},
+        "summary": {
+            "available": False,
+            "stable_available": False,
+            "experimental_available": False,
+        },
+    })
+    missing_response = client.post("/api/video-reconstructions", json={"video_id": video_meta["id"]})
+    assert missing_response.status_code == 409
+    assert missing_response.get_json()["code"] == "video_reconstruction_dependency_missing"
+
+
+def test_video_reconstruction_api_queues_without_exposing_paths(client, app, config_file, workspace, monkeypatch):
+    album_dir = workspace / "album"
+    album_dir.mkdir()
+    video_path = album_dir / "clip.mp4"
+    video_path.write_bytes(b"fake-video")
+    write_config(
+        config_file,
+        {
+            "workspace_folder": str(workspace),
+            "model_format": "spz",
+            "access_control": {
+                "enabled": False,
+                "password_hash": "",
+                "session_secret": "test-secret",
+                "session_days": 30,
+                "allow_localhost_bypass": True,
+                "allow_remote_generation": False,
+                "session_version": 1,
+                "lan_bind_enabled": True,
+            },
+            "video_reconstruction": {
+                "default_quality": "high",
+                "default_engine": "auto",
+                "vram_budget": "8gb",
+                "keep_intermediate_files": False,
+            },
+            "photo_gallery_roots": [{"id": "album1", "name": "Album", "path": str(album_dir), "enabled": True}],
+        },
+    )
+    paths = app.config["PATH_CONTEXT"]
+    video_meta = photo_meta_from_path({"id": "album1", "path": str(album_dir)}, str(video_path))
+    save_photo_index(paths, {"photos": {video_meta["id"]: video_meta}})
+    monkeypatch.setattr("backend.services.video_reconstruction.check_dependencies", lambda: {
+        "required": {"available": True, "tools": [], "message": None},
+        "stable": {"available": True, "tools": [], "message": None},
+        "experimental": {"available": False, "tools": [], "message": "missing"},
+        "summary": {
+            "available": True,
+            "stable_available": True,
+            "experimental_available": False,
+        },
+    })
+
+    response = client.post("/api/video-reconstructions", json={
+        "video_id": video_meta["id"],
+        "mode": "object",
+        "quality": "preview",
+        "engine": "auto",
+        "output_name": "clip",
+    })
+
+    assert response.status_code == 200
+    task = response.get_json()["task"]
+    assert task["kind"] == "video_3dgs"
+    assert task["source_media_id"] == video_meta["id"]
+    assert task["mode"] == "object"
+    assert task["quality"] == "preview"
+    assert task["resolved_engine"] == "stable"
+    assert task["vram_budget"] == "8gb"
+    assert "source_video_path" not in task
+    assert "output_path" not in task
+
+    tasks = client.get("/api/tasks").get_json()["tasks"]
+    assert tasks[0]["id"] == task["id"]
+    assert "source_video_path" not in tasks[0]

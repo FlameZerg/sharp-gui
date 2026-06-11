@@ -23,6 +23,7 @@ interface PhotoMasonryGridProps {
   onOpenPhoto: (photo: PhotoItem) => void;
   onTogglePhoto: (photoId: string) => void;
   onConvertPhoto: (photo: PhotoItem) => void;
+  onReconstructVideo: (photo: PhotoItem) => void;
 }
 
 export const PhotoMasonryGrid = memo(function PhotoMasonryGrid({
@@ -35,6 +36,7 @@ export const PhotoMasonryGrid = memo(function PhotoMasonryGrid({
   onOpenPhoto,
   onTogglePhoto,
   onConvertPhoto,
+  onReconstructVideo,
 }: PhotoMasonryGridProps) {
   const { t } = useTranslation();
   const [failedThumbIds, setFailedThumbIds] = useState<Set<string>>(() => new Set());
@@ -164,7 +166,17 @@ export const PhotoMasonryGrid = memo(function PhotoMasonryGrid({
                     <span>{photo.name}</span>
                     {specLabel ? <small>{specLabel}</small> : null}
                   </span>
-                  {!isVideo ? (
+                  {isVideo ? (
+                    <button
+                      className={styles.convertBtn}
+                      onClick={() => onReconstructVideo(photo)}
+                      type="button"
+                      title={t('videoReconGenerate3d')}
+                      aria-label={t('videoReconGenerate3d')}
+                    >
+                      <SparklesIcon width={14} height={14} />
+                    </button>
+                  ) : (
                     <button
                       className={styles.convertBtn}
                       onClick={() => onConvertPhoto(photo)}
@@ -174,7 +186,7 @@ export const PhotoMasonryGrid = memo(function PhotoMasonryGrid({
                     >
                       <SparklesIcon width={14} height={14} />
                     </button>
-                  ) : null}
+                  )}
                 </div>
               </article>
             );

@@ -11,6 +11,8 @@ class PathContext:
     output_folder: str
     thumbnail_folder: str
     photo_gallery_cache_folder: str
+    video_reconstruction_folder: str
+    video_reconstruction_jobs_folder: str
     photo_thumbnail_folder: str
     video_poster_folder: str
     photo_index_file: str
@@ -28,6 +30,8 @@ def build_path_context(config_data):
     output_folder = os.path.join(workspace_folder, "outputs")
     thumbnail_folder = os.path.join(input_folder, ".thumbnails")
     photo_gallery_cache_folder = os.path.join(workspace_folder, ".photo-gallery-cache")
+    video_reconstruction_folder = os.path.join(workspace_folder, ".video-reconstruction")
+    video_reconstruction_jobs_folder = os.path.join(video_reconstruction_folder, "jobs")
     photo_thumbnail_folder = os.path.join(photo_gallery_cache_folder, "thumbnails")
     video_poster_folder = os.path.join(photo_gallery_cache_folder, "video-posters")
     photo_index_file = os.path.join(photo_gallery_cache_folder, "index.json")
@@ -40,6 +44,8 @@ def build_path_context(config_data):
         output_folder=output_folder,
         thumbnail_folder=thumbnail_folder,
         photo_gallery_cache_folder=photo_gallery_cache_folder,
+        video_reconstruction_folder=video_reconstruction_folder,
+        video_reconstruction_jobs_folder=video_reconstruction_jobs_folder,
         photo_thumbnail_folder=photo_thumbnail_folder,
         video_poster_folder=video_poster_folder,
         photo_index_file=photo_index_file,
@@ -55,6 +61,7 @@ def ensure_runtime_directories(paths):
     os.makedirs(paths.photo_thumbnail_folder, exist_ok=True)
     os.makedirs(paths.video_poster_folder, exist_ok=True)
     os.makedirs(paths.photo_album_index_folder, exist_ok=True)
+    os.makedirs(paths.video_reconstruction_jobs_folder, exist_ok=True)
 
 
 def install_path_config(app, paths):
@@ -64,6 +71,8 @@ def install_path_config(app, paths):
     app.config["OUTPUT_FOLDER"] = paths.output_folder
     app.config["THUMBNAIL_FOLDER"] = paths.thumbnail_folder
     app.config["PHOTO_GALLERY_CACHE_FOLDER"] = paths.photo_gallery_cache_folder
+    app.config["VIDEO_RECONSTRUCTION_FOLDER"] = paths.video_reconstruction_folder
+    app.config["VIDEO_RECONSTRUCTION_JOBS_FOLDER"] = paths.video_reconstruction_jobs_folder
     app.config["PHOTO_THUMBNAIL_FOLDER"] = paths.photo_thumbnail_folder
     app.config["VIDEO_POSTER_FOLDER"] = paths.video_poster_folder
     app.config["PHOTO_CATALOG_FILE"] = paths.photo_catalog_file

@@ -35,6 +35,8 @@ EXPECTED_ROUTES = {
     ("/api/video-play/<video_id>/<play_token>/<path:filename>", ("GET",)),
     ("/api/video-original/<video_id>", ("GET",)),
     ("/api/video-poster/<video_id>", ("GET",)),
+    ("/api/video-reconstructions", ("POST",)),
+    ("/api/video-reconstructions/status", ("GET",)),
     ("/assets/<path:filename>", ("GET",)),
     ("/files/<path:filename>", ("GET",)),
     ("/static/<path:filename>", ("GET",)),

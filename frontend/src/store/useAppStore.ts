@@ -17,6 +17,8 @@ import type {
   PhotoMediaCounts,
   PhotoMediaType,
   Task,
+  VideoReconstructionConfig,
+  VideoReconstructionDependencies,
   ViewerInteractionState,
   ViewerOrientationPreset,
   ViewerQualityState,
@@ -48,6 +50,12 @@ const DEFAULT_PHOTO_MEDIA_COUNTS: PhotoMediaCounts = {
   image: 0,
   photo: 0,
   video: 0,
+};
+const DEFAULT_VIDEO_RECONSTRUCTION_CONFIG: VideoReconstructionConfig = {
+  default_quality: 'high',
+  default_engine: 'auto',
+  vram_budget: '12gb',
+  keep_intermediate_files: false,
 };
 
 const QUALITY_LIMITS = {
@@ -414,6 +422,11 @@ interface AppState {
   photoSelectionMode: boolean;
   selectedPhotoIds: string[];
   previewPhoto: PhotoItem | null;
+  videoReconstructionDialogOpen: boolean;
+  videoReconstructionTarget: PhotoItem | null;
+  videoReconstructionDependencies: VideoReconstructionDependencies | null;
+  videoReconstructionConfig: VideoReconstructionConfig;
+  videoReconstructionSubmitting: boolean;
 
   // Model Format Preference
   serverModelFormat: ModelFormat;        // Host default from config.json
@@ -497,6 +510,13 @@ interface AppState {
   toggleSelectedPhoto: (photoId: string) => void;
   clearSelectedPhotos: () => void;
   setPreviewPhoto: (item: PhotoItem | null) => void;
+  openVideoReconstructionDialog: (item: PhotoItem) => void;
+  closeVideoReconstructionDialog: () => void;
+  setVideoReconstructionStatus: (
+    dependencies: VideoReconstructionDependencies | null,
+    config?: VideoReconstructionConfig,
+  ) => void;
+  setVideoReconstructionSubmitting: (submitting: boolean) => void;
 
   setServerModelFormat: (format: ModelFormat) => void;
   setLocalModelFormat: (format: ModelFormat | null) => void;
@@ -574,6 +594,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   photoSelectionMode: false,
   selectedPhotoIds: [],
   previewPhoto: null,
+  videoReconstructionDialogOpen: false,
+  videoReconstructionTarget: null,
+  videoReconstructionDependencies: null,
+  videoReconstructionConfig: { ...DEFAULT_VIDEO_RECONSTRUCTION_CONFIG },
+  videoReconstructionSubmitting: false,
 
   // Model Format Preference
   serverModelFormat: 'spz',
@@ -844,6 +869,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     photoSelectionMode: false,
   }),
   setPreviewPhoto: (item) => set({ previewPhoto: item }),
+  openVideoReconstructionDialog: (item) => set({
+    videoReconstructionDialogOpen: true,
+    videoReconstructionTarget: item,
+  }),
+  closeVideoReconstructionDialog: () => set({
+    videoReconstructionDialogOpen: false,
+    videoReconstructionTarget: null,
+    videoReconstructionSubmitting: false,
+  }),
+  setVideoReconstructionStatus: (dependencies, config) => set((state) => ({
+    videoReconstructionDependencies: dependencies,
+    videoReconstructionConfig: config ?? state.videoReconstructionConfig,
+  })),
+  setVideoReconstructionSubmitting: (submitting) => set({ videoReconstructionSubmitting: submitting }),
 
   setServerModelFormat: (format) => set({ serverModelFormat: format }),
   setLocalModelFormat: (format) => {

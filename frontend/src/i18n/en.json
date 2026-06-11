@@ -409,5 +409,110 @@
   "photoVideoVolume": "Video volume",
   "photoVideoFullscreen": "Fullscreen",
   "photoVideoExitFullscreen": "Exit fullscreen",
-  "photoDownloadVideo": "Download video"
+  "photoDownloadVideo": "Download video",
+
+  "videoReconGenerate3d": "Generate 3D",
+  "videoReconSingleVideoOnly": "Select one video",
+  "videoReconDialogTitle": "Video to 3D",
+  "videoReconStatusLoadFailed": "Failed to load video reconstruction diagnostics.",
+  "videoReconCheckingDependencies": "Checking local reconstruction tools...",
+  "videoReconRequiredMissing": "ffmpeg or ffprobe is missing. Video reconstruction cannot start.",
+  "videoReconStableMissing": "Nerfstudio / Splatfacto CLI tools are missing. Install them before starting a reconstruction.",
+  "videoReconExperimentalUnavailableStableOk": "Experimental initialization is unavailable; Auto will use the stable Splatfacto route.",
+  "videoReconDependenciesReady": "Stable reconstruction route is ready.",
+  "videoReconQueued": "Video reconstruction task queued.",
+  "videoReconCreateFailed": "Failed to create video reconstruction task.",
+  "videoReconRecommended": "Default",
+  "videoReconModeLabel": "Mode",
+  "videoReconQualityLabel": "Quality",
+  "videoReconOutputName": "Output name",
+  "videoReconOutputPlaceholder": "Model name in the output gallery",
+  "videoReconAdvanced": "Advanced",
+  "videoReconEngineLabel": "Engine",
+  "videoReconKeepIntermediate": "Keep intermediate files",
+  "videoReconKeepIntermediateHint": "Useful for debugging frames, poses and Nerfstudio logs. Uses more disk space.",
+  "videoReconVramBudget": "VRAM budget",
+  "videoReconStart": "Start",
+  "videoReconSubmitting": "Submitting...",
+  "videoReconSettingsTitle": "Video Reconstruction",
+  "videoReconSettingsDefaults": "Defaults and diagnostics",
+  "videoReconSettingsHint": "Controls the default preset used when turning a local video into a Gaussian Splat model.",
+  "videoReconRefreshDiagnostics": "Refresh",
+  "videoReconDefaultQuality": "Default quality",
+  "videoReconDefaultEngine": "Default engine",
+  "videoReconSettingsSaved": "Video reconstruction settings saved.",
+  "videoReconSettingsUnsaved": "Unsaved video reconstruction changes",
+  "videoReconSettingsCurrent": "Saved: video reconstruction defaults are current",
+  "videoReconDependencyAvailable": "Available",
+  "videoReconDependencyMissing": "Missing",
+  "videoReconMode": {
+    "auto": "Auto",
+    "object": "Object",
+    "environment": "Environment"
+  },
+  "videoReconQuality": {
+    "preview": "Preview",
+    "high": "High",
+    "extreme": "Extreme"
+  },
+  "videoReconEngine": {
+    "auto": "Auto",
+    "stable": "Stable",
+    "experimental": "Experimental"
+  },
+  "videoReconVram": {
+    "auto": "Auto",
+    "8gb": "8 GB",
+    "12gb": "12 GB",
+    "16gb": "16 GB",
+    "24gb": "24 GB"
+  },
+  "videoReconDependency": {
+    "required": "Video tools",
+    "stable": "Stable 3DGS route",
+    "experimental": "Experimental initialization"
+  },
+  "videoReconDependencyHint": {
+    "required": "ffmpeg and ffprobe decode metadata and extract frames.",
+    "stable": "Nerfstudio Splatfacto trains and exports the Gaussian Splat model.",
+    "experimental": "VGGT-style initialization is optional and never downloaded automatically."
+  },
+  "videoReconError": {
+    "video_reconstruction_dependency_missing": "Required video reconstruction dependencies are missing.",
+    "video_reconstruction_stable_unavailable": "The stable Nerfstudio / Splatfacto route is unavailable.",
+    "video_reconstruction_experimental_unavailable": "Experimental initialization is not configured locally.",
+    "video_reconstruction_invalid_request": "The video reconstruction request contains invalid options.",
+    "video_reconstruction_source_unavailable": "The source video is unavailable or no longer in the configured album.",
+    "video_reconstruction_cancelled": "Video reconstruction was cancelled.",
+    "video_reconstruction_oom": "GPU memory ran out. Try a lower quality preset or fewer frames.",
+    "video_reconstruction_output_missing": "The reconstruction finished without a usable PLY output.",
+    "video_reconstruction_spz_failed": "SPZ compression failed, but the PLY output was kept."
+  },
+  "taskStatus": {
+    "pending": "Pending",
+    "running": "Running",
+    "processing": "Processing",
+    "completed": "Completed",
+    "failed": "Failed",
+    "cancelled": "Cancelled"
+  },
+  "taskStage": {
+    "starting": "Starting",
+    "downloading": "Downloading",
+    "loading": "Loading",
+    "processing": "Processing",
+    "preprocessing": "Preprocessing",
+    "inference": "Inference",
+    "postprocessing": "Postprocessing",
+    "saving": "Saving",
+    "done": "Done",
+    "video_prepare": "Preparing video",
+    "video_extract_frames": "Extracting frames",
+    "video_foreground": "Foreground processing",
+    "video_geometry": "Geometry estimation",
+    "video_optimize": "Optimizing splats",
+    "video_export": "Exporting PLY",
+    "video_compress_spz": "Compressing SPZ",
+    "video_done": "Done"
+  }
 }

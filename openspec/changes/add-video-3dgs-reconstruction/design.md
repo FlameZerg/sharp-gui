@@ -87,12 +87,14 @@ Sharp GUI 当前有三条已经成型的能力边界：
 视频
   → ffprobe/ffmpeg 读取元数据和抽帧
   → 关键帧筛选和质量过滤
-  → 稳定几何初始化（COLMAP/hloc 或 Nerfstudio 数据处理）
-  → Splatfacto/gsplat 优化
-  → 导出 Gaussian Splat .ply
+  → Nerfstudio ns-process-data video 数据处理
+  → Nerfstudio ns-train splatfacto 优化
+  → Nerfstudio ns-export gaussian-splat 导出 Gaussian Splat .ply
   → 现有 ply_to_spz 压缩
   → 模型图库刷新
 ```
+
+首版稳定实现目标已确定为 Nerfstudio/Splatfacto CLI 路线：`ns-process-data video`、`ns-train splatfacto`、`ns-export gaussian-splat`。COLMAP/hloc 作为 Nerfstudio 数据处理链路中的底层能力或后续替代方案，不作为首版单独 UI 选项暴露。
 
 实验增强路线：
 

@@ -2,7 +2,11 @@ import os
 
 from flask import Blueprint, current_app, g, jsonify, request
 
-from backend.config import load_config, save_config
+from backend.config import (
+    load_config,
+    normalize_video_reconstruction_config,
+    save_config,
+)
 from backend.services.folder_picker import browse_folder_native
 from backend.server import restart_process_later
 
@@ -17,12 +21,14 @@ def settings():
     config = load_config()
 
     if request.method == "GET":
+        video_config, _ = normalize_video_reconstruction_config(config)
         return jsonify({
             "is_local": is_local,
             "workspace_folder": paths.workspace_folder if is_local else None,
             "model_format": config.get("model_format", "spz"),
             "input_folder": paths.input_folder if is_local else None,
             "output_folder": paths.output_folder if is_local else None,
+            "video_reconstruction": video_config,
         })
 
     if not is_local:
@@ -40,6 +46,14 @@ def settings():
         fmt = data["model_format"]
         if fmt in ("ply", "spz"):
             new_config["model_format"] = fmt
+
+    if "video_reconstruction" in data:
+        incoming_video_config = data.get("video_reconstruction")
+        if isinstance(incoming_video_config, dict):
+            current_video_config, _ = normalize_video_reconstruction_config(new_config)
+            current_video_config.update(incoming_video_config)
+            new_config["video_reconstruction"] = current_video_config
+            normalize_video_reconstruction_config(new_config)
 
     save_config(new_config)
 

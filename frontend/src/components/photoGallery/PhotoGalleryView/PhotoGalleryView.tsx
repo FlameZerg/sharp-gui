@@ -117,6 +117,7 @@ export function PhotoGalleryView() {
     toggleSelectedPhoto,
     clearSelectedPhotos,
     setPreviewPhoto,
+    openVideoReconstructionDialog,
     setTasks,
     setCurrentPhotoAlbum,
   } = useAppStore(
@@ -145,6 +146,7 @@ export function PhotoGalleryView() {
       toggleSelectedPhoto: state.toggleSelectedPhoto,
       clearSelectedPhotos: state.clearSelectedPhotos,
       setPreviewPhoto: state.setPreviewPhoto,
+      openVideoReconstructionDialog: state.openVideoReconstructionDialog,
       setTasks: state.setTasks,
       setCurrentPhotoAlbum: state.setCurrentPhotoAlbum,
     })),
@@ -161,6 +163,10 @@ export function PhotoGalleryView() {
   );
   const selectedImageItems = useMemo(
     () => selectedItems.filter((photo) => photo.media_type === 'image'),
+    [selectedItems],
+  );
+  const selectedVideoItems = useMemo(
+    () => selectedItems.filter((photo) => photo.media_type === 'video'),
     [selectedItems],
   );
   const canUploadPhotos = Boolean(currentAlbum) && (
@@ -607,6 +613,20 @@ export function PhotoGalleryView() {
     void convertPhotos([photo]);
   }, [convertPhotos]);
 
+  const handleReconstructVideo = useCallback((photo: PhotoItem) => {
+    if (photo.media_type !== 'video') {
+      return;
+    }
+    openVideoReconstructionDialog(photo);
+  }, [openVideoReconstructionDialog]);
+
+  const handleReconstructSelectedVideo = useCallback(() => {
+    if (selectedVideoItems.length !== 1) {
+      return;
+    }
+    openVideoReconstructionDialog(selectedVideoItems[0]);
+  }, [openVideoReconstructionDialog, selectedVideoItems]);
+
   const handleDownloadSelected = useCallback(async () => {
     if (selectedPhotoIds.length === 0 || isDownloading) {
       return;
@@ -685,6 +705,7 @@ export function PhotoGalleryView() {
           onOpenPhoto={setPreviewPhoto}
           onTogglePhoto={toggleSelectedPhoto}
           onConvertPhoto={handleConvertOne}
+          onReconstructVideo={handleReconstructVideo}
         />
       </div>
 
@@ -722,7 +743,10 @@ export function PhotoGalleryView() {
         isDownloading={isDownloading}
         canConvert={selectedImageItems.length > 0}
         convertCount={selectedImageItems.length}
+        videoCount={selectedVideoItems.length}
+        canReconstructVideo={selectedVideoItems.length === 1}
         onConvert={handleConvertSelected}
+        onReconstructVideo={handleReconstructSelectedVideo}
         onDownload={handleDownloadSelected}
         onClear={clearSelectedPhotos}
       />

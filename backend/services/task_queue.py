@@ -8,9 +8,11 @@ import uuid
 
 from backend import runtime
 from backend.services.model_convert import ply_to_spz
+from backend.services import video_reconstruction
 
 TASK_RETENTION_SECONDS = 3600
 CLEANUP_INTERVAL = 300
+TASK_KIND_IMAGE_SHARP = "image_sharp"
 
 
 class TaskManager:
@@ -53,6 +55,7 @@ class TaskManager:
         task_id = str(uuid.uuid4())
         task_info = {
             "id": task_id,
+            "kind": TASK_KIND_IMAGE_SHARP,
             "status": "pending",
             "filename": filename,
             "input_path": input_path,
@@ -64,13 +67,29 @@ class TaskManager:
         with self.task_lock:
             self.task_status[task_id] = task_info
         self.task_queue.put(task_id)
-        return task_info
+        return self._public_task(task_info)
+
+    def enqueue_video_reconstruction(self, task_payload):
+        task_id = str(uuid.uuid4())
+        task_info = {
+            "id": task_id,
+            "kind": video_reconstruction.TASK_KIND_VIDEO_3DGS,
+            "status": "pending",
+            "created_at": time.time(),
+            "error": None,
+            **task_payload,
+        }
+
+        with self.task_lock:
+            self.task_status[task_id] = task_info
+        self.task_queue.put(task_id)
+        return self._public_task(task_info)
 
     def list_tasks(self):
         with self.task_lock:
-            tasks = list(self.task_status.values())
+            tasks = [self._public_task(task) for task in self.task_status.values()]
         tasks.sort(key=lambda x: x["created_at"], reverse=True)
-        has_active = any(t["status"] in ("pending", "processing") for t in tasks)
+        has_active = any(t["status"] in ("pending", "running", "processing") for t in tasks)
         return tasks, has_active
 
     def cancel_task(self, task_id):
@@ -83,7 +102,7 @@ class TaskManager:
                 task["status"] = "cancelled"
                 return {"success": True, "message": "Task cancelled"}, 200
 
-            if task["status"] == "processing":
+            if task["status"] in ("running", "processing"):
                 task["status"] = "cancelled"
                 process = self.running_processes.get(task_id)
                 if process:
@@ -103,7 +122,7 @@ class TaskManager:
             with self.task_lock:
                 old_ids = [
                     task_id for task_id, task in self.task_status.items()
-                    if task["created_at"] < cutoff and task["status"] in ("completed", "failed")
+                    if task["created_at"] < cutoff and task["status"] in ("completed", "failed", "cancelled")
                 ]
                 for task_id in old_ids:
                     del self.task_status[task_id]
@@ -123,15 +142,29 @@ class TaskManager:
                 if not task or task["status"] == "cancelled":
                     self.task_queue.task_done()
                     continue
-                input_path = task["input_path"]
-                output_folder = task["output_folder"]
                 filename = task["filename"]
+                kind = task.get("kind") or TASK_KIND_IMAGE_SHARP
 
             print(f"🔄 Processing task {task_id}: {filename}")
             with self.task_lock:
                 self.task_status[task_id]["status"] = "processing"
                 self.task_status[task_id]["progress"] = 0
                 self.task_status[task_id]["stage"] = "starting"
+
+            if kind == video_reconstruction.TASK_KIND_VIDEO_3DGS:
+                video_reconstruction.run_video_reconstruction_task(self, task_id, task)
+                self.task_queue.task_done()
+                continue
+
+            if kind != TASK_KIND_IMAGE_SHARP:
+                with self.task_lock:
+                    self.task_status[task_id]["status"] = "failed"
+                    self.task_status[task_id]["error"] = f"Unsupported task kind: {kind}"
+                self.task_queue.task_done()
+                continue
+
+            input_path = task["input_path"]
+            output_folder = task["output_folder"]
 
             device = self.sharp_device_selector()
             print(f"Using Sharp device: {device}")
@@ -217,6 +250,64 @@ class TaskManager:
                     self.running_processes.pop(task_id, None)
 
             self.task_queue.task_done()
+
+    def _public_task(self, task):
+        public = {
+            "id": task.get("id"),
+            "filename": task.get("filename"),
+            "status": task.get("status"),
+            "progress": task.get("progress"),
+            "stage": task.get("stage"),
+            "error": self._sanitize_public_text(task, task.get("error")),
+            "created_at": task.get("created_at"),
+        }
+
+        optional_keys = (
+            "kind",
+            "source_media_id",
+            "source_name",
+            "mode",
+            "quality",
+            "engine",
+            "resolved_engine",
+            "vram_budget",
+            "output_name",
+            "error_code",
+            "completed_at",
+        )
+        for key in optional_keys:
+            if task.get(key) is not None:
+                public[key] = task.get(key)
+
+        details = task.get("details")
+        if isinstance(details, dict):
+            safe_details = {}
+            if isinstance(details.get("warnings"), list):
+                safe_details["warnings"] = details["warnings"]
+            public["details"] = safe_details
+
+        return {key: value for key, value in public.items() if value is not None}
+
+    def _sanitize_public_text(self, task, value):
+        if not isinstance(value, str):
+            return value
+
+        sanitized = value
+        sensitive_paths = [
+            task.get("input_path"),
+            task.get("output_folder"),
+            task.get("source_video_path"),
+            task.get("output_path"),
+            task.get("spz_path"),
+            self.paths.workspace_folder,
+            self.paths.input_folder,
+            self.paths.output_folder,
+            self.paths.video_reconstruction_folder,
+        ]
+        for path in sensitive_paths:
+            if isinstance(path, str) and path:
+                sanitized = sanitized.replace(path, "[path]")
+        return sanitized
 
     def _update_progress_from_line(self, task_id, filename, line):
         line_lower = line.lower()

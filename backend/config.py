@@ -47,6 +47,15 @@ def get_default_access_control_config():
     }
 
 
+def get_default_video_reconstruction_config():
+    return {
+        "default_quality": "high",
+        "default_engine": "auto",
+        "vram_budget": "12gb",
+        "keep_intermediate_files": False,
+    }
+
+
 def coerce_bool(value, default=False):
     if isinstance(value, bool):
         return value
@@ -110,12 +119,64 @@ def normalize_access_control_config(current_config):
     return normalized, changed
 
 
+def normalize_video_reconstruction_config(current_config):
+    defaults = get_default_video_reconstruction_config()
+    raw = current_config.get("video_reconstruction")
+    changed = False
+
+    if not isinstance(raw, dict):
+        raw = {}
+        changed = True
+
+    default_quality = raw.get("default_quality")
+    if default_quality not in {"preview", "high", "extreme"}:
+        default_quality = defaults["default_quality"]
+
+    default_engine = raw.get("default_engine")
+    if default_engine not in {"auto", "stable", "experimental"}:
+        default_engine = defaults["default_engine"]
+
+    vram_budget = raw.get("vram_budget")
+    if not isinstance(vram_budget, str) or not vram_budget.strip():
+        vram_budget = defaults["vram_budget"]
+    else:
+        vram_budget = vram_budget.strip().lower()
+        if vram_budget not in {"auto", "8gb", "12gb", "16gb", "24gb"}:
+            vram_budget = defaults["vram_budget"]
+
+    normalized = {
+        "default_quality": default_quality,
+        "default_engine": default_engine,
+        "vram_budget": vram_budget,
+        "keep_intermediate_files": coerce_bool(
+            raw.get("keep_intermediate_files"),
+            defaults["keep_intermediate_files"],
+        ),
+    }
+
+    for key, value in normalized.items():
+        if raw.get(key) != value:
+            changed = True
+            break
+
+    current_config["video_reconstruction"] = normalized
+    return normalized, changed
+
+
 def get_access_control_config(persist_missing=True):
     current_config = load_config()
     access_config, changed = normalize_access_control_config(current_config)
     if changed and persist_missing:
         save_config(current_config)
     return access_config
+
+
+def get_video_reconstruction_config(persist_missing=True):
+    current_config = load_config()
+    video_config, changed = normalize_video_reconstruction_config(current_config)
+    if changed and persist_missing:
+        save_config(current_config)
+    return video_config
 
 
 def has_access_code(access_config):

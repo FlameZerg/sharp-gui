@@ -1,6 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '@/store/useAppStore';
+import type { Task } from '@/types';
 import { cancelTask } from '@/api';
 import styles from './TaskQueue.module.css';
 
@@ -81,6 +82,31 @@ export const TaskQueue: React.FC = () => {
         return null;
     }
 
+    const getTaskStageText = (task: Task) => {
+        if (task.status === 'processing' && task.stage) {
+            const key = `taskStage.${task.stage}`;
+            const translated = t(key);
+            return translated === key ? task.stage : translated;
+        }
+        const statusKey = `taskStatus.${task.status}`;
+        const translatedStatus = t(statusKey);
+        return translatedStatus === statusKey ? task.status : translatedStatus;
+    };
+
+    const getTaskErrorText = (task: Task) => {
+        if (!task.error) {
+            return null;
+        }
+        if (task.error_code) {
+            const key = `videoReconError.${task.error_code}`;
+            const translated = t(key);
+            if (translated !== key) {
+                return translated;
+            }
+        }
+        return task.error;
+    };
+
     return (
         <div className={styles.container}>
             <div className={styles.sectionTitle}>{t('processingQueue')}</div>
@@ -89,6 +115,7 @@ export const TaskQueue: React.FC = () => {
                 const { icon, color } = getStatusInfo(task.status);
                 const showProgress = task.status === 'processing' && task.progress !== undefined;
                 const canCancel = task.status === 'pending' || task.status === 'processing';
+                const errorText = getTaskErrorText(task);
 
                 return (
                     <div key={task.id} className={styles.queueItem}>
@@ -113,11 +140,12 @@ export const TaskQueue: React.FC = () => {
                                     <div className={styles.progressText}>{task.progress}%</div>
                                 </>
                             )}
+                            {errorText ? <div className={styles.errorText}>{errorText}</div> : null}
                         </div>
 
                         {/* Status Text */}
                         <div className={styles.statusText}>
-                            {task.status === 'processing' && task.stage ? task.stage : task.status}
+                            {getTaskStageText(task)}
                         </div>
 
                         {/* Cancel Button */}

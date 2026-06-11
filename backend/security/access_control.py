@@ -303,7 +303,9 @@ def get_required_access_level(access_config=None):
         if method == "GET" and not download and verify_video_play_token(video_id, token, access_config):
             return ACCESS_PUBLIC
         return ACCESS_UNLOCKED
-    if path in {"/api/generate", "/api/photo-conversions"}:
+    if path == "/api/video-reconstructions/status":
+        return ACCESS_UNLOCKED
+    if path in {"/api/generate", "/api/photo-conversions", "/api/video-reconstructions"}:
         access_config = access_config or get_access_control_config(persist_missing=False)
         if not is_access_control_enabled(access_config):
             return ACCESS_OWNER

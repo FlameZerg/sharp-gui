@@ -85,6 +85,28 @@ def test_remote_generate_requires_explicit_gate_setting(config_file, workspace):
         assert response.get_json()["code"] == "OWNER_REQUIRED"
 
 
+def test_remote_video_reconstruction_uses_generation_gate(config_file, workspace):
+    config = {
+        "workspace_folder": str(workspace),
+        "access_control": make_access_config(
+            enabled=True,
+            password_hash=generate_password_hash("password123"),
+            allow_remote_generation=False,
+        ),
+        "photo_gallery_roots": [],
+    }
+    write_config(config_file, config)
+    app = create_app()
+    app.config["TESTING"] = True
+
+    with app.test_client() as client:
+        login = remote_post(client, "/api/auth/login", json={"password": "password123"})
+        assert login.status_code == 200
+        response = remote_post(client, "/api/video-reconstructions", json={"video_id": "album_video"})
+        assert response.status_code == 403
+        assert response.get_json()["code"] == "OWNER_REQUIRED"
+
+
 def test_remote_photo_upload_gate_disabled_is_owner_only(config_file, workspace):
     album_dir = workspace / "album"
     album_dir.mkdir()

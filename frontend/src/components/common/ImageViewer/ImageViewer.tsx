@@ -83,6 +83,7 @@ export function ImageViewer() {
     photoItems,
     setPreviewImage,
     setPreviewPhoto,
+    openVideoReconstructionDialog,
     setTasks,
   } = useAppStore();
   const { t } = useTranslation();
@@ -737,6 +738,13 @@ export function ImageViewer() {
     }
   };
 
+  const handleReconstructVideo = () => {
+    if (!previewPhoto || previewPhoto.media_type !== 'video') {
+      return;
+    }
+    openVideoReconstructionDialog(previewPhoto);
+  };
+
   const handleNavigatePhoto = (direction: -1 | 1) => {
     if (!previewPhoto || photoItems.length === 0) {
       return;
@@ -951,6 +959,16 @@ export function ImageViewer() {
             onClick={handleConvertPhoto}
             title={t('photoConvertOne')}
             disabled={isConverting}
+            type="button"
+          >
+            <SparklesIcon width={20} height={20} />
+          </button>
+        ) : null}
+        {previewPhoto && previewPhoto.media_type === 'video' ? (
+          <button
+            className={styles.controlBtn}
+            onClick={handleReconstructVideo}
+            title={t('videoReconGenerate3d')}
             type="button"
           >
             <SparklesIcon width={20} height={20} />
