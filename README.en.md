@@ -273,33 +273,24 @@ Built with Apple Human Interface Guidelines for a premium feel:
 >
 > 👉 Unverified platforms should theoretically work. Report issues on [GitHub Issues](https://github.com/lueluelue12138/sharp-gui/issues).
 
-### Option 1: Download Pre-built Package (Recommended for Users)
+### Option 1: Windows Full Portable Bundle (Recommended for NVIDIA Users)
 
-Download the latest version from [Releases](https://github.com/lueluelue12138/sharp-gui/releases):
+Windows RTX 50 / mainstream NVIDIA users can use the full portable bundle directly, without manually setting up Python, PyTorch, or the model cache.
 
-```bash
-# 1. Download and extract
-unzip sharp-gui-vX.Y.Z.zip
-cd sharp-gui
+Permanent cloud-drive folder: [Open download folder](https://pan.quark.cn/s/94f4acaada40)
 
-# 2. Run install script (auto-configures Python env, downloads model, generates certs)
-./install.sh      # Linux/macOS
-# or
-install.bat       # Windows
+The same folder is kept up to date with the latest version. Pick the package for your GPU:
 
-# 3. Start server
-./run.sh          # Linux/macOS
-# or
-run.bat           # Windows
-```
+- **RTX 50 series**: download the `cu128-rtx50` bundle
+- **Mainstream NVIDIA below RTX 50**: download the `cu126-mainstream` bundle
 
-> 💡 Pre-built packages include compiled frontend, **no Node.js required**. Ready to use out of the box.
->
-> 💡 Want latest features? Download [Pre-release](https://github.com/lueluelue12138/sharp-gui/releases) versions (marked as `Pre-release`).
->
-> 💡 Windows RTX 50 / mainstream NVIDIA GPU users can grab the **full portable bundles** (`cu128-rtx50` or `cu126-mainstream`) from the cloud-drive link in the Release body. They include Python, PyTorch, and the model cache out of the box, with matching `.sha256.txt` for verification.
+Download the ZIP and matching `.sha256.txt`, verify SHA256 first, then extract and double-click `portable-run.bat`.
 
-### Option 2: Install from Source (Developers / Latest Features)
+> 💡 Full portable bundles currently target NVIDIA GPUs only; there is no CPU-only portable bundle.
+
+### Option 2: Install from Source (Recommended for macOS / Linux / Developers)
+
+The source repo already includes the latest built frontend assets. For normal use, you do not need Node.js or a manual frontend build; run the install script to set up Python, then start the app.
 
 ```bash
 # 1. Clone project
@@ -311,11 +302,39 @@ cd sharp-gui
 # or
 install.bat       # Windows
 
-# 3. (Optional) To modify frontend, install Node.js 18+ then run:
-./build.sh        # Build frontend
+# 3. Start server
+./run.sh          # Linux/macOS
+# or
+run.bat           # Windows
 ```
 
+> 💡 Install Node.js and run `./build.sh` / `build.bat` only if you modify the frontend source and need to regenerate `frontend/dist/`.
+>
 > 💡 The install script auto-generates HTTPS certificates. HTTPS mode is recommended for full functionality.
+
+### Option 3: Generic Release Package (No git clone)
+
+The GitHub Release ZIP is a source snapshot with the built frontend already included. It is useful if you do not want to use `git clone`; functionally it is close to source install and still needs the install script to configure Python, dependencies, and models.
+
+Download the latest version from [Releases](https://github.com/lueluelue12138/sharp-gui/releases):
+
+```bash
+# 1. Download and extract
+unzip sharp-gui-vX.Y.Z.zip
+cd sharp-gui
+
+# 2. Run install script
+./install.sh      # Linux/macOS
+# or
+install.bat       # Windows
+
+# 3. Start server
+./run.sh          # Linux/macOS
+# or
+run.bat           # Windows
+```
+
+> 💡 Want latest features? Download [Pre-release](https://github.com/lueluelue12138/sharp-gui/releases) versions (marked as `Pre-release`).
 
 ### What Does the Install Script Do?
 
