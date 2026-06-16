@@ -107,6 +107,16 @@ FOCUSED_CLEANUP_PROFILE = {
     "min_vertices": 1000,
 }
 
+# Object-mode focus crop (C1): only applied when the user explicitly picks the
+# "object" mode. Estimates the subject center/radius from the orbiting camera
+# geometry and drops splats outside that sphere, removing far-away environment
+# (walls, distant floor). auto / environment modes are never touched.
+OBJECT_FOCUS = {
+    "radius_factor": 0.55,   # subject radius ≈ median(camera-to-center distance) × factor
+    "min_cameras": 8,        # need enough orbiting views to trust the geometry
+    "min_keep_ratio": 0.1,   # if the sphere keeps less than this, abandon it (fall back to stats-only)
+}
+
 VRAM_PROFILE_LIMITS = {
     "auto": {
         "frame_scale": 1.0,
@@ -1332,7 +1342,96 @@ def should_apply_focused_cleanup(task):
     return task.get("mode") != "environment"
 
 
-def clean_gaussian_splat_ply(source_path, output_path, profile=None):
+def _find_dataparser_transforms(train_dir):
+    candidates = sorted(
+        Path(train_dir).rglob("dataparser_transforms.json"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    return str(candidates[0]) if candidates else None
+
+
+def estimate_object_focus(train_dir, data_dir):
+    """Estimate subject center/radius in the exported splat's coordinate frame.
+
+    Object videos orbit a central subject, so the look-at rays of all cameras
+    converge near the subject. We intersect those rays (least squares) to locate
+    the subject, and size a sphere from the median camera distance. Camera poses
+    come from ``transforms.json`` (original COLMAP frame) and are mapped into the
+    Nerfstudio training frame via ``dataparser_transforms.json`` so they line up
+    with the exported ``.ply``. Returns ``(center_xyz, radius)`` or ``None`` when
+    it cannot be estimated safely (caller then skips the focus crop).
+    """
+    import numpy as np
+
+    try:
+        transforms_path = os.path.join(data_dir, "transforms.json")
+        with open(transforms_path, "r", encoding="utf-8") as file:
+            transforms = json.load(file)
+        frames = transforms.get("frames")
+        if not isinstance(frames, list) or len(frames) < OBJECT_FOCUS["min_cameras"]:
+            return None
+
+        dataparser_path = _find_dataparser_transforms(train_dir)
+        if not dataparser_path:
+            return None
+        with open(dataparser_path, "r", encoding="utf-8") as file:
+            dataparser = json.load(file)
+        transform = np.asarray(dataparser.get("transform"), dtype=np.float64)
+        scale = float(dataparser.get("scale", 1.0))
+        if transform.shape != (3, 4) or not np.isfinite(scale) or scale <= 0:
+            return None
+        rotation = transform[:3, :3]
+        translation = transform[:3, 3]
+
+        origins = []
+        directions = []
+        for frame in frames:
+            matrix = frame.get("transform_matrix")
+            if not isinstance(matrix, list):
+                continue
+            c2w = np.asarray(matrix, dtype=np.float64)
+            if c2w.shape != (4, 4):
+                continue
+            position = scale * (rotation @ c2w[:3, 3] + translation)
+            look = rotation @ (-c2w[:3, 2])
+            norm = np.linalg.norm(look)
+            if not np.isfinite(position).all() or not np.isfinite(norm) or norm < 1e-8:
+                continue
+            origins.append(position)
+            directions.append(look / norm)
+
+        if len(origins) < OBJECT_FOCUS["min_cameras"]:
+            return None
+        origins = np.asarray(origins)
+        directions = np.asarray(directions)
+
+        identity = np.eye(3)
+        a_matrix = np.zeros((3, 3))
+        b_vector = np.zeros(3)
+        for origin, direction in zip(origins, directions):
+            projector = identity - np.outer(direction, direction)
+            a_matrix += projector
+            b_vector += projector @ origin
+        center = np.linalg.solve(a_matrix, b_vector)
+        if not np.isfinite(center).all():
+            return None
+
+        camera_distances = np.linalg.norm(origins - center, axis=1)
+        median_distance = float(np.median(camera_distances))
+        if not np.isfinite(median_distance) or median_distance <= 0:
+            return None
+        # Sanity: the converged center should sit inside the camera cloud.
+        if np.linalg.norm(center - origins.mean(axis=0)) > 2.0 * median_distance:
+            return None
+
+        radius = median_distance * OBJECT_FOCUS["radius_factor"]
+        return center.astype(np.float64), float(radius)
+    except Exception:
+        return None
+
+
+def clean_gaussian_splat_ply(source_path, output_path, profile=None, object_focus=None):
     import numpy as np
     from plyfile import PlyData, PlyElement
 
@@ -1345,6 +1444,7 @@ def clean_gaussian_splat_ply(source_path, output_path, profile=None):
         raise ValueError("PLY vertex data is missing x/y/z fields.")
 
     positions = np.column_stack([vertex["x"], vertex["y"], vertex["z"]]).astype(np.float64, copy=False)
+    input_vertices = int(len(vertex))
     quantile_min, quantile_max = cleanup_profile["position_quantiles"]
     lower_bounds = np.percentile(positions, quantile_min, axis=0)
     upper_bounds = np.percentile(positions, quantile_max, axis=0)
@@ -1368,7 +1468,24 @@ def clean_gaussian_splat_ply(source_path, output_path, profile=None):
         scale_mask = np.ones(len(vertex), dtype=bool)
 
     mask = position_mask & alpha_mask & scale_mask
-    input_vertices = int(len(vertex))
+
+    object_focus_applied = False
+    object_focus_center = None
+    object_focus_radius = None
+    if object_focus is not None:
+        center = np.asarray(object_focus[0], dtype=np.float64).reshape(-1)
+        radius = float(object_focus[1])
+        if center.shape == (3,) and np.isfinite(center).all() and np.isfinite(radius) and radius > 0:
+            sphere_mask = np.sum((positions - center) ** 2, axis=1) <= radius * radius
+            candidate = mask & sphere_mask
+            candidate_count = int(candidate.sum())
+            candidate_ratio = candidate_count / input_vertices if input_vertices else 0.0
+            if candidate_count >= cleanup_profile["min_vertices"] and candidate_ratio >= OBJECT_FOCUS["min_keep_ratio"]:
+                mask = candidate
+                object_focus_applied = True
+                object_focus_center = [float(value) for value in center]
+                object_focus_radius = radius
+
     output_vertices = int(mask.sum())
     keep_ratio = output_vertices / input_vertices if input_vertices else 0.0
     stats = {
@@ -1379,18 +1496,28 @@ def clean_gaussian_splat_ply(source_path, output_path, profile=None):
         "alpha_min": cleanup_profile["alpha_min"],
         "scale_quantile": cleanup_profile["scale_quantile"],
         "scale_limit": scale_limit,
+        "object_focus_applied": object_focus_applied,
+        "object_focus_center": object_focus_center,
+        "object_focus_radius": object_focus_radius,
         "skipped": False,
     }
 
+    # Object focus is allowed to keep a smaller fraction (it deliberately drops
+    # the surrounding environment), so relax the "removed too much" guard when it
+    # actually fired.
+    effective_min_keep = (
+        OBJECT_FOCUS["min_keep_ratio"] if object_focus_applied else cleanup_profile["min_keep_ratio"]
+    )
     too_small = (
         output_vertices < cleanup_profile["min_vertices"]
-        or keep_ratio < cleanup_profile["min_keep_ratio"]
+        or keep_ratio < effective_min_keep
     )
     if too_small:
         shutil.copy2(source_path, output_path)
         stats["output_vertices"] = input_vertices
         stats["keep_ratio"] = 1.0
         stats["skipped"] = True
+        stats["object_focus_applied"] = False
         stats["reason"] = "cleanup_would_remove_too_much"
         return stats
 
@@ -1663,22 +1790,43 @@ def run_video_reconstruction_task(task_manager, task_id, task):
         output_ply = exported_ply
         if should_apply_focused_cleanup(task):
             focused_ply = os.path.join(export_dir, "splat-focused.ply")
+            object_focus = None
+            if task.get("mode") == "object":
+                object_focus = estimate_object_focus(train_dir, data_dir)
+                if object_focus is None:
+                    append_task_log(
+                        task_manager,
+                        task_id,
+                        "Object focus could not be estimated from camera geometry; applying statistical cleanup only.",
+                    )
             try:
-                cleanup_stats = clean_gaussian_splat_ply(exported_ply, focused_ply)
+                cleanup_stats = clean_gaussian_splat_ply(exported_ply, focused_ply, object_focus=object_focus)
                 task.setdefault("details", {})["focused_cleanup"] = cleanup_stats
                 output_ply = focused_ply
                 if cleanup_stats.get("skipped"):
                     append_task_log(task_manager, task_id, "Focused cleanup skipped because it would remove too much geometry.")
                 else:
-                    append_task_log(
-                        task_manager,
-                        task_id,
-                        (
-                            "Focused cleanup kept "
-                            f"{cleanup_stats['output_vertices']} / {cleanup_stats['input_vertices']} splats "
-                            f"({cleanup_stats['keep_ratio']:.1%})."
-                        ),
-                    )
+                    if cleanup_stats.get("object_focus_applied"):
+                        append_task_log(
+                            task_manager,
+                            task_id,
+                            (
+                                "Object focus crop kept "
+                                f"{cleanup_stats['output_vertices']} / {cleanup_stats['input_vertices']} splats "
+                                f"({cleanup_stats['keep_ratio']:.1%}) within radius "
+                                f"{cleanup_stats['object_focus_radius']:.3f}."
+                            ),
+                        )
+                    else:
+                        append_task_log(
+                            task_manager,
+                            task_id,
+                            (
+                                "Focused cleanup kept "
+                                f"{cleanup_stats['output_vertices']} / {cleanup_stats['input_vertices']} splats "
+                                f"({cleanup_stats['keep_ratio']:.1%})."
+                            ),
+                        )
             except Exception as exc:
                 output_ply = exported_ply
                 details = task.setdefault("details", {})

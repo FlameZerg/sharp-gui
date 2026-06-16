@@ -1430,3 +1430,87 @@ def test_quality_profiles_bind_matching_method_per_tier():
     assert video_reconstruction.resolve_quality_profile("preview", "12gb")["matching_method"] == "sequential"
     assert video_reconstruction.resolve_quality_profile("high", "12gb")["matching_method"] == "exhaustive"
     assert video_reconstruction.resolve_quality_profile("extreme", "24gb")["matching_method"] == "vocab_tree"
+
+
+def test_estimate_object_focus_from_orbit_geometry(tmp_path):
+    import math
+
+    import numpy as np
+
+    data_dir = tmp_path / "nerfstudio-data"
+    train_dir = tmp_path / "train"
+    data_dir.mkdir()
+    (train_dir / "run").mkdir(parents=True)
+
+    # 12 cameras orbiting the origin at radius 4, all looking inward (-Z is look-at).
+    frames = []
+    for i in range(12):
+        angle = 2 * math.pi * i / 12
+        cam = np.array([4.0 * math.cos(angle), 0.0, 4.0 * math.sin(angle)])
+        forward = -cam / np.linalg.norm(cam)  # look toward origin
+        z_axis = -forward                      # OpenGL camera +Z points back
+        up = np.array([0.0, 1.0, 0.0])
+        x_axis = np.cross(up, z_axis)
+        x_axis /= np.linalg.norm(x_axis)
+        y_axis = np.cross(z_axis, x_axis)
+        c2w = np.eye(4)
+        c2w[:3, 0] = x_axis
+        c2w[:3, 1] = y_axis
+        c2w[:3, 2] = z_axis
+        c2w[:3, 3] = cam
+        frames.append({"transform_matrix": c2w.tolist()})
+    (data_dir / "transforms.json").write_text(json.dumps({"frames": frames}), encoding="utf-8")
+
+    # Identity dataparser transform (no reorientation) with unit scale.
+    (train_dir / "run" / "dataparser_transforms.json").write_text(
+        json.dumps({"transform": [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0]], "scale": 1.0}),
+        encoding="utf-8",
+    )
+
+    result = video_reconstruction.estimate_object_focus(str(train_dir), str(data_dir))
+
+    assert result is not None
+    center, radius = result
+    assert np.allclose(center, [0.0, 0.0, 0.0], atol=1e-6)
+    assert radius == 4.0 * video_reconstruction.OBJECT_FOCUS["radius_factor"]
+
+
+def test_estimate_object_focus_returns_none_without_dataparser(tmp_path):
+    data_dir = tmp_path / "nerfstudio-data"
+    train_dir = tmp_path / "train"
+    data_dir.mkdir()
+    train_dir.mkdir()
+    (data_dir / "transforms.json").write_text(
+        json.dumps({"frames": [{"transform_matrix": [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]}] * 12}),
+        encoding="utf-8",
+    )
+
+    # No dataparser_transforms.json -> cannot align coordinates -> skip safely.
+    assert video_reconstruction.estimate_object_focus(str(train_dir), str(data_dir)) is None
+
+
+def test_object_focus_crop_keeps_only_subject(tmp_path):
+    import numpy as np
+    from plyfile import PlyData, PlyElement
+
+    source_path = tmp_path / "source.ply"
+    output_path = tmp_path / "focused.ply"
+    dtype = [("x", "f4"), ("y", "f4"), ("z", "f4"), ("opacity", "f4")]
+    vertices = np.zeros(400, dtype=dtype)
+    # 200 subject points clustered near origin, 200 environment points far on +X.
+    vertices["x"][:200] = np.linspace(-0.3, 0.3, 200)
+    vertices["x"][200:] = np.linspace(8.0, 12.0, 200)
+    vertices["opacity"] = 3.0
+    PlyData([PlyElement.describe(vertices, "vertex")], text=False).write(source_path)
+
+    stats = video_reconstruction.clean_gaussian_splat_ply(
+        source_path,
+        output_path,
+        profile={**video_reconstruction.FOCUSED_CLEANUP_PROFILE, "min_vertices": 10, "min_keep_ratio": 0.25},
+        object_focus=(np.array([0.0, 0.0, 0.0]), 1.0),
+    )
+    cleaned = PlyData.read(output_path)["vertex"].data
+
+    assert stats["object_focus_applied"] is True
+    assert cleaned["x"].max() < 1.0
+    assert stats["output_vertices"] < stats["input_vertices"]

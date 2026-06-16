@@ -157,6 +157,7 @@
 - 训练阶段抓取并暴露 Nerfstudio/viser 实时查看器链接：INFO 级别日志打印、任务详情安全暴露 `viewer_url`，前端任务队列以玻璃态圆角矩形标签展示可点击的实时进度入口。
 - COLMAP 特征匹配策略按质量档绑定：preview=sequential、high=exhaustive、extreme=vocab_tree，减少长视频 sequential 断链导致的只重建前半段/相机过少问题。
 - 相机注册过少时把 FPS 相机采样回退为 random，避免训练期 fpsample 断言崩溃，并记录降级与注册相机数。
+- 物品（object）模式新增相机环绕几何主体聚焦裁剪（C1）：仅 object 模式生效，auto/environment 不受影响；通过 `dataparser_transforms.json` 对齐坐标，带数据缺失/几何异常/裁剪过激的安全回退。
 - VGGT 实验依赖探测改用视频重建环境的 Python 解释器。
 - 模型删除复用 `ALLOWED_IMAGE_EXTENSIONS`，修复大写 `.JPEG/.WEBP` 原图残留。
 - `legacy_video_match_stems` 兼容回填逻辑补充注释，明确只服务旧本机命名产物。
