@@ -112,7 +112,7 @@ export const GalleryItem = memo(function GalleryItem({
             ].join(' ')}
             role="img"
             aria-label={thumbnailAriaLabel}
-            title={thumbnailStatusText ?? thumbnailFallbackLabel}
+            data-tooltip={thumbnailStatusText ?? thumbnailFallbackLabel}
           >
             <span>{thumbnailFallbackLabel}</span>
           </div>
@@ -120,8 +120,8 @@ export const GalleryItem = memo(function GalleryItem({
       </div>
 
       <div className={styles.info}>
-        <div className={styles.name}>{item.name}</div>
-        <div className={styles.meta}>{metaText}</div>
+        <div className={styles.name} data-tooltip={item.name}>{item.name}</div>
+        <div className={styles.meta} data-tooltip={metaText}>{metaText}</div>
       </div>
 
       {hasOriginalPreview ? (
@@ -129,7 +129,7 @@ export const GalleryItem = memo(function GalleryItem({
           className={styles.actionBtn}
           onClick={(event) => handleButtonClick(event, onPreview)}
           aria-label={sourceVideoUrl ? t('viewOriginalVideo') : t('viewOriginal')}
-          title={sourceVideoUrl ? t('viewOriginalVideo') : t('viewOriginal')}
+          data-tooltip={sourceVideoUrl ? t('viewOriginalVideo') : t('viewOriginal')}
           type="button"
         >
           <EyeIcon width={14} height={14} />
@@ -140,7 +140,7 @@ export const GalleryItem = memo(function GalleryItem({
         className={styles.actionBtn}
         onClick={(event) => handleButtonClick(event, onDownload)}
         aria-label={t('download')}
-        title={t('download')}
+        data-tooltip={t('download')}
         type="button"
       >
         <DownloadIcon width={14} height={14} />
@@ -150,7 +150,7 @@ export const GalleryItem = memo(function GalleryItem({
         className={[styles.actionBtn, styles.deleteBtn].join(' ')}
         onClick={(event) => handleButtonClick(event, onDelete)}
         aria-label={t('delete')}
-        title={t('delete')}
+        data-tooltip={t('delete')}
         type="button"
       >
         <DeleteIcon width={14} height={14} />

@@ -239,7 +239,7 @@ export function GalleryList() {
           <button
             onClick={() => setMessage(null)}
             type="button"
-            title={t('close')}
+            data-tooltip={t('close')}
             aria-label={t('close')}
           >
             <CloseIcon width={13} height={13} />

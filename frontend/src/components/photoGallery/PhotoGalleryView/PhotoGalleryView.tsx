@@ -717,7 +717,7 @@ export function PhotoGalleryView() {
         ].filter(Boolean).join(' ')}
         onClick={handleBackToTop}
         type="button"
-        title={t('photoBackToTop')}
+        data-tooltip={t('photoBackToTop')}
         aria-label={t('photoBackToTop')}
       >
         <ChevronUpIcon width={20} height={20} />
@@ -729,7 +729,7 @@ export function PhotoGalleryView() {
           <button
             onClick={() => setNotice(null)}
             type="button"
-            title={t('close')}
+            data-tooltip={t('close')}
             aria-label={t('close')}
           >
             <CloseIcon width={14} height={14} />

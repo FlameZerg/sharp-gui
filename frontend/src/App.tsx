@@ -15,6 +15,7 @@ import { AccessGate, AccessSetupPrompt } from '@/components/auth';
 import { GalleryList } from '@/components/gallery';
 import { ImageViewer, Loading } from '@/components/common';
 import { ParticleBackground } from '@/components/common/ParticleBackground';
+import { GlobalTooltip } from '@/components/common/Tooltip';
 import { Settings, Sidebar } from '@/components/layout';
 import { Help } from '@/components/layout/Help/Help';
 import { PhotoAlbumList, PhotoGalleryView, VideoReconstructionDialog } from '@/components/photoGallery';
@@ -367,6 +368,8 @@ function App() {
       <ImageViewer />
 
       <VideoReconstructionDialog />
+
+      <GlobalTooltip />
     </div>
   );
 }

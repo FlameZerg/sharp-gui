@@ -51,7 +51,7 @@ export function PhotoSelectionBar({
         className={styles.primaryBtn}
         onClick={onConvert}
         disabled={isConverting || !canConvert}
-        title={canConvert ? t('photoConvertSelected') : t('photoConvertPhotosOnly')}
+        data-tooltip={canConvert ? t('photoConvertSelected') : t('photoConvertPhotosOnly')}
         type="button"
       >
         <SparklesIcon width={16} height={16} />
@@ -68,7 +68,7 @@ export function PhotoSelectionBar({
           className={styles.primaryBtn}
           onClick={onReconstructVideo}
           disabled={isConverting || !canReconstructVideo}
-          title={canReconstructVideo ? t('videoReconGenerate3d') : t('videoReconSingleVideoOnly')}
+          data-tooltip={canReconstructVideo ? t('videoReconGenerate3d') : t('videoReconSingleVideoOnly')}
           type="button"
         >
           <SparklesIcon width={16} height={16} />
@@ -84,7 +84,7 @@ export function PhotoSelectionBar({
         onClick={onDownload}
         disabled={isDownloading}
         type="button"
-        title={isDownloading ? t('photoDownloadingSelected') : t('photoDownloadSelected')}
+        data-tooltip={isDownloading ? t('photoDownloadingSelected') : t('photoDownloadSelected')}
         aria-label={isDownloading ? t('photoDownloadingSelected') : t('photoDownloadSelected')}
       >
         <DownloadIcon width={16} height={16} />

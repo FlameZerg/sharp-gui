@@ -144,7 +144,7 @@ export function QuickControls({ isInXr, debugInfo }: QuickControlsProps) {
         className={styles.trigger}
         type="button"
         onClick={toggleQuickControls}
-        title={quickControlsOpen ? t('quickControlsClose') : t('quickControlsOpen')}
+        data-tooltip={quickControlsOpen ? t('quickControlsClose') : t('quickControlsOpen')}
         aria-label={quickControlsOpen ? t('quickControlsCloseAria') : t('quickControlsOpenAria')}
         aria-expanded={quickControlsOpen}
       >

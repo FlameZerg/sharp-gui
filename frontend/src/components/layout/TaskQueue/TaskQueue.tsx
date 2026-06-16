@@ -116,6 +116,7 @@ export const TaskQueue: React.FC = () => {
                 const showProgress = task.status === 'processing' && task.progress !== undefined;
                 const canCancel = task.status === 'pending' || task.status === 'processing';
                 const errorText = getTaskErrorText(task);
+                const stageText = getTaskStageText(task);
 
                 return (
                     <div key={task.id} className={styles.queueItem}>
@@ -126,7 +127,7 @@ export const TaskQueue: React.FC = () => {
 
                         {/* Content */}
                         <div className={styles.itemContent}>
-                            <div className={styles.filename}>{task.filename}</div>
+                            <div className={styles.filename} data-tooltip={task.filename}>{task.filename}</div>
                             
                             {/* Progress Bar */}
                             {showProgress && (
@@ -140,12 +141,12 @@ export const TaskQueue: React.FC = () => {
                                     <div className={styles.progressText}>{task.progress}%</div>
                                 </>
                             )}
-                            {errorText ? <div className={styles.errorText}>{errorText}</div> : null}
+                            {errorText ? <div className={styles.errorText} data-tooltip={errorText}>{errorText}</div> : null}
                         </div>
 
                         {/* Status Text */}
-                        <div className={styles.statusText}>
-                            {getTaskStageText(task)}
+                        <div className={styles.statusText} data-tooltip={stageText}>
+                            {stageText}
                         </div>
 
                         {/* Cancel Button */}
@@ -153,7 +154,8 @@ export const TaskQueue: React.FC = () => {
                             <button 
                                 className={styles.cancelBtn}
                                 onClick={() => handleCancel(task.id)}
-                                title="Cancel"
+                                data-tooltip={t('cancel')}
+                                aria-label={t('cancel')}
                             >
                                 <CancelIcon />
                             </button>

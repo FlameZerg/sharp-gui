@@ -154,7 +154,7 @@ export const PhotoMasonryGrid = memo(function PhotoMasonryGrid({
                     ].filter(Boolean).join(' ')}
                     onClick={() => onTogglePhoto(photo.id)}
                     type="button"
-                    title={t('photoSelect')}
+                    data-tooltip={t('photoSelect')}
                     aria-label={t('photoToggleSelection', { name: photo.name })}
                   >
                     {isSelected ? <CheckIcon width={14} height={14} /> : null}
@@ -163,15 +163,15 @@ export const PhotoMasonryGrid = memo(function PhotoMasonryGrid({
 
                 <div className={styles.footer}>
                   <span className={styles.footerText}>
-                    <span>{photo.name}</span>
-                    {specLabel ? <small>{specLabel}</small> : null}
+                    <span data-tooltip={photo.name}>{photo.name}</span>
+                    {specLabel ? <small data-tooltip={specLabel}>{specLabel}</small> : null}
                   </span>
                   {isVideo ? (
                     <button
                       className={styles.convertBtn}
                       onClick={() => onReconstructVideo(photo)}
                       type="button"
-                      title={t('videoReconGenerate3d')}
+                      data-tooltip={t('videoReconGenerate3d')}
                       aria-label={t('videoReconGenerate3d')}
                     >
                       <SparklesIcon width={14} height={14} />
@@ -181,7 +181,7 @@ export const PhotoMasonryGrid = memo(function PhotoMasonryGrid({
                       className={styles.convertBtn}
                       onClick={() => onConvertPhoto(photo)}
                       type="button"
-                      title={t('photoConvertOne')}
+                      data-tooltip={t('photoConvertOne')}
                       aria-label={t('photoConvertOne')}
                     >
                       <SparklesIcon width={14} height={14} />

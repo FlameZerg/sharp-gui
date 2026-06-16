@@ -976,7 +976,7 @@ export function ImageViewer() {
           <button
             className={`${styles.controlBtn} ${isConverting ? styles.downloading : ''}`}
             onClick={handleConvertPhoto}
-            title={t('photoConvertOne')}
+            data-tooltip={t('photoConvertOne')}
             disabled={isConverting}
             type="button"
           >
@@ -987,7 +987,7 @@ export function ImageViewer() {
           <button
             className={styles.controlBtn}
             onClick={handleReconstructVideo}
-            title={t('videoReconGenerate3d')}
+            data-tooltip={t('videoReconGenerate3d')}
             type="button"
           >
             <SparklesIcon width={20} height={20} />
@@ -996,7 +996,7 @@ export function ImageViewer() {
         <button 
           className={`${styles.controlBtn} ${isDownloading ? styles.downloading : ''}`} 
           onClick={handleDownload}
-          title={previewPhoto ? t('photoDownload') : t('download')}
+          data-tooltip={previewPhoto ? t('photoDownload') : t('download')}
           disabled={isDownloading}
           type="button"
         >
@@ -1005,7 +1005,7 @@ export function ImageViewer() {
         <button 
           className={styles.controlBtn} 
           onClick={handleClose}
-          title={t('cancel') || 'Close'}
+          data-tooltip={t('cancel') || 'Close'}
           type="button"
         >
           <CloseIcon width={20} height={20} />
@@ -1170,7 +1170,7 @@ export function ImageViewer() {
                     disabled={videoError}
                     type="button"
                     aria-label={videoMuted ? t('photoVideoUnmute') : t('photoVideoMute')}
-                    title={videoMuted ? t('photoVideoUnmute') : t('photoVideoMute')}
+                    data-tooltip={videoMuted ? t('photoVideoUnmute') : t('photoVideoMute')}
                   >
                     {videoMuted || videoVolume === 0
                       ? <VolumeMutedIcon width={17} height={17} />
@@ -1200,7 +1200,7 @@ export function ImageViewer() {
                     disabled={!videoDuration || videoError}
                     type="button"
                     aria-label={t('photoVideoBack15')}
-                    title={t('photoVideoBack15')}
+                    data-tooltip={t('photoVideoBack15')}
                   >
                     <span className={styles.videoSkipLabel}>-15s</span>
                   </button>
@@ -1214,7 +1214,7 @@ export function ImageViewer() {
                     disabled={videoError}
                     type="button"
                     aria-label={isVideoPlaying ? t('photoVideoPause') : t('photoVideoPlay')}
-                    title={isVideoPlaying ? t('photoVideoPause') : t('photoVideoPlay')}
+                    data-tooltip={isVideoPlaying ? t('photoVideoPause') : t('photoVideoPlay')}
                   >
                     {isVideoPlaying ? <PauseIcon width={17} height={17} /> : <PlayIcon width={17} height={17} />}
                   </button>
@@ -1227,7 +1227,7 @@ export function ImageViewer() {
                     disabled={!videoDuration || videoError}
                     type="button"
                     aria-label={t('photoVideoForward15')}
-                    title={t('photoVideoForward15')}
+                    data-tooltip={t('photoVideoForward15')}
                   >
                     <span className={styles.videoSkipLabel}>+15s</span>
                   </button>
@@ -1240,7 +1240,7 @@ export function ImageViewer() {
                     disabled={isDownloading}
                     type="button"
                     aria-label={t('photoDownloadVideo')}
-                    title={t('photoDownloadVideo')}
+                    data-tooltip={t('photoDownloadVideo')}
                   >
                     <DownloadIcon width={17} height={17} />
                   </button>
@@ -1251,7 +1251,7 @@ export function ImageViewer() {
                     disabled={videoError}
                     type="button"
                     aria-label={isVideoFullscreen ? t('photoVideoExitFullscreen') : t('photoVideoFullscreen')}
-                    title={isVideoFullscreen ? t('photoVideoExitFullscreen') : t('photoVideoFullscreen')}
+                    data-tooltip={isVideoFullscreen ? t('photoVideoExitFullscreen') : t('photoVideoFullscreen')}
                   >
                     {isVideoFullscreen
                       ? <ExitFullscreenIcon width={17} height={17} />
@@ -1299,7 +1299,7 @@ export function ImageViewer() {
           <button
             onClick={() => setNotice(null)}
             type="button"
-            title={t('close')}
+            data-tooltip={t('close')}
             aria-label={t('close')}
           >
             <CloseIcon width={13} height={13} />
@@ -1315,7 +1315,7 @@ export function ImageViewer() {
           ].filter(Boolean).join(' ')}
           onClick={(event) => event.stopPropagation()}
         >
-          <span className={styles.infoTitle}>{activeName}</span>
+          <span className={styles.infoTitle} data-tooltip={activeName}>{activeName}</span>
           <span className={styles.infoMeta}>
             {mediaMeta}
           </span>

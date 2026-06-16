@@ -120,7 +120,7 @@ export function Sidebar({ onUpload, children }: SidebarProps) {
             <button
               className={styles.settingsBtn}
               onClick={() => setSettingsModalOpen(true)}
-              title={t('settings')}
+              data-tooltip={t('settings')}
             >
               <SettingsIcon width={16} height={16} />
             </button>
