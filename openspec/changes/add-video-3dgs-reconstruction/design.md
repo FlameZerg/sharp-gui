@@ -492,3 +492,18 @@ Settings 中新增“视频重建”区域：
 - 中间文件默认是否删除：用户体验上应默认清理，但排障阶段可能需要保留日志和抽帧样本。
 - 是否需要为任务详情增加“查看日志摘要”入口，避免长任务失败时用户只能看到一句错误。
 - focused cleanup 的阈值是否需要暴露为高级设置；当前不建议暴露，先作为安全默认并记录统计。
+
+
+## 2026-06-16 代码审查加固
+
+本轮在不改变既有产品行为的前提下，对视频重建实现做了一组加固，覆盖审查中发现的健壮性、资源回收、可移植性和测试缺口：
+
+- **取消时按进程树终止**：`run_command` 现在以独立进程组（Windows `CREATE_NEW_PROCESS_GROUP`、POSIX `start_new_session`）启动外部命令；取消时通过 `terminate_process_tree` 杀掉整棵进程树（Windows `taskkill /F /T`，POSIX `killpg`），避免 `ns-train` 的子进程/viewer 成为孤儿继续占用显存导致下一个任务 OOM。`TaskManager.cancel_task` 对视频任务复用同一进程树终止逻辑，且终止动作移到 `task_lock` 之外，避免阻塞状态读取；图片任务保持原有单进程 `terminate()`，因为它与服务进程同组，按组终止会误伤服务本身。
+- **训练阶段进度反馈**：`video_optimize` 阶段会解析 Nerfstudio 的 `step/total` 输出，仅当分母等于配置的训练迭代数时才信任，把进度在 `video_optimize`（58）到 `video_export`（86）之间线性推进，避免长训练任务进度条长时间停在 58%。
+- **实验依赖探测使用视频环境解释器**：VGGT 探测改为优先使用 `.video-reconstruction-env` 的 Python，而不是裸 `python`，让设置页实验依赖诊断更准确。
+- **删除原图扩展名一致性**：模型删除复用 `ALLOWED_IMAGE_EXTENSIONS`，修复大写 `.JPEG/.WEBP` 原图在删除模型后残留的问题。
+- **遗留命名回填注释化**：`legacy_video_match_stems` 中针对早期本机产物命名后缀（`_high180_focused` 等）的兼容逻辑已加注释，明确它只服务于 sidecar 缺失且唯一同名相册视频的旧输出，新输出直接使用源视频 stem。
+
+### 非 Windows 平台行为说明
+
+视频重建的端到端验证平台仍仅限 Windows + NVIDIA RTX 5070 Ti Laptop GPU 12GB。代码在非 Windows 平台上安全降级而非报错：`read_vcvars_environment` 返回空、`find_cuda_home`/`find_vcvars64` 返回 `None`、进程组改用 `start_new_session`。这意味着在 macOS/Linux 上，只要用户自行把 `ffmpeg`、`ns-*`、`colmap` 放入 PATH，稳定路线依赖检测和命令编排仍可工作，但项目不会为这些平台做自动 PATH 注入或一键安装，README 也不把它们列入已验证矩阵。

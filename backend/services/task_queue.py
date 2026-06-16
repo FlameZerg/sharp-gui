@@ -99,6 +99,8 @@ class TaskManager:
         return tasks, has_active
 
     def cancel_task(self, task_id):
+        process_to_kill = None
+        kill_process_tree = False
         with self.task_lock:
             task = self.task_status.get(task_id)
             if not task:
@@ -110,15 +112,25 @@ class TaskManager:
 
             if task["status"] in ("running", "processing"):
                 task["status"] = "cancelled"
-                process = self.running_processes.get(task_id)
-                if process:
-                    try:
-                        process.terminate()
-                    except Exception:
-                        pass
-                return {"success": True, "message": "Task cancellation requested"}, 200
+                process_to_kill = self.running_processes.get(task_id)
+                kill_process_tree = (
+                    task.get("kind") == video_reconstruction.TASK_KIND_VIDEO_3DGS
+                )
+            else:
+                return {"success": False, "error": f"Task already {task['status']}"}, 400
 
-            return {"success": False, "error": f"Task already {task['status']}"}, 400
+        # Terminate outside the lock so a slow kill never blocks status reads.
+        if process_to_kill is not None:
+            if kill_process_tree:
+                # Video tasks spawn their own process group/session, so killing
+                # the whole tree is safe and prevents orphaned GPU workers.
+                video_reconstruction.terminate_process_tree(process_to_kill)
+            else:
+                try:
+                    process_to_kill.terminate()
+                except Exception:
+                    pass
+        return {"success": True, "message": "Task cancellation requested"}, 200
 
     def cleanup_old_tasks(self):
         """定期清理已完成的旧任务，防止内存泄漏。"""

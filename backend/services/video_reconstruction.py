@@ -512,14 +512,32 @@ def command_version(name, args=None, timeout=5):
         }
 
 
-def python_module_available(module_name):
+def resolve_video_python():
+    """Return the Python executable that hosts the video reconstruction env."""
+    local_env = Path(__file__).resolve().parents[2] / ".video-reconstruction-env"
+    candidates = [
+        local_env / "Scripts" / "python.exe",
+        local_env / "bin" / "python",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+    return which("python") or which("python3") or "python"
+
+
+def python_module_available(module_name, python_executable=None):
+    executable = python_executable or resolve_video_python()
     try:
+        env = os.environ.copy()
+        env.setdefault("PYTHONUTF8", "1")
+        env.setdefault("PYTHONIOENCODING", "utf-8")
         result = subprocess.run(
-            ["python", "-c", f"import {module_name}"],
+            [executable, "-c", f"import {module_name}"],
             check=False,
             capture_output=True,
             text=True,
             timeout=8,
+            env=env,
         )
         return result.returncode == 0
     except Exception:
@@ -1030,19 +1048,25 @@ def is_task_cancelled(task_manager, task_id):
         return task_manager.task_status.get(task_id, {}).get("status") == "cancelled"
 
 
-def wait_for_process(task_manager, task_id, process, output_lines):
+def wait_for_process(task_manager, task_id, process, output_lines, stage=None, profile=None):
     cancelled = False
+    last_reported_progress = None
     for line in iter(process.stdout.readline, ""):
         if not line:
             break
         output_lines.append(line)
         append_task_log(task_manager, task_id, line)
+        if stage == "video_optimize" and profile:
+            step_progress = parse_training_progress(line, profile)
+            if step_progress is not None and step_progress != last_reported_progress:
+                last_reported_progress = step_progress
+                update_task(task_manager, task_id, progress=step_progress, stage=stage)
         if is_task_cancelled(task_manager, task_id):
             cancelled = True
             break
 
     if cancelled:
-        terminate_process(process)
+        terminate_process_tree(process)
         return None, True
 
     if process.stdout:
@@ -1050,7 +1074,81 @@ def wait_for_process(task_manager, task_id, process, output_lines):
     return process.wait(), False
 
 
-def terminate_process(process):
+TRAIN_STEP_PATTERN = re.compile(r"(\d+)\s*/\s*(\d+)")
+
+
+def parse_training_progress(line, profile):
+    """Map a Nerfstudio "step/total" log line into the optimize progress band.
+
+    Only matches whose denominator equals the configured training iteration
+    count are trusted, so unrelated "a/b" tokens in the log do not move the bar.
+    Returns an integer percentage within [video_optimize, video_export), or None.
+    """
+    max_iter = int(profile.get("max_num_iterations") or 0)
+    if max_iter <= 0:
+        return None
+
+    step = None
+    for match in TRAIN_STEP_PATTERN.finditer(line):
+        candidate_step = int(match.group(1))
+        candidate_total = int(match.group(2))
+        if candidate_total == max_iter:
+            step = candidate_step
+
+    if step is None:
+        return None
+
+    base = STAGE_PROGRESS["video_optimize"]
+    ceiling = STAGE_PROGRESS["video_export"]
+    ratio = min(1.0, max(0.0, step / max_iter))
+    return int(base + (ceiling - base) * ratio)
+
+
+def terminate_process_tree(process):
+    """Terminate the process and its children so GPU workers don't leak.
+
+    ns-train / ns-process-data can spawn child processes (and a viewer); a plain
+    process.terminate() only signals the parent, which on Windows leaves orphans
+    holding VRAM and can OOM the next queued task. Kill the whole tree instead,
+    falling back to single-process terminate/kill if the tree call fails.
+    """
+    if process.poll() is not None:
+        return
+
+    pid = process.pid
+    try:
+        if os.name == "nt":
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(pid)],
+                check=False,
+                capture_output=True,
+                timeout=15,
+            )
+            return
+        import signal
+
+        try:
+            group_id = os.getpgid(pid)
+        except (ProcessLookupError, OSError):
+            group_id = None
+
+        if group_id is not None:
+            try:
+                os.killpg(group_id, signal.SIGTERM)
+                process.wait(timeout=5)
+                return
+            except ProcessLookupError:
+                return
+            except Exception:
+                try:
+                    os.killpg(group_id, signal.SIGKILL)
+                    return
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    # Fallback: best-effort single-process termination.
     try:
         process.terminate()
         process.wait(timeout=5)
@@ -1061,7 +1159,7 @@ def terminate_process(process):
             pass
 
 
-def run_command(task_manager, task_id, cmd, cwd=None, stage=None, progress=None):
+def run_command(task_manager, task_id, cmd, cwd=None, stage=None, progress=None, profile=None):
     if stage:
         update_task(task_manager, task_id, stage=stage, progress=progress or STAGE_PROGRESS.get(stage, 0))
 
@@ -1079,6 +1177,11 @@ def run_command(task_manager, task_id, cmd, cwd=None, stage=None, progress=None)
         f"{task_id} command stage={stage or '-'} cwd={cwd or os.getcwd()}: "
         f"{runtime.format_command_for_log(cmd)}",
     )
+    popen_kwargs = {}
+    if os.name == "nt":
+        popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        popen_kwargs["start_new_session"] = True
     process = subprocess.Popen(
         cmd,
         cwd=cwd,
@@ -1089,13 +1192,21 @@ def run_command(task_manager, task_id, cmd, cwd=None, stage=None, progress=None)
         errors="replace",
         bufsize=1,
         env=process_env,
+        **popen_kwargs,
     )
     with task_manager.task_lock:
         task_manager.running_processes[task_id] = process
 
     output_lines = []
     try:
-        return_code, cancelled = wait_for_process(task_manager, task_id, process, output_lines)
+        return_code, cancelled = wait_for_process(
+            task_manager,
+            task_id,
+            process,
+            output_lines,
+            stage=stage,
+            profile=profile,
+        )
     finally:
         with task_manager.task_lock:
             if task_manager.running_processes.get(task_id) is process:
@@ -1358,6 +1469,7 @@ def run_video_reconstruction_task(task_manager, task_id, task):
             cwd=job_dir,
             stage="video_optimize",
             progress=STAGE_PROGRESS["video_optimize"],
+            profile=profile,
         )
         if cancelled:
             update_task(task_manager, task_id, status="cancelled", error=None)

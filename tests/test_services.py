@@ -1262,3 +1262,119 @@ def test_video_reconstruction_service_cancel_cleans_job(workspace, monkeypatch):
 
     assert public_task["status"] == "cancelled"
     assert not os.path.exists(os.path.join(paths.video_reconstruction_jobs_folder, task["id"]))
+
+
+def test_build_failure_message_detects_oom_text():
+    oom_code, oom_message = video_reconstruction.build_failure_message(
+        1,
+        ["epoch 1\n", "RuntimeError: CUDA out of memory. Tried to allocate 2GiB\n"],
+    )
+    plain_code, plain_message = video_reconstruction.build_failure_message(
+        2,
+        ["generic failure line\n"],
+    )
+
+    assert oom_code == video_reconstruction.ERROR_OOM
+    assert "GPU memory" in oom_message
+    assert plain_code is None
+    assert "generic failure line" in plain_message
+
+
+def test_contains_oom_matches_known_patterns():
+    assert video_reconstruction.contains_oom("CUDA out of memory") is True
+    assert video_reconstruction.contains_oom("torch.OutOfMemoryError raised") is True
+    assert video_reconstruction.contains_oom("training finished cleanly") is False
+
+
+def test_resolve_engine_strategy_covers_fallbacks():
+    both = {
+        "stable": {"available": True},
+        "experimental": {"available": True},
+    }
+    stable_only = {
+        "stable": {"available": True},
+        "experimental": {"available": False},
+    }
+    experimental_only = {
+        "stable": {"available": False},
+        "experimental": {"available": True},
+    }
+    none_available = {
+        "stable": {"available": False},
+        "experimental": {"available": False},
+    }
+
+    assert video_reconstruction.resolve_engine_strategy("auto", stable_only) == ("stable", None)
+    assert video_reconstruction.resolve_engine_strategy("stable", stable_only) == ("stable", None)
+    assert video_reconstruction.resolve_engine_strategy("experimental", both) == ("experimental", None)
+    assert video_reconstruction.resolve_engine_strategy("experimental", stable_only) == (
+        None,
+        video_reconstruction.ERROR_EXPERIMENTAL_UNAVAILABLE,
+    )
+    assert video_reconstruction.resolve_engine_strategy("stable", experimental_only) == (
+        None,
+        video_reconstruction.ERROR_STABLE_UNAVAILABLE,
+    )
+    assert video_reconstruction.resolve_engine_strategy("auto", experimental_only) == (
+        None,
+        video_reconstruction.ERROR_STABLE_UNAVAILABLE,
+    )
+    assert video_reconstruction.resolve_engine_strategy("auto", none_available) == (
+        None,
+        video_reconstruction.ERROR_DEPENDENCY_MISSING,
+    )
+
+
+def test_parse_training_progress_maps_steps_into_optimize_band():
+    profile = {"max_num_iterations": 30000}
+    base = video_reconstruction.STAGE_PROGRESS["video_optimize"]
+    ceiling = video_reconstruction.STAGE_PROGRESS["video_export"]
+
+    midpoint = video_reconstruction.parse_training_progress("Step 15000 / 30000 ...", profile)
+    near_end = video_reconstruction.parse_training_progress("progress 30000/30000 done", profile)
+    unrelated = video_reconstruction.parse_training_progress("loaded 5/10 images", profile)
+    no_match = video_reconstruction.parse_training_progress("starting trainer", profile)
+
+    assert midpoint == int(base + (ceiling - base) * 0.5)
+    assert near_end == ceiling
+    assert base < midpoint < ceiling
+    assert unrelated is None
+    assert no_match is None
+
+
+def test_delete_uploaded_source_video_protects_album_originals(workspace):
+    paths = build_path_context({"workspace_folder": str(workspace)})
+
+    # Album-sourced model: source_media_id present, original must never be removed.
+    album_dir = workspace / "album"
+    album_dir.mkdir()
+    album_video = album_dir / "clip.mp4"
+    album_video.write_bytes(b"album-video")
+    model_gallery.delete_uploaded_source_video(paths, {
+        "source_media_id": "album_clip",
+        "source_video_path": str(album_video),
+    })
+    assert album_video.exists()
+
+    # Path outside the controlled uploads folder must be ignored.
+    stray = workspace / "stray.mp4"
+    stray.write_bytes(b"stray")
+    model_gallery.delete_uploaded_source_video(paths, {
+        "source_media_id": None,
+        "source_video_path": str(stray),
+    })
+    assert stray.exists()
+
+    # Uploaded cache copy must be deleted along with its now-empty job folder.
+    upload_root = model_gallery.get_video_uploads_folder(paths)
+    upload_dir = os.path.join(upload_root, "upload-123")
+    os.makedirs(upload_dir, exist_ok=True)
+    uploaded_video = os.path.join(upload_dir, "clip.mp4")
+    with open(uploaded_video, "wb") as f:
+        f.write(b"uploaded")
+    model_gallery.delete_uploaded_source_video(paths, {
+        "source_media_id": None,
+        "source_video_path": uploaded_video,
+    })
+    assert not os.path.exists(uploaded_video)
+    assert not os.path.exists(upload_dir)

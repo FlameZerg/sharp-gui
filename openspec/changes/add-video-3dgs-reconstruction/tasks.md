@@ -150,6 +150,15 @@
 - 根据用户反馈读数确认 `targetDelta=0`，pivot 已正确居中；真正问题来自视频重建模型正面接近世界 `+Y/-Y` 方向，而 OrbitControls 默认 `Y-up` 轨道在该方向附近会接近极点。已放弃相机侧 `+Y/+Z` reset 方案，改为仅对视频形态 Y-front 模型在模型侧隐藏预乘 `RotX(+90°)` orientation quaternion，使画面正向和相机初始读数同时保持干净。用户已确认视角和左右拖拽手感恢复正常，且不会影响旧 ml-sharp 单图模型预览。
 - 已完成视频生成模型来源体验的代码级验证：后端新增 sidecar 元数据、视频缩略图抽帧、原视频安全预览路由和拖入视频上传重建 API；前端统一侧栏/主画布拖拽入口并复用视频预览层。`venv\Scripts\python.exe -m pytest tests/test_api_contract.py tests/test_services.py tests/test_security.py tests/test_route_map.py` 通过 50 项；`npm run lint`、`npm run build`、`python -m compileall backend tests`、`openspec validate add-video-3dgs-reconstruction --strict` 通过。实际页面拖拽、缩略图生成和原视频预览仍待浏览器手动回归。
 
+### 2026-06-16 代码审查加固记录
+
+- 取消视频任务改为按进程树终止：`run_command` 以独立进程组/会话启动外部命令，`terminate_process_tree` 用 `taskkill /F /T`（Windows）或 `killpg`（POSIX）杀整棵树；`cancel_task` 对视频任务复用该逻辑并移出 `task_lock`，图片任务保持原单进程终止，避免误伤服务进程。
+- `video_optimize` 阶段解析 Nerfstudio `step/total` 输出，仅信任分母等于训练迭代数的匹配，把进度在 58→86 之间线性推进，修复长训练进度条长期停在 58% 的问题。
+- VGGT 实验依赖探测改用 `.video-reconstruction-env` 的 Python 解释器，提升设置页诊断准确性。
+- 模型删除复用 `ALLOWED_IMAGE_EXTENSIONS`，修复大写 `.JPEG/.WEBP` 原图残留。
+- `legacy_video_match_stems` 兼容回填逻辑补充注释，明确只服务旧本机命名产物。
+- 新增后端单测：`build_failure_message`/`contains_oom`（OOM 文案）、`resolve_engine_strategy`（引擎回退分支）、`parse_training_progress`（训练进度映射）、`delete_uploaded_source_video`（删除上传缓存且保护相册原视频）。`venv/bin/python -m pytest tests/test_api_contract.py tests/test_services.py tests/test_security.py tests/test_route_map.py` 共 57 项通过；`python -m compileall backend tests` 通过。
+
 ### 2026-06-16 文档与人工确认记录
 
 - 用户已确认 focused cleanup 输出方向正确：`VID_20260612_091523_preview_final_clean_focused.ply` 清除了外围杂乱碎片，只保留主体；后续 `auto` / `object` 结果应保持这一类 focused 输出。

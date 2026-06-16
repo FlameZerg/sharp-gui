@@ -138,7 +138,15 @@ def normalize_stem_for_match(value):
 
 
 def legacy_video_match_stems(item_id):
-    """Return possible source video stems for old generated model names."""
+    """Return possible source video stems for old generated model names.
+
+    NOTE: This only serves early video reconstruction outputs whose filenames
+    still carried explicit quality/cleanup suffixes (produced before the
+    "default to source video stem" naming policy landed). New outputs use the
+    source video stem directly, so no suffix stripping is needed for them; this
+    backfill is intentionally conservative and only runs when a model has no
+    sidecar metadata and matches exactly one same-name gallery video.
+    """
     stem = normalize_stem_for_match(item_id)
     stems = {stem}
     without_collision_suffix = re.sub(r"-\d+$", "", stem)
@@ -432,7 +440,7 @@ def delete_gallery_item(paths, item_id):
     if os.path.exists(thumb_path):
         os.remove(thumb_path)
 
-    for ext in [".jpg", ".jpeg", ".png", ".webp", ".JPG", ".PNG"]:
+    for ext in ALLOWED_IMAGE_EXTENSIONS:
         img_path = os.path.join(paths.input_folder, item_id + ext)
         if os.path.exists(img_path):
             os.remove(img_path)
