@@ -36,6 +36,19 @@ const CancelIcon = () => (
     </svg>
 );
 
+// Build a viewer URL that works for both the local machine and LAN clients.
+// The backend reports the viewer's listening port; we rebuild the host from the
+// address the user actually used to reach Sharp GUI (localhost locally, the
+// reconstruction machine's LAN IP for remote clients), since the trainer's
+// viewer listens on all interfaces. Falls back to the raw URL when no port.
+function resolveViewerUrl(task: Task): string | undefined {
+    const port = task.details?.viewer_port;
+    if (port && typeof window !== 'undefined' && window.location?.hostname) {
+        return `http://${window.location.hostname}:${port}`;
+    }
+    return task.details?.viewer_url;
+}
+
 export const TaskQueue: React.FC = () => {
     const { t } = useTranslation();
     const { tasks, setTasks } = useAppStore();
@@ -117,7 +130,7 @@ export const TaskQueue: React.FC = () => {
                 const canCancel = task.status === 'pending' || task.status === 'processing';
                 const errorText = getTaskErrorText(task);
                 const stageText = getTaskStageText(task);
-                const viewerUrl = task.status === 'processing' ? task.details?.viewer_url : undefined;
+                const viewerUrl = task.status === 'processing' ? resolveViewerUrl(task) : undefined;
 
                 return (
                     <div key={task.id} className={styles.queueItem}>

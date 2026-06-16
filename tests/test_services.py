@@ -286,7 +286,7 @@ def test_video_reconstruction_commands_use_quality_profile():
 
     assert process_cmd[process_cmd.index("--num-frames-target") + 1] == "180"
     assert process_cmd[process_cmd.index("--num-downscales") + 1] == "2"
-    assert process_cmd[process_cmd.index("--matching-method") + 1] == "sequential"
+    assert process_cmd[process_cmd.index("--matching-method") + 1] == "exhaustive"
     assert train_cmd[train_cmd.index("--downscale-factor") + 1] == "2"
     assert train_cmd[train_cmd.index("--pipeline.datamanager.train-cameras-sampling-strategy") + 1] == "fps"
     assert train_cmd[train_cmd.index("--pipeline.model.camera-optimizer.mode") + 1] == "SO3xR3"
@@ -1384,17 +1384,18 @@ def test_delete_uploaded_source_video_protects_album_originals(workspace):
 
 
 def test_parse_viewer_url_extracts_local_viewer():
-    assert (
-        video_reconstruction.parse_viewer_url("│   HTTP   │ http://0.0.0.0:7007 │")
-        == "http://localhost:7007"
+    assert video_reconstruction.parse_viewer_url("│   HTTP   │ http://0.0.0.0:7007 │") == (
+        "http://localhost:7007",
+        7007,
     )
     assert video_reconstruction.parse_viewer_url(
         "Viewer running locally at: http://localhost:7007"
-    ) == "http://localhost:7007"
-    assert video_reconstruction.parse_viewer_url(
+    ) == ("http://localhost:7007", 7007)
+    display_url, port = video_reconstruction.parse_viewer_url(
         "https://viewer.nerf.studio/?websocket_url=ws://localhost:7007"
-    ).startswith("https://viewer.nerf.studio")
-    assert video_reconstruction.parse_viewer_url("loss=0.123 step done") is None
+    )
+    assert display_url.startswith("https://viewer.nerf.studio")
+    assert video_reconstruction.parse_viewer_url("loss=0.123 step done") == (None, None)
 
 
 def test_resolve_training_profile_falls_back_to_random_when_few_cameras(tmp_path):
@@ -1423,3 +1424,9 @@ def test_resolve_training_profile_falls_back_to_random_when_few_cameras(tmp_path
     # Missing transforms.json -> leave profile as-is (don't guess).
     missing = video_reconstruction.resolve_training_profile(fps_profile, str(tmp_path / "nope"))
     assert missing["train_cameras_sampling_strategy"] == "fps"
+
+
+def test_quality_profiles_bind_matching_method_per_tier():
+    assert video_reconstruction.resolve_quality_profile("preview", "12gb")["matching_method"] == "sequential"
+    assert video_reconstruction.resolve_quality_profile("high", "12gb")["matching_method"] == "exhaustive"
+    assert video_reconstruction.resolve_quality_profile("extreme", "24gb")["matching_method"] == "vocab_tree"

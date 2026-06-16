@@ -507,3 +507,44 @@ Settings 中新增“视频重建”区域：
 ### 非 Windows 平台行为说明
 
 视频重建的端到端验证平台仍仅限 Windows + NVIDIA RTX 5070 Ti Laptop GPU 12GB。代码在非 Windows 平台上安全降级而非报错：`read_vcvars_environment` 返回空、`find_cuda_home`/`find_vcvars64` 返回 `None`、进程组改用 `start_new_session`。这意味着在 macOS/Linux 上，只要用户自行把 `ffmpeg`、`ns-*`、`colmap` 放入 PATH，稳定路线依赖检测和命令编排仍可工作，但项目不会为这些平台做自动 PATH 注入或一键安装，README 也不把它们列入已验证矩阵。
+
+
+## 2026-06-16 鲁棒性与进度可观测性补充
+
+本轮在审查与实测反馈后，对视频重建做了一组聚焦的鲁棒性、可观测性与体验改进，均不改变相机充足、配准正常时的既有行为：
+
+### 决策：COLMAP 特征匹配策略按质量档绑定
+
+`ns-process-data video` 此前对所有质量档固定使用 `sequential` 匹配。对长视频或环绕/回看素材，sequential 只匹配相邻帧、缺少回环能力，COLMAP 容易断裂成多个 sparse 子模型，而 Nerfstudio 默认只取 `sparse/0`，导致只重建前半段视角，甚至注册相机过少触发训练期 FPS 采样断言崩溃。
+
+按质量档分流：
+
+```text
+preview (90 帧)   sequential   最快，快速预览可接受偶尔断链
+high    (180 帧)  exhaustive   两两匹配（~1.6 万对）最大化注册率，最稳，且不依赖联网
+extreme (360 帧)  vocab_tree   O(n^2) 过慢，改用词汇树检索（Nerfstudio 首次自动下载词表，需联网一次）
+```
+
+**原因**：匹配只影响 COLMAP 阶段中的“特征匹配”子步骤，不影响占总耗时约 80% 的训练；实测 high 档总耗时约 52 分钟、COLMAP 阶段约 8 分钟，换 exhaustive 预计总时长增加约 5~10%，换取显著更高的配准成功率与完整性，性价比高。extreme 帧数翻倍会让 exhaustive 的匹配对数翻 4 倍，故改用 vocab_tree。
+
+**备选**：全部档统一 exhaustive（extreme 太慢）；统一 vocab_tree（依赖联网下载词表，离线环境会卡住）；暴露为用户高级选项（更灵活，但默认仍需一个稳妥值）。
+
+### 决策：相机注册过少时回退相机采样策略
+
+高质量档使用 Nerfstudio 的 FPS 相机采样（fpsample `bucket_fps_kdline_sampling`，h=3，要求相机数 ≥8）。当 COLMAP 仅注册极少相机时训练会直接因 `2**h should be <= n_pts` 断言失败。现在训练前统计 `transforms.json` 的注册相机数，低于保守阈值时自动从 FPS 回退到 random 采样，并在任务详情与日志记录降级原因。这是兜底，匹配策略改进才是减少“相机过少”根因的主手段。
+
+### 决策：暴露训练实时进度入口并修正进度推进
+
+- 训练阶段抓取底层训练框架（Nerfstudio/viser）的实时查看器链接，在 INFO 日志级别打印（无需调高日志级别），并在任务详情中安全暴露查看器的 `viewer_url`（可读）与 `viewer_port`（端口）。前端任务队列以与项目一致的玻璃态圆角矩形标签（非胶囊）展示可点击的实时进度入口。
+- **跨设备可访问**：后端不把查看器 host 写死成 `localhost`，而是上报端口；前端用“用户当前访问 Sharp GUI 的 hostname”重建链接（本机即 localhost，局域网客户端即重建主机的局域网 IP）。因为 viser 查看器默认监听 `0.0.0.0`（所有网卡），所以局域网内发起或查看任务的其他设备也能打开实时进度，而不再被本机 `localhost` 限制。无端口信息时回退到可读的 `viewer_url`。
+- 进度解析优先识别 Nerfstudio 的百分比输出、回退 `step/total`，让优化阶段进度真实推进，不再长期停在固定值。
+- **安全注意**：viser 查看器在 `0.0.0.0:7007` 上无认证，局域网内任意设备只要知道 `主机IP:端口` 即可访问该实时查看器。这是 Nerfstudio 查看器的固有行为，不是本项目引入；它只在训练期间存在、训练结束即关闭，且不暴露源视频或工作区的绝对路径。如需收紧，应在 Nerfstudio 侧限制查看器监听地址。
+
+### 决策：取消任务按进程树终止
+
+外部重建命令以独立进程组/会话启动，取消时终止整棵进程树（Windows `taskkill /F /T`、POSIX `killpg`），避免 `ns-train` 的子进程/查看器成为孤儿继续占用显存导致后续任务 OOM；图片任务因与服务同进程组仍用单进程终止。
+
+### 关联的全局体验改进（非视频重建专属）
+
+- 全局玻璃态悬浮提示：模型名、任务队列文件名/阶段/错误等截断文本悬浮显示完整内容，统一替换原生 title，遵循 styling-guide 禁止胶囊徽标的约束。
+- 模型删除复用 `ALLOWED_IMAGE_EXTENSIONS`，修复大写扩展名原图残留。

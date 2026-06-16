@@ -11,6 +11,7 @@ import traceback
 import uuid
 from pathlib import Path
 from shutil import which
+from urllib.parse import urlparse
 
 from werkzeug.utils import secure_filename
 
@@ -38,6 +39,12 @@ ERROR_OUTPUT_MISSING = "video_reconstruction_output_missing"
 ERROR_SPZ_FAILED = "video_reconstruction_spz_failed"
 ERROR_UNSUPPORTED_VIDEO = "video_reconstruction_unsupported_video"
 
+# COLMAP 特征匹配策略按质量档绑定（方案 C）：
+# - preview: sequential，只匹配相邻帧，最快，快速预览可接受偶尔断链；
+# - high: exhaustive，180 帧两两匹配（~1.6 万对）最大化相机注册率，避免长视频
+#   sequential 断链导致只重建前半段甚至相机过少崩溃，且无需联网下载词表；
+# - extreme: vocab_tree，360 帧时 exhaustive 的 O(n^2) 过慢，改用词汇树检索匹配
+#   兼顾回环与速度（Nerfstudio 首次会自动下载词表，需联网一次）。
 QUALITY_PROFILES = {
     "preview": {
         "frame_count": 90,
@@ -62,7 +69,7 @@ QUALITY_PROFILES = {
         "max_num_iterations": 30000,
         "num_downscales": 2,
         "downscale_factor": 2,
-        "matching_method": "sequential",
+        "matching_method": "exhaustive",
         "train_cameras_sampling_strategy": "fps",
         "camera_optimizer_mode": "SO3xR3",
         "num_random": 80000,
@@ -79,7 +86,7 @@ QUALITY_PROFILES = {
         "max_num_iterations": 50000,
         "num_downscales": 1,
         "downscale_factor": 1,
-        "matching_method": "sequential",
+        "matching_method": "vocab_tree",
         "train_cameras_sampling_strategy": "fps",
         "camera_optimizer_mode": "SO3xR3",
         "num_random": 120000,
@@ -1060,13 +1067,15 @@ def wait_for_process(task_manager, task_id, process, output_lines, stage=None, p
         append_task_log(task_manager, task_id, line)
         if stage == "video_optimize":
             if not viewer_url_logged:
-                viewer_url = parse_viewer_url(line)
+                viewer_url, viewer_port = parse_viewer_url(line)
                 if viewer_url:
                     viewer_url_logged = True
-                    if set_task_viewer_url(task_manager, task_id, viewer_url):
+                    if set_task_viewer_endpoint(task_manager, task_id, viewer_url, viewer_port):
+                        port_hint = f":{viewer_port}" if viewer_port else ""
                         runtime.log(
                             "INFO",
-                            f"Video task {task_id} live viewer available at {viewer_url}",
+                            f"Video task {task_id} live viewer available at {viewer_url} "
+                            f"(LAN clients: open http://<this-machine-ip>{port_hint})",
                         )
             if profile:
                 step_progress = parse_training_progress(line, profile)
@@ -1135,29 +1144,39 @@ def parse_viewer_url(line):
     """Extract the Nerfstudio/viser live viewer URL from a training log line.
 
     The viewer is the most reliable real-time progress source, so surface it as
-    soon as the trainer prints it. ``0.0.0.0`` is rewritten to ``localhost`` so a
-    browser on the same machine can open it directly.
+    soon as the trainer prints it. ``0.0.0.0`` is rewritten to ``localhost`` for a
+    readable, locally-openable display URL, but the listening port is returned
+    separately so the frontend can rebuild the URL against whichever host the
+    user actually reached Sharp GUI on (works for LAN clients, not just local).
+    Returns ``(display_url, port)`` or ``(None, None)``.
     """
     lowered = line.lower()
     if "http://" not in lowered and "https://" not in lowered:
-        return None
+        return None, None
     for match in VIEWER_URL_PATTERN.finditer(line):
         url = match.group(0).rstrip(".,)]'\"")
         low = url.lower()
         if any(token in low for token in ("localhost", "127.0.0.1", "0.0.0.0", "nerf.studio", "viewer")):
-            return url.replace("0.0.0.0", "localhost")
-    return None
+            display_url = url.replace("0.0.0.0", "localhost")
+            try:
+                port = urlparse(url).port
+            except ValueError:
+                port = None
+            return display_url, port
+    return None, None
 
 
-def set_task_viewer_url(task_manager, task_id, url):
+def set_task_viewer_endpoint(task_manager, task_id, url, port=None):
     with task_manager.task_lock:
         task = task_manager.task_status.get(task_id)
         if not task:
             return False
         details = task.setdefault("details", {})
-        if details.get("viewer_url") == url:
+        if details.get("viewer_url") == url and details.get("viewer_port") == port:
             return False
         details["viewer_url"] = url
+        if port is not None:
+            details["viewer_port"] = port
         return True
 
 

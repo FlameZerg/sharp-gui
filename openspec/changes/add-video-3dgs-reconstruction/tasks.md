@@ -153,11 +153,14 @@
 ### 2026-06-16 代码审查加固记录
 
 - 取消视频任务改为按进程树终止：`run_command` 以独立进程组/会话启动外部命令，`terminate_process_tree` 用 `taskkill /F /T`（Windows）或 `killpg`（POSIX）杀整棵树；`cancel_task` 对视频任务复用该逻辑并移出 `task_lock`，图片任务保持原单进程终止，避免误伤服务进程。
-- `video_optimize` 阶段解析 Nerfstudio `step/total` 输出，仅信任分母等于训练迭代数的匹配，把进度在 58→86 之间线性推进，修复长训练进度条长期停在 58% 的问题。
-- VGGT 实验依赖探测改用 `.video-reconstruction-env` 的 Python 解释器，提升设置页诊断准确性。
+- `video_optimize` 阶段解析 Nerfstudio 进度输出（优先百分比、回退 step/total），把进度在 58→86 之间真实推进，修复长训练进度条长期停在 58% 的问题。
+- 训练阶段抓取并暴露 Nerfstudio/viser 实时查看器链接：INFO 级别日志打印、任务详情安全暴露 `viewer_url`，前端任务队列以玻璃态圆角矩形标签展示可点击的实时进度入口。
+- COLMAP 特征匹配策略按质量档绑定：preview=sequential、high=exhaustive、extreme=vocab_tree，减少长视频 sequential 断链导致的只重建前半段/相机过少问题。
+- 相机注册过少时把 FPS 相机采样回退为 random，避免训练期 fpsample 断言崩溃，并记录降级与注册相机数。
+- VGGT 实验依赖探测改用视频重建环境的 Python 解释器。
 - 模型删除复用 `ALLOWED_IMAGE_EXTENSIONS`，修复大写 `.JPEG/.WEBP` 原图残留。
 - `legacy_video_match_stems` 兼容回填逻辑补充注释，明确只服务旧本机命名产物。
-- 新增后端单测：`build_failure_message`/`contains_oom`（OOM 文案）、`resolve_engine_strategy`（引擎回退分支）、`parse_training_progress`（训练进度映射）、`delete_uploaded_source_video`（删除上传缓存且保护相册原视频）。`venv/bin/python -m pytest tests/test_api_contract.py tests/test_services.py tests/test_security.py tests/test_route_map.py` 共 57 项通过；`python -m compileall backend tests` 通过。
+- 新增后端单测：OOM 文案、引擎回退分支、训练进度映射、viewer 链接解析、上传缓存清理、相机采样回退、各档匹配策略。`venv/bin/python -m pytest tests/test_api_contract.py tests/test_services.py tests/test_security.py tests/test_route_map.py` 共 60 项通过；`npm run lint`、`npm run build`、`python -m compileall backend tests` 通过。
 
 ### 2026-06-16 文档与人工确认记录
 

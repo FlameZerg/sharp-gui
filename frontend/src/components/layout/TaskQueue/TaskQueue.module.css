@@ -174,10 +174,11 @@
     align-items: center;
     align-self: flex-start;
     max-width: 100%;
-    margin-top: 5px;
-    padding: 2px 9px;
-    border-radius: var(--radius-full);
-    background: rgba(0, 113, 227, 0.1);
+    margin-top: 6px;
+    padding: 3px 8px;
+    border-radius: var(--radius-sm);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
     color: var(--accent-blue);
     font-size: 10px;
     font-weight: 600;
@@ -189,7 +190,7 @@
 }
 
 .viewerLink:hover {
-    background: rgba(0, 113, 227, 0.18);
+    background: var(--glass-bg-light);
 }
 
 .viewerLink:focus-visible {

@@ -27,6 +27,7 @@ export interface Task {
       message: string;
     }>;
     viewer_url?: string;
+    viewer_port?: number;
   };
 }
 
