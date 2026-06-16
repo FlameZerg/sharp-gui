@@ -158,6 +158,8 @@
 - COLMAP 特征匹配策略按质量档绑定：preview=sequential、high=exhaustive、extreme=vocab_tree，减少长视频 sequential 断链导致的只重建前半段/相机过少问题。
 - 相机注册过少时把 FPS 相机采样回退为 random，避免训练期 fpsample 断言崩溃，并记录降级与注册相机数。
 - 物品（object）模式新增相机环绕几何主体聚焦裁剪（C1）：仅 object 模式生效，auto/environment 不受影响；通过 `dataparser_transforms.json` 对齐坐标，带数据缺失/几何异常/裁剪过激的安全回退。
+- 任务进入处理即记录开始时间：前端任务卡片在处理中实时显示已用时长；视频任务后端日志在阶段切换/完成时记录各阶段耗时与总耗时。
+- 抽帧/COLMAP 等长时间静默步骤增加后台心跳日志：持续无输出时按间隔打印 INFO 提示仍在运行及已用时长，避免被误判为卡死。
 - VGGT 实验依赖探测改用视频重建环境的 Python 解释器。
 - 模型删除复用 `ALLOWED_IMAGE_EXTENSIONS`，修复大写 `.JPEG/.WEBP` 原图残留。
 - `legacy_video_match_stems` 兼容回填逻辑补充注释，明确只服务旧本机命名产物。

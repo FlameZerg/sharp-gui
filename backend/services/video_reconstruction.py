@@ -996,13 +996,41 @@ def persist_video_model_assets(paths, task):
     prepare_video_model_assets(paths, task, generate_thumbnail=True)
 
 
+def _format_duration(seconds):
+    if seconds is None:
+        return "?"
+    seconds = max(0, int(round(seconds)))
+    minutes, sec = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours}h{minutes:02d}m{sec:02d}s"
+    if minutes:
+        return f"{minutes}m{sec:02d}s"
+    return f"{sec}s"
+
+
 def update_task(task_manager, task_id, **patch):
     log_snapshot = None
     with task_manager.task_lock:
         task = task_manager.task_status.get(task_id)
         if task:
+            now = time.time()
             previous_stage = task.get("stage")
+            new_stage = patch.get("stage")
+            stage_changed = bool(new_stage and new_stage != previous_stage)
+            prev_stage_duration = None
+            if stage_changed:
+                stage_started = task.get("stage_started_at")
+                if previous_stage and stage_started:
+                    prev_stage_duration = now - stage_started
+                    durations = task.setdefault("details", {}).setdefault("stage_durations", {})
+                    durations[previous_stage] = round(prev_stage_duration, 1)
+                task["stage_started_at"] = now
             task.update(patch)
+            started_at = task.get("started_at")
+            total_elapsed = (now - started_at) if started_at else None
+            details = task.get("details")
+            stage_durations = dict(details.get("stage_durations", {})) if isinstance(details, dict) else {}
             log_snapshot = {
                 "filename": task.get("filename"),
                 "status": task.get("status"),
@@ -1012,6 +1040,9 @@ def update_task(task_manager, task_id, **patch):
                 "error_code": task.get("error_code"),
                 "output_path": task.get("output_path"),
                 "previous_stage": previous_stage,
+                "prev_stage_duration": prev_stage_duration,
+                "total_elapsed": total_elapsed,
+                "stage_durations": stage_durations,
             }
 
     if not log_snapshot:
@@ -1019,29 +1050,48 @@ def update_task(task_manager, task_id, **patch):
 
     status = patch.get("status")
     stage = patch.get("stage")
+    elapsed_text = _format_duration(log_snapshot["total_elapsed"])
     if status == "failed":
         runtime.log(
             "ERROR",
             "Video task "
             f"{task_id} failed: file={log_snapshot['filename']} "
             f"stage={log_snapshot['stage']} code={log_snapshot['error_code']} "
-            f"error={log_snapshot['error']}",
+            f"elapsed={elapsed_text} error={log_snapshot['error']}",
         )
     elif status == "cancelled":
-        runtime.log("WARN", f"Video task {task_id} cancelled: file={log_snapshot['filename']} stage={log_snapshot['stage']}")
+        runtime.log(
+            "WARN",
+            f"Video task {task_id} cancelled: file={log_snapshot['filename']} "
+            f"stage={log_snapshot['stage']} elapsed={elapsed_text}",
+        )
     elif status == "completed":
         log_level = "WARN" if log_snapshot.get("error") else "INFO"
+        stage_summary = ", ".join(
+            f"{name}={_format_duration(duration)}"
+            for name, duration in log_snapshot["stage_durations"].items()
+        )
+        summary_suffix = f" stages=[{stage_summary}]" if stage_summary else ""
+        warning_suffix = f" warning={log_snapshot['error']}" if log_snapshot.get("error") else ""
         runtime.log(
             log_level,
             "Video task "
             f"{task_id} completed: file={log_snapshot['filename']} output={log_snapshot['output_path']} "
-            f"warning={log_snapshot['error']}",
+            f"total={elapsed_text}{summary_suffix}{warning_suffix}",
         )
     elif stage and stage != log_snapshot["previous_stage"]:
+        previous = log_snapshot["previous_stage"]
+        prev_duration = log_snapshot["prev_stage_duration"]
+        prev_suffix = (
+            f" ({previous} took {_format_duration(prev_duration)})"
+            if previous and prev_duration is not None
+            else ""
+        )
         runtime.log(
             "INFO",
             "Video task "
-            f"{task_id} stage={stage} progress={log_snapshot['progress']} file={log_snapshot['filename']}",
+            f"{task_id} stage={stage} progress={log_snapshot['progress']} "
+            f"elapsed={elapsed_text}{prev_suffix} file={log_snapshot['filename']}",
         )
 
 
@@ -1066,13 +1116,15 @@ def is_task_cancelled(task_manager, task_id):
         return task_manager.task_status.get(task_id, {}).get("status") == "cancelled"
 
 
-def wait_for_process(task_manager, task_id, process, output_lines, stage=None, profile=None):
+def wait_for_process(task_manager, task_id, process, output_lines, stage=None, profile=None, last_output=None):
     cancelled = False
     last_reported_progress = None
     viewer_url_logged = False
     for line in iter(process.stdout.readline, ""):
         if not line:
             break
+        if last_output is not None:
+            last_output[0] = time.time()
         output_lines.append(line)
         append_task_log(task_manager, task_id, line)
         if stage == "video_optimize":
@@ -1245,6 +1297,29 @@ def terminate_process_tree(process):
             pass
 
 
+def _log_command_heartbeat(task_id, stage, command_name, process, last_output, stop_event,
+                           interval=45, quiet_threshold=40):
+    """Periodically reassure the user that a quiet long-running step is alive.
+
+    Steps like ns-process-data (frame extraction + COLMAP) can run for minutes
+    without emitting any stdout, which looks like a freeze. When no tool output
+    has arrived for a while, log a short INFO heartbeat with elapsed time until
+    the process finishes.
+    """
+    started = time.time()
+    while not stop_event.wait(interval):
+        if process.poll() is not None:
+            break
+        quiet_seconds = time.time() - last_output[0]
+        if quiet_seconds >= quiet_threshold:
+            runtime.log(
+                "INFO",
+                f"Video task {task_id} stage={stage or '-'} command={command_name} still working "
+                f"(no output for {int(quiet_seconds)}s, step elapsed {_format_duration(time.time() - started)}); "
+                "this step can take several minutes, please wait.",
+            )
+
+
 def run_command(task_manager, task_id, cmd, cwd=None, stage=None, progress=None, profile=None):
     if stage:
         update_task(task_manager, task_id, stage=stage, progress=progress or STAGE_PROGRESS.get(stage, 0))
@@ -1284,6 +1359,14 @@ def run_command(task_manager, task_id, cmd, cwd=None, stage=None, progress=None,
         task_manager.running_processes[task_id] = process
 
     output_lines = []
+    last_output = [time.time()]
+    heartbeat_stop = threading.Event()
+    heartbeat = threading.Thread(
+        target=_log_command_heartbeat,
+        args=(task_id, stage, command_name, process, last_output, heartbeat_stop),
+        daemon=True,
+    )
+    heartbeat.start()
     try:
         return_code, cancelled = wait_for_process(
             task_manager,
@@ -1292,8 +1375,10 @@ def run_command(task_manager, task_id, cmd, cwd=None, stage=None, progress=None,
             output_lines,
             stage=stage,
             profile=profile,
+            last_output=last_output,
         )
     finally:
+        heartbeat_stop.set()
         with task_manager.task_lock:
             if task_manager.running_processes.get(task_id) is process:
                 task_manager.running_processes.pop(task_id, None)

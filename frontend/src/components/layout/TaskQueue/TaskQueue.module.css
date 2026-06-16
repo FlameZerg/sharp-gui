@@ -162,11 +162,30 @@
     transition: width 0.3s ease;
 }
 
+.progressMeta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 4px;
+}
+
 .progressText {
     font-size: 10px;
     color: var(--accent-blue);
     margin-top: 4px;
     font-weight: 600;
+}
+
+.progressMeta .progressText {
+    margin-top: 0;
+}
+
+.elapsedText {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
 }
 
 .viewerLink {

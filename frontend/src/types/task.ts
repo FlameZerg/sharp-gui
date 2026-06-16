@@ -20,6 +20,7 @@ export interface Task {
   resolved_engine?: string;
   vram_budget?: string;
   output_name?: string;
+  started_at?: number;
   completed_at?: number;
   details?: {
     warnings?: Array<{

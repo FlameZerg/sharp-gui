@@ -165,9 +165,12 @@ class TaskManager:
 
             print(f"🔄 Processing task {task_id}: {filename}")
             with self.task_lock:
+                now = time.time()
                 self.task_status[task_id]["status"] = "processing"
                 self.task_status[task_id]["progress"] = 0
                 self.task_status[task_id]["stage"] = "starting"
+                self.task_status[task_id]["started_at"] = now
+                self.task_status[task_id]["stage_started_at"] = now
 
             if kind == video_reconstruction.TASK_KIND_VIDEO_3DGS:
                 video_reconstruction.run_video_reconstruction_task(self, task_id, task)
@@ -292,6 +295,7 @@ class TaskManager:
             "vram_budget",
             "output_name",
             "error_code",
+            "started_at",
             "completed_at",
         )
         for key in optional_keys:

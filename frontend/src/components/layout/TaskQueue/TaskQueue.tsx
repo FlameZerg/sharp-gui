@@ -1,9 +1,21 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '@/store/useAppStore';
 import type { Task } from '@/types';
 import { cancelTask } from '@/api';
 import styles from './TaskQueue.module.css';
+
+// Format an elapsed duration (seconds) as m:ss or h:mm:ss.
+function formatElapsed(seconds: number): string {
+    const total = Math.max(0, Math.floor(seconds));
+    const mins = Math.floor(total / 60);
+    const secs = total % 60;
+    if (mins < 60) {
+        return `${mins}:${String(secs).padStart(2, '0')}`;
+    }
+    const hours = Math.floor(mins / 60);
+    return `${hours}:${String(mins % 60).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
 
 // Status icons as inline SVG components
 const ClockIcon = () => (
@@ -59,6 +71,17 @@ export const TaskQueue: React.FC = () => {
         task.status === 'processing' || 
         task.status === 'failed'
     );
+
+    // Tick once per second while a task is processing, to keep the elapsed timer live.
+    const [nowMs, setNowMs] = useState(() => Date.now());
+    const hasProcessing = activeTasks.some(task => task.status === 'processing');
+    useEffect(() => {
+        if (!hasProcessing) {
+            return;
+        }
+        const intervalId = window.setInterval(() => setNowMs(Date.now()), 1000);
+        return () => window.clearInterval(intervalId);
+    }, [hasProcessing]);
 
     // Handle cancel task
     const handleCancel = async (taskId: string) => {
@@ -131,6 +154,10 @@ export const TaskQueue: React.FC = () => {
                 const errorText = getTaskErrorText(task);
                 const stageText = getTaskStageText(task);
                 const viewerUrl = task.status === 'processing' ? resolveViewerUrl(task) : undefined;
+                const elapsedText =
+                    task.status === 'processing' && task.started_at
+                        ? formatElapsed(nowMs / 1000 - task.started_at)
+                        : null;
 
                 return (
                     <div key={task.id} className={styles.queueItem}>
@@ -152,7 +179,12 @@ export const TaskQueue: React.FC = () => {
                                             style={{ width: `${task.progress}%` }}
                                         />
                                     </div>
-                                    <div className={styles.progressText}>{task.progress}%</div>
+                                    <div className={styles.progressMeta}>
+                                        <span className={styles.progressText}>{task.progress}%</span>
+                                        {elapsedText ? (
+                                            <span className={styles.elapsedText}>{elapsedText}</span>
+                                        ) : null}
+                                    </div>
                                 </>
                             )}
                             {errorText ? <div className={styles.errorText} data-tooltip={errorText}>{errorText}</div> : null}
