@@ -1331,11 +1331,13 @@ def test_parse_training_progress_maps_steps_into_optimize_band():
     ceiling = video_reconstruction.STAGE_PROGRESS["video_export"]
 
     midpoint = video_reconstruction.parse_training_progress("Step 15000 / 30000 ...", profile)
+    percent_row = video_reconstruction.parse_training_progress("2980 (50.00%)", profile)
     near_end = video_reconstruction.parse_training_progress("progress 30000/30000 done", profile)
     unrelated = video_reconstruction.parse_training_progress("loaded 5/10 images", profile)
     no_match = video_reconstruction.parse_training_progress("starting trainer", profile)
 
     assert midpoint == int(base + (ceiling - base) * 0.5)
+    assert percent_row == int(base + (ceiling - base) * 0.5)
     assert near_end == ceiling
     assert base < midpoint < ceiling
     assert unrelated is None
@@ -1378,3 +1380,17 @@ def test_delete_uploaded_source_video_protects_album_originals(workspace):
     })
     assert not os.path.exists(uploaded_video)
     assert not os.path.exists(upload_dir)
+
+
+def test_parse_viewer_url_extracts_local_viewer():
+    assert (
+        video_reconstruction.parse_viewer_url("│   HTTP   │ http://0.0.0.0:7007 │")
+        == "http://localhost:7007"
+    )
+    assert video_reconstruction.parse_viewer_url(
+        "Viewer running locally at: http://localhost:7007"
+    ) == "http://localhost:7007"
+    assert video_reconstruction.parse_viewer_url(
+        "https://viewer.nerf.studio/?websocket_url=ws://localhost:7007"
+    ).startswith("https://viewer.nerf.studio")
+    assert video_reconstruction.parse_viewer_url("loss=0.123 step done") is None

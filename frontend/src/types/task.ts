@@ -26,6 +26,7 @@ export interface Task {
       code: string;
       message: string;
     }>;
+    viewer_url?: string;
   };
 }
 

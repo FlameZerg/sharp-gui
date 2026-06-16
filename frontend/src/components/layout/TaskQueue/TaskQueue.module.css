@@ -169,6 +169,34 @@
     font-weight: 600;
 }
 
+.viewerLink {
+    display: inline-flex;
+    align-items: center;
+    align-self: flex-start;
+    max-width: 100%;
+    margin-top: 5px;
+    padding: 2px 9px;
+    border-radius: var(--radius-full);
+    background: rgba(0, 113, 227, 0.1);
+    color: var(--accent-blue);
+    font-size: 10px;
+    font-weight: 600;
+    text-decoration: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: background var(--transition-normal);
+}
+
+.viewerLink:hover {
+    background: rgba(0, 113, 227, 0.18);
+}
+
+.viewerLink:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 1px;
+}
+
 .errorText {
     display: -webkit-box;
     margin-top: 5px;

@@ -1051,16 +1051,27 @@ def is_task_cancelled(task_manager, task_id):
 def wait_for_process(task_manager, task_id, process, output_lines, stage=None, profile=None):
     cancelled = False
     last_reported_progress = None
+    viewer_url_logged = False
     for line in iter(process.stdout.readline, ""):
         if not line:
             break
         output_lines.append(line)
         append_task_log(task_manager, task_id, line)
-        if stage == "video_optimize" and profile:
-            step_progress = parse_training_progress(line, profile)
-            if step_progress is not None and step_progress != last_reported_progress:
-                last_reported_progress = step_progress
-                update_task(task_manager, task_id, progress=step_progress, stage=stage)
+        if stage == "video_optimize":
+            if not viewer_url_logged:
+                viewer_url = parse_viewer_url(line)
+                if viewer_url:
+                    viewer_url_logged = True
+                    if set_task_viewer_url(task_manager, task_id, viewer_url):
+                        runtime.log(
+                            "INFO",
+                            f"Video task {task_id} live viewer available at {viewer_url}",
+                        )
+            if profile:
+                step_progress = parse_training_progress(line, profile)
+                if step_progress is not None and step_progress != last_reported_progress:
+                    last_reported_progress = step_progress
+                    update_task(task_manager, task_id, progress=step_progress, stage=stage)
         if is_task_cancelled(task_manager, task_id):
             cancelled = True
             break
@@ -1075,33 +1086,78 @@ def wait_for_process(task_manager, task_id, process, output_lines, stage=None, p
 
 
 TRAIN_STEP_PATTERN = re.compile(r"(\d+)\s*/\s*(\d+)")
+TRAIN_PERCENT_PATTERN = re.compile(r"\(\s*(\d+(?:\.\d+)?)\s*%\s*\)")
+VIEWER_URL_PATTERN = re.compile(r"https?://[^\s'\"\]\)]+")
 
 
 def parse_training_progress(line, profile):
-    """Map a Nerfstudio "step/total" log line into the optimize progress band.
+    """Map a Nerfstudio training log line into the optimize progress band.
 
-    Only matches whose denominator equals the configured training iteration
-    count are trusted, so unrelated "a/b" tokens in the log do not move the bar.
-    Returns an integer percentage within [video_optimize, video_export), or None.
+    Nerfstudio's local writer prints a periodic table whose data rows look like
+    ``2980 (9.93%)``; some setups instead emit ``step/total``. We trust the
+    percentage form first, then fall back to ``step/total`` when the denominator
+    matches the configured iteration count. Returns an integer percentage within
+    [video_optimize, video_export), or None when the line carries no progress.
     """
     max_iter = int(profile.get("max_num_iterations") or 0)
     if max_iter <= 0:
         return None
 
-    step = None
-    for match in TRAIN_STEP_PATTERN.finditer(line):
-        candidate_step = int(match.group(1))
-        candidate_total = int(match.group(2))
-        if candidate_total == max_iter:
-            step = candidate_step
+    ratio = None
+    percent_matches = TRAIN_PERCENT_PATTERN.findall(line)
+    if percent_matches:
+        try:
+            percent = float(percent_matches[-1])
+        except ValueError:
+            percent = None
+        if percent is not None and 0.0 <= percent <= 100.0:
+            ratio = percent / 100.0
 
-    if step is None:
+    if ratio is None:
+        step = None
+        for match in TRAIN_STEP_PATTERN.finditer(line):
+            if int(match.group(2)) == max_iter:
+                step = int(match.group(1))
+        if step is not None:
+            ratio = step / max_iter
+
+    if ratio is None:
         return None
 
+    ratio = min(1.0, max(0.0, ratio))
     base = STAGE_PROGRESS["video_optimize"]
     ceiling = STAGE_PROGRESS["video_export"]
-    ratio = min(1.0, max(0.0, step / max_iter))
     return int(base + (ceiling - base) * ratio)
+
+
+def parse_viewer_url(line):
+    """Extract the Nerfstudio/viser live viewer URL from a training log line.
+
+    The viewer is the most reliable real-time progress source, so surface it as
+    soon as the trainer prints it. ``0.0.0.0`` is rewritten to ``localhost`` so a
+    browser on the same machine can open it directly.
+    """
+    lowered = line.lower()
+    if "http://" not in lowered and "https://" not in lowered:
+        return None
+    for match in VIEWER_URL_PATTERN.finditer(line):
+        url = match.group(0).rstrip(".,)]'\"")
+        low = url.lower()
+        if any(token in low for token in ("localhost", "127.0.0.1", "0.0.0.0", "nerf.studio", "viewer")):
+            return url.replace("0.0.0.0", "localhost")
+    return None
+
+
+def set_task_viewer_url(task_manager, task_id, url):
+    with task_manager.task_lock:
+        task = task_manager.task_status.get(task_id)
+        if not task:
+            return False
+        details = task.setdefault("details", {})
+        if details.get("viewer_url") == url:
+            return False
+        details["viewer_url"] = url
+        return True
 
 
 def terminate_process_tree(process):

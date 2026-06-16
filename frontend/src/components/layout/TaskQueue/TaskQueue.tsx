@@ -117,6 +117,7 @@ export const TaskQueue: React.FC = () => {
                 const canCancel = task.status === 'pending' || task.status === 'processing';
                 const errorText = getTaskErrorText(task);
                 const stageText = getTaskStageText(task);
+                const viewerUrl = task.status === 'processing' ? task.details?.viewer_url : undefined;
 
                 return (
                     <div key={task.id} className={styles.queueItem}>
@@ -142,6 +143,18 @@ export const TaskQueue: React.FC = () => {
                                 </>
                             )}
                             {errorText ? <div className={styles.errorText} data-tooltip={errorText}>{errorText}</div> : null}
+                            {viewerUrl ? (
+                                <a
+                                    className={styles.viewerLink}
+                                    href={viewerUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(event) => event.stopPropagation()}
+                                    data-tooltip={viewerUrl}
+                                >
+                                    {t('videoReconLiveProgress')}
+                                </a>
+                            ) : null}
                         </div>
 
                         {/* Status Text */}

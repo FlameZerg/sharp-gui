@@ -442,6 +442,7 @@
   "photoDownloadVideo": "Download video",
 
   "videoReconGenerate3d": "Generate 3D",
+  "videoReconLiveProgress": "Live progress",
   "videoReconSingleVideoOnly": "Select one video",
   "videoReconDialogTitle": "Video to 3D",
   "videoReconStatusLoadFailed": "Failed to load video reconstruction diagnostics.",

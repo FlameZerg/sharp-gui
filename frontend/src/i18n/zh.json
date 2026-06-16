@@ -442,6 +442,7 @@
   "photoDownloadVideo": "下载视频",
 
   "videoReconGenerate3d": "生成 3D",
+  "videoReconLiveProgress": "实时进度",
   "videoReconSingleVideoOnly": "选择单个视频",
   "videoReconDialogTitle": "视频生成 3D",
   "videoReconStatusLoadFailed": "加载视频重建议诊断失败。",
