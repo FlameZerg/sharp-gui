@@ -1,5 +1,6 @@
 import os
 import copy
+import json
 import re
 import shutil
 import subprocess
@@ -1446,6 +1447,52 @@ def find_nerfstudio_config(train_dir):
     return str(candidates[0]) if candidates else None
 
 
+# Nerfstudio's FPS camera sampling uses fpsample bucket_fps_kdline_sampling with
+# h=3, which asserts 2**3 <= number_of_cameras. After the train/eval split the
+# usable count is even smaller, so when COLMAP only registers a handful of
+# cameras the trainer crashes with "2**h should be <= n_pts". Below this
+# conservative threshold we fall back to random sampling, which has no such
+# requirement, instead of letting the whole task fail.
+FPS_MIN_REGISTERED_FRAMES = 16
+
+
+def count_registered_frames(data_dir):
+    """Return the number of cameras COLMAP registered in transforms.json, or None."""
+    transforms_path = os.path.join(data_dir, "transforms.json")
+    try:
+        with open(transforms_path, "r", encoding="utf-8") as file:
+            data = json.load(file)
+    except (OSError, ValueError):
+        return None
+    frames = data.get("frames") if isinstance(data, dict) else None
+    return len(frames) if isinstance(frames, list) else None
+
+
+def resolve_training_profile(profile, data_dir, task_manager=None, task_id=None, task=None):
+    """Downgrade FPS camera sampling to random when too few cameras registered."""
+    if profile.get("train_cameras_sampling_strategy") != "fps":
+        return profile
+
+    registered = count_registered_frames(data_dir)
+    if registered is None or registered >= FPS_MIN_REGISTERED_FRAMES:
+        return profile
+
+    adjusted = {**profile, "train_cameras_sampling_strategy": "random"}
+    message = (
+        f"Only {registered} cameras were registered; using random camera sampling "
+        "instead of FPS to avoid a sampling assertion. Reconstruction quality may be "
+        "limited with so few views."
+    )
+    if task_manager is not None and task_id is not None:
+        append_task_log(task_manager, task_id, message)
+    if isinstance(task, dict):
+        task.setdefault("details", {})["camera_sampling_fallback"] = {
+            "registered_frames": registered,
+            "strategy": "random",
+        }
+    return adjusted
+
+
 def add_object_mode_warning(task):
     details = task.setdefault("details", {})
     warnings = details.setdefault("warnings", [])
@@ -1517,7 +1564,14 @@ def run_video_reconstruction_task(task_manager, task_id, task):
             clean_job_dir(job_dir, keep_intermediate)
             return
 
-        train_cmd = build_train_command(data_dir, train_dir, profile)
+        training_profile = resolve_training_profile(
+            profile,
+            data_dir,
+            task_manager=task_manager,
+            task_id=task_id,
+            task=task,
+        )
+        train_cmd = build_train_command(data_dir, train_dir, training_profile)
         return_code, output_lines, cancelled = run_command(
             task_manager,
             task_id,
@@ -1525,7 +1579,7 @@ def run_video_reconstruction_task(task_manager, task_id, task):
             cwd=job_dir,
             stage="video_optimize",
             progress=STAGE_PROGRESS["video_optimize"],
-            profile=profile,
+            profile=training_profile,
         )
         if cancelled:
             update_task(task_manager, task_id, status="cancelled", error=None)

@@ -1,4 +1,5 @@
 import os
+import json
 import zipfile
 from io import BytesIO
 
@@ -1394,3 +1395,31 @@ def test_parse_viewer_url_extracts_local_viewer():
         "https://viewer.nerf.studio/?websocket_url=ws://localhost:7007"
     ).startswith("https://viewer.nerf.studio")
     assert video_reconstruction.parse_viewer_url("loss=0.123 step done") is None
+
+
+def test_resolve_training_profile_falls_back_to_random_when_few_cameras(tmp_path):
+    data_dir = tmp_path / "nerfstudio-data"
+    data_dir.mkdir()
+    fps_profile = {"train_cameras_sampling_strategy": "fps"}
+
+    # Too few registered cameras -> random sampling to avoid FPS assertion.
+    (data_dir / "transforms.json").write_text(
+        json.dumps({"frames": [{} for _ in range(5)]}),
+        encoding="utf-8",
+    )
+    task = {"details": {}}
+    few = video_reconstruction.resolve_training_profile(fps_profile, str(data_dir), task=task)
+    assert few["train_cameras_sampling_strategy"] == "random"
+    assert task["details"]["camera_sampling_fallback"]["registered_frames"] == 5
+
+    # Enough cameras -> keep FPS unchanged.
+    (data_dir / "transforms.json").write_text(
+        json.dumps({"frames": [{} for _ in range(40)]}),
+        encoding="utf-8",
+    )
+    plenty = video_reconstruction.resolve_training_profile(fps_profile, str(data_dir))
+    assert plenty["train_cameras_sampling_strategy"] == "fps"
+
+    # Missing transforms.json -> leave profile as-is (don't guess).
+    missing = video_reconstruction.resolve_training_profile(fps_profile, str(tmp_path / "nope"))
+    assert missing["train_cameras_sampling_strategy"] == "fps"
