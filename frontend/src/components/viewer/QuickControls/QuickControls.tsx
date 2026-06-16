@@ -1,11 +1,13 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import * as Icons from '@/components/common/Icons';
+import type { ViewerDebugInfo } from '@/hooks/useViewer';
 import { useAppStore } from '@/store';
 import styles from './QuickControls.module.css';
 
 interface QuickControlsProps {
   isInXr: boolean;
+  debugInfo: ViewerDebugInfo | null;
 }
 
 function toDegrees(radians: number): number {
@@ -20,8 +22,46 @@ function formatValue(value: number, fractionDigits = 2): string {
   return value.toFixed(fractionDigits);
 }
 
-export function QuickControls({ isInXr }: QuickControlsProps) {
+function formatDebugNumber(value: number, fractionDigits = 2): string {
+  if (!Number.isFinite(value)) return '-';
+  return value.toFixed(fractionDigits);
+}
+
+function formatDebugVector(value: [number, number, number] | null, fractionDigits = 2): string {
+  if (!value) return '-';
+  return value.map((item) => formatDebugNumber(item, fractionDigits)).join(', ');
+}
+
+function getResetModeLabelKey(mode: ViewerDebugInfo['resetMode']): string {
+  if (mode === 'bounds-centered') return 'quickControlsDebugResetModeBoundsCentered';
+  if (mode === 'bounds-y-front') return 'quickControlsDebugResetModeBoundsYFront';
+  if (mode === 'bounds-default') return 'quickControlsDebugResetModeBoundsDefault';
+  if (mode === 'bounds-unavailable') return 'quickControlsDebugResetModeBoundsUnavailable';
+  return 'quickControlsDebugResetModeDefault';
+}
+
+function createDebugText(debugInfo: ViewerDebugInfo): string {
+  return [
+    `[reset] mode=${debugInfo.resetMode}`,
+    `[camera] pos=${formatDebugVector(debugInfo.camera.position)} rotDeg=${formatDebugVector(debugInfo.camera.rotationDeg)} up=${formatDebugVector(debugInfo.camera.up)} forward=${formatDebugVector(debugInfo.camera.forward)}`,
+    `[orbit] target=${formatDebugVector(debugInfo.controls.target)} distance=${formatDebugNumber(debugInfo.controls.distance)} azimuth=${formatDebugNumber(debugInfo.controls.orbitAzimuthDeg)} polar=${formatDebugNumber(debugInfo.controls.orbitPolarDeg)}`,
+    `[model] pos=${formatDebugVector(debugInfo.model.position)} rotDeg=${formatDebugVector(debugInfo.model.rotationDeg)} scale=${formatDebugVector(debugInfo.model.scale)} right=${formatDebugVector(debugInfo.model.right)} up=${formatDebugVector(debugInfo.model.up)} forward=${formatDebugVector(debugInfo.model.forward)}`,
+    `[bounds] center=${formatDebugVector(debugInfo.bounds?.center ?? null)} size=${formatDebugVector(debugInfo.bounds?.size ?? null)} targetDelta=${formatDebugVector(debugInfo.bounds?.targetDelta ?? null)} targetDistance=${formatDebugNumber(debugInfo.bounds?.targetDistance ?? Number.NaN)}`,
+  ].join('\n');
+}
+
+function DebugRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className={styles.debugRow}>
+      <span className={styles.debugLabel}>{label}</span>
+      <span className={styles.debugValue}>{value}</span>
+    </div>
+  );
+}
+
+export function QuickControls({ isInXr, debugInfo }: QuickControlsProps) {
   const { t } = useTranslation();
+  const [debugCopied, setDebugCopied] = useState(false);
   const {
     currentModelUrl,
     quickControlsOpen,
@@ -77,6 +117,26 @@ export function QuickControls({ isInXr }: QuickControlsProps) {
   const handlePreset = (preset: 'default' | 'openCv' | 'openGl' | 'zUp' | 'flipUpsideDown') => {
     applyOrientationPreset(preset);
   };
+
+  const handleCopyDebug = async () => {
+    if (!debugInfo) return;
+
+    try {
+      await navigator.clipboard.writeText(createDebugText(debugInfo));
+      setDebugCopied(true);
+      window.setTimeout(() => setDebugCopied(false), 1400);
+    } catch (error) {
+      console.warn('[Viewer] Failed to copy debug info:', error);
+    }
+  };
+
+  const orbitValue = debugInfo
+    ? [
+      `${t('quickControlsDebugDistanceShort')} ${formatDebugNumber(debugInfo.controls.distance)}`,
+      `${t('quickControlsDebugAzimuthShort')} ${formatDebugNumber(debugInfo.controls.orbitAzimuthDeg)}°`,
+      `${t('quickControlsDebugPolarShort')} ${formatDebugNumber(debugInfo.controls.orbitPolarDeg)}°`,
+    ].join(' / ')
+    : '-';
 
   return (
     <div className={styles.root}>
@@ -251,6 +311,94 @@ export function QuickControls({ isInXr }: QuickControlsProps) {
             />
             <span>{t('quickControlsReverseSlide')}</span>
           </label>
+        </div>
+
+        <div className={styles.section}>
+          <div className={styles.debugHeader}>
+            <div className={styles.sectionTitle}>{t('quickControlsDebug')}</div>
+            <button
+              className={styles.debugCopyBtn}
+              type="button"
+              onClick={handleCopyDebug}
+              disabled={!debugInfo}
+            >
+              {debugCopied ? t('quickControlsDebugCopied') : t('quickControlsDebugCopy')}
+            </button>
+          </div>
+
+          {debugInfo ? (
+            <div className={styles.debugGrid}>
+              <DebugRow
+                label={t('quickControlsDebugResetMode')}
+                value={t(getResetModeLabelKey(debugInfo.resetMode))}
+              />
+              <DebugRow
+                label={t('quickControlsDebugCameraPosition')}
+                value={formatDebugVector(debugInfo.camera.position)}
+              />
+              <DebugRow
+                label={t('quickControlsDebugCameraRotation')}
+                value={`${formatDebugVector(debugInfo.camera.rotationDeg, 1)}°`}
+              />
+              <DebugRow
+                label={t('quickControlsDebugCameraUp')}
+                value={formatDebugVector(debugInfo.camera.up)}
+              />
+              <DebugRow
+                label={t('quickControlsDebugCameraForward')}
+                value={formatDebugVector(debugInfo.camera.forward)}
+              />
+              <DebugRow
+                label={t('quickControlsDebugControlsTarget')}
+                value={formatDebugVector(debugInfo.controls.target)}
+              />
+              <DebugRow
+                label={t('quickControlsDebugOrbit')}
+                value={orbitValue}
+              />
+              <DebugRow
+                label={t('quickControlsDebugModelPosition')}
+                value={formatDebugVector(debugInfo.model.position)}
+              />
+              <DebugRow
+                label={t('quickControlsDebugModelRotation')}
+                value={`${formatDebugVector(debugInfo.model.rotationDeg, 1)}°`}
+              />
+              <DebugRow
+                label={t('quickControlsDebugModelScale')}
+                value={formatDebugVector(debugInfo.model.scale)}
+              />
+              <DebugRow
+                label={t('quickControlsDebugModelRight')}
+                value={formatDebugVector(debugInfo.model.right)}
+              />
+              <DebugRow
+                label={t('quickControlsDebugModelUp')}
+                value={formatDebugVector(debugInfo.model.up)}
+              />
+              <DebugRow
+                label={t('quickControlsDebugModelForward')}
+                value={formatDebugVector(debugInfo.model.forward)}
+              />
+              <DebugRow
+                label={t('quickControlsDebugBoundsCenter')}
+                value={formatDebugVector(debugInfo.bounds?.center ?? null)}
+              />
+              <DebugRow
+                label={t('quickControlsDebugBoundsSize')}
+                value={formatDebugVector(debugInfo.bounds?.size ?? null)}
+              />
+              <DebugRow
+                label={t('quickControlsDebugTargetDelta')}
+                value={[
+                  formatDebugVector(debugInfo.bounds?.targetDelta ?? null),
+                  `d=${formatDebugNumber(debugInfo.bounds?.targetDistance ?? Number.NaN)}`,
+                ].join(' / ')}
+              />
+            </div>
+          ) : (
+            <p className={styles.disabledHint}>{t('quickControlsDebugWaiting')}</p>
+          )}
         </div>
       </section>
     </div>

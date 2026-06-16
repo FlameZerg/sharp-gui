@@ -65,7 +65,10 @@ const ViewerInstance: React.FC = () => {
                 onReplay={() => setReplayToken((value) => value + 1)}
                 onSelectEffect={setActiveEffect}
             />
-            <QuickControls isInXr={viewerHook.xr.isInXR} />
+            <QuickControls
+                debugInfo={viewerHook.debugInfo}
+                isInXr={viewerHook.xr.isInXR}
+            />
             <Help />
         </>
     );

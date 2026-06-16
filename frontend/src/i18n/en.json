@@ -4,9 +4,9 @@
   "generateNew": "Generate New",
   "processingQueue": "Processing Queue",
 
-  "emptyStateTitle": "Select from gallery or generate new",
-  "emptyStateHint": "Drop .ply / .splat / .spz / .rad files here to preview",
-  "dragToSidebarHint": "Drag images to sidebar to generate",
+  "emptyStateTitle": "Select a model, or drop images/videos to generate",
+  "emptyStateHint": "Drop .ply / .splat / .spz / .rad files to preview; drop images or one video to generate a 3D model",
+  "dragToSidebarHint": "Drag images or videos to the sidebar to generate",
 
   "loading": "Loading...",
   "loadingModel": "Loading Model...",
@@ -54,6 +54,34 @@
   "quickControlsLodScale": "LoD Scale",
   "quickControlsConeFoveate": "Cone Foveate",
   "quickControlsBehindFoveate": "Behind Foveate",
+  "quickControlsDebug": "Debug Readout",
+  "quickControlsDebugCopy": "Copy",
+  "quickControlsDebugCopied": "Copied",
+  "quickControlsDebugWaiting": "Realtime camera and model pose readouts appear after a model is open.",
+  "quickControlsDebugResetMode": "Reset Mode",
+  "quickControlsDebugResetModeDefault": "Default",
+  "quickControlsDebugResetModeBoundsCentered": "Bounds Centered",
+  "quickControlsDebugResetModeBoundsYFront": "Y Front Adapted",
+  "quickControlsDebugResetModeBoundsDefault": "Bounds Not Triggered",
+  "quickControlsDebugResetModeBoundsUnavailable": "Bounds Unavailable",
+  "quickControlsDebugCameraPosition": "Camera Pos",
+  "quickControlsDebugCameraRotation": "Camera Rot",
+  "quickControlsDebugCameraUp": "Camera Up",
+  "quickControlsDebugCameraForward": "Camera Forward",
+  "quickControlsDebugControlsTarget": "Controls Target",
+  "quickControlsDebugOrbit": "Orbit Angles",
+  "quickControlsDebugDistanceShort": "D",
+  "quickControlsDebugAzimuthShort": "Az",
+  "quickControlsDebugPolarShort": "Polar",
+  "quickControlsDebugModelPosition": "Model Pos",
+  "quickControlsDebugModelRotation": "Model Rot",
+  "quickControlsDebugModelScale": "Model Scale",
+  "quickControlsDebugModelRight": "Model Right",
+  "quickControlsDebugModelUp": "Model Up",
+  "quickControlsDebugModelForward": "Model Forward",
+  "quickControlsDebugBoundsCenter": "Bounds Center",
+  "quickControlsDebugBoundsSize": "Bounds Size",
+  "quickControlsDebugTargetDelta": "Target Delta",
 
   "revealEffectsTitle": "Reveal Effects",
   "revealEffectsOpenAria": "Open reveal effects panel. Current effect: {{effect}}",
@@ -114,6 +142,7 @@
   "precisionMode": "Precision Mode",
 
   "viewOriginal": "View Original",
+  "viewOriginalVideo": "Preview Original Video",
   "download": "Download Model",
   "delete": "Delete",
   "galleryThumbLoading": "Loading preview",
@@ -219,6 +248,7 @@
   "selectImageFiles": "Please select image files.",
   "uploadFailed": "Upload Failed",
   "uploadingFiles": "Uploading {{count}} file(s)...",
+  "uploadingVideo": "Uploading video and creating reconstruction task...",
 
   "ready": "Ready",
   "viewerError": "Viewer Error",
@@ -226,7 +256,7 @@
   "pageWillRefresh": "Page will refresh automatically",
 
   "dropModelHint": "Drop .ply / .splat / .spz / .rad file to preview",
-  "unsupportedFormat": "Unsupported format. Please drop .ply, .splat, .spz or .rad files.",
+  "unsupportedFormat": "Unsupported format. Drop model files (.ply / .splat / .spz / .rad), images, or one video (.mp4 / .mov / .m4v / .webm).",
   "modelLoaded": "Model loaded",
   "modelLoadFailed": "Failed to load model",
 
@@ -439,26 +469,55 @@
   "videoReconSettingsHint": "Controls the default preset used when turning a local video into a Gaussian Splat model.",
   "videoReconRefreshDiagnostics": "Refresh",
   "videoReconDefaultQuality": "Default quality",
+  "videoReconDefaultQualityMeta": "Frames, resolution, iterations and runtime",
   "videoReconDefaultEngine": "Default engine",
+  "videoReconDefaultEngineMeta": "Route selection; Auto is recommended",
+  "videoReconVramBudgetMeta": "Resource guard for the local GPU",
   "videoReconSettingsSaved": "Video reconstruction settings saved.",
   "videoReconSettingsUnsaved": "Unsaved video reconstruction changes",
   "videoReconSettingsCurrent": "Saved: video reconstruction defaults are current",
   "videoReconDependencyAvailable": "Available",
+  "videoReconDependencyChecking": "Checking",
   "videoReconDependencyMissing": "Missing",
   "videoReconMode": {
     "auto": "Auto",
     "object": "Object",
     "environment": "Environment"
   },
+  "videoReconModeMeta": {
+    "auto": "Recommended",
+    "object": "Subject first",
+    "environment": "Room scale"
+  },
   "videoReconQuality": {
     "preview": "Preview",
     "high": "High",
     "extreme": "Extreme"
   },
+  "videoReconQualityMeta": {
+    "preview": "90 frames / 7k",
+    "high": "180 frames / 30k",
+    "extreme": "360 frames / 50k"
+  },
+  "videoReconQualityHint": {
+    "preview": "Fast sanity check for camera path and subject cleanup. Uses fewer splats and lower input detail.",
+    "high": "Recommended for final-looking results on this machine: 2x input scale, focused cleanup and about 50 minutes for this 4K clip.",
+    "extreme": "Pushes frame count and training budget for long offline runs. Use when time and VRAM are less constrained."
+  },
   "videoReconEngine": {
     "auto": "Auto",
     "stable": "Stable",
     "experimental": "Experimental"
+  },
+  "videoReconEngineMeta": {
+    "auto": "Recommended",
+    "stable": "Nerfstudio",
+    "experimental": "VGGT optional"
+  },
+  "videoReconEngineHint": {
+    "auto": "Uses the best configured route. If experimental initialization is missing, it falls back to the stable 3DGS route.",
+    "stable": "Always uses COLMAP + Nerfstudio Splatfacto. This is the route that produced the current clean high-detail result.",
+    "experimental": "Reserved for VGGT-style geometry initialization. It needs local model files and dependencies; unavailable setups cannot run it."
   },
   "videoReconVram": {
     "auto": "Auto",
@@ -477,8 +536,10 @@
     "stable": "Nerfstudio Splatfacto trains and exports the Gaussian Splat model.",
     "experimental": "VGGT-style initialization is optional and never downloaded automatically."
   },
+  "videoReconDependencyExperimentalMissingHint": "VGGT-style initialization is not configured. This optional route is not required for Auto or Stable reconstruction.",
   "videoReconError": {
     "video_reconstruction_dependency_missing": "Required video reconstruction dependencies are missing.",
+    "video_reconstruction_dependencies_checking": "Local reconstruction tools are still being checked. Please try again in a moment.",
     "video_reconstruction_stable_unavailable": "The stable Nerfstudio / Splatfacto route is unavailable.",
     "video_reconstruction_experimental_unavailable": "Experimental initialization is not configured locally.",
     "video_reconstruction_invalid_request": "The video reconstruction request contains invalid options.",
@@ -486,7 +547,8 @@
     "video_reconstruction_cancelled": "Video reconstruction was cancelled.",
     "video_reconstruction_oom": "GPU memory ran out. Try a lower quality preset or fewer frames.",
     "video_reconstruction_output_missing": "The reconstruction finished without a usable PLY output.",
-    "video_reconstruction_spz_failed": "SPZ compression failed, but the PLY output was kept."
+    "video_reconstruction_spz_failed": "SPZ compression failed, but the PLY output was kept.",
+    "video_reconstruction_unsupported_video": "Unsupported video format. Please use MP4, MOV, M4V, or WebM."
   },
   "taskStatus": {
     "pending": "Pending",

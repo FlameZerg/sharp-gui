@@ -14,6 +14,7 @@ import {
   GALLERY_ROW_HEIGHT,
   getGalleryModelSource,
   getGalleryRendererMode,
+  getGallerySourceVideoUrl,
 } from '@/utils';
 import type { GalleryItem as GalleryItemType } from '@/types';
 
@@ -179,8 +180,15 @@ export function GalleryList() {
   }, [preferredFormat, setCurrentModel, setSidebarOpen, sidebarOpen]);
 
   const handlePreview = useCallback((item: GalleryItemType) => {
-    if (item.image_url) {
-      setPreviewImage(item);
+    const sourceVideoUrl = getGallerySourceVideoUrl(item);
+    if (item.image_url || sourceVideoUrl) {
+      setPreviewImage(sourceVideoUrl
+        ? {
+          ...item,
+          source_media_type: 'video',
+          source_video_url: sourceVideoUrl,
+        }
+        : item);
     }
   }, [setPreviewImage]);
 

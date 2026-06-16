@@ -9,6 +9,10 @@ export interface GalleryItem {
   spz_url?: string | null;
   size?: number;
   spz_size?: number | null;
+  source_media_type?: 'video' | 'image' | string | null;
+  source_media_id?: string | null;
+  source_name?: string | null;
+  source_video_url?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 }

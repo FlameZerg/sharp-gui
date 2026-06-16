@@ -19,6 +19,7 @@ import {
   createChromeSafePhotoPreviewUrl,
   shouldUseChromeSafePhotoPreview,
 } from '@/utils/ultraHdrPreview';
+import { getGallerySourceVideoUrl } from '@/utils/gallery';
 import styles from './ImageViewer.module.css';
 
 const VIDEO_LONG_PRESS_MS = 260;
@@ -135,8 +136,11 @@ export function ImageViewer() {
   const wheelTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activePreview = previewPhoto ?? previewImage;
   const isPhotoPreview = Boolean(previewPhoto);
-  const isVideoPreview = previewPhoto?.media_type === 'video';
-  const activeName = previewPhoto?.name ?? previewImage?.name ?? '';
+  const sourceVideoUrl = previewImage ? getGallerySourceVideoUrl(previewImage) : null;
+  const isSourceVideoPreview = !previewPhoto
+    && Boolean(sourceVideoUrl);
+  const isVideoPreview = previewPhoto?.media_type === 'video' || isSourceVideoPreview;
+  const activeName = previewPhoto?.name ?? previewImage?.source_name ?? previewImage?.name ?? '';
   const rawImageUrl = activePreview && !isVideoPreview
     ? previewPhoto
       ? (previewPhoto.full_url ?? previewPhoto.preview_url)
@@ -683,13 +687,15 @@ export function ImageViewer() {
       // Fetch the blob directly to bypass browser's default exact view behavior
       const downloadUrl = previewPhoto
         ? previewPhoto.download_url
-        : `/api/original/${encodeURIComponent(previewImage?.id ?? '')}?download=1`;
+        : sourceVideoUrl
+          ? `${sourceVideoUrl}?download=1`
+          : `/api/original/${encodeURIComponent(previewImage?.id ?? '')}?download=1`;
       const response = await fetch(downloadUrl, { credentials: 'same-origin' });
       if (!response.ok) throw new Error('Download failed');
       
       const blob = await response.blob();
       const headerFilename = response.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1];
-      const filename = previewPhoto?.name ?? headerFilename ?? `${activePreview.id}.jpg`;
+      const filename = previewPhoto?.name ?? previewImage?.source_name ?? headerFilename ?? `${activePreview.id}.jpg`;
       
       // Create temporary link and click it
       const url = window.URL.createObjectURL(blob);
@@ -707,7 +713,9 @@ export function ImageViewer() {
       // Fallback
       const fallbackUrl = previewPhoto
         ? previewPhoto.download_url
-        : `/api/original/${encodeURIComponent(previewImage?.id ?? '')}?download=1`;
+        : sourceVideoUrl
+          ? `${sourceVideoUrl}?download=1`
+          : `/api/original/${encodeURIComponent(previewImage?.id ?? '')}?download=1`;
       window.open(fallbackUrl, '_blank');
     } finally {
       setIsDownloading(false);
@@ -742,7 +750,14 @@ export function ImageViewer() {
     if (!previewPhoto || previewPhoto.media_type !== 'video') {
       return;
     }
-    openVideoReconstructionDialog(previewPhoto);
+    const targetVideo = previewPhoto;
+    videoRef.current?.pause();
+    releaseVideoOrientationLock();
+    if (document.fullscreenElement === videoStageRef.current) {
+      void document.exitFullscreen().catch(() => undefined);
+    }
+    setPreviewPhoto(null);
+    openVideoReconstructionDialog(targetVideo);
   };
 
   const handleNavigatePhoto = (direction: -1 | 1) => {
@@ -908,7 +923,9 @@ export function ImageViewer() {
     : null;
   const imageUrl = shouldUseSafePhotoPreview ? chromeSafeImageUrl : rawImageUrl;
   const isWaitingForSafeImage = shouldUseSafePhotoPreview && !chromeSafeImageUrl && !imageError;
-  const videoUrl = isVideoPreview ? previewPhoto?.playback_url ?? previewPhoto?.preview_url : null;
+  const videoUrl = isVideoPreview
+    ? previewPhoto?.playback_url ?? previewPhoto?.preview_url ?? sourceVideoUrl
+    : null;
   const photoIndex = previewPhoto
     ? photoItems.findIndex((photo) => photo.id === previewPhoto.id)
     : -1;
@@ -919,6 +936,8 @@ export function ImageViewer() {
   const videoControlsHidden = !videoControlsVisible && !isVideoScrubbing && !videoError;
   const mediaMeta = previewPhoto
     ? getPreviewMetaLabel(previewPhoto, t('unknownSize'))
+    : isSourceVideoPreview
+      ? t('photoVideo')
     : null;
   const videoAspectRatio = isVideoPreview
     ? getVideoAspectRatio(previewPhoto, videoNaturalSize)
@@ -1039,7 +1058,7 @@ export function ImageViewer() {
               ref={videoRef}
               className={[styles.video, isLoaded ? styles.loaded : ''].filter(Boolean).join(' ')}
               src={videoUrl}
-              poster={previewPhoto?.poster_url ?? undefined}
+              poster={previewPhoto?.poster_url ?? previewImage?.thumb_url ?? undefined}
               preload="metadata"
               {...VIDEO_INLINE_PLAYBACK_ATTRIBUTES}
               onLoadedMetadata={(event) => {
@@ -1288,7 +1307,7 @@ export function ImageViewer() {
         </div>
       ) : null}
 
-      {previewPhoto ? (
+      {previewPhoto || isSourceVideoPreview ? (
         <div
           className={[
             styles.infoPanel,
@@ -1296,7 +1315,7 @@ export function ImageViewer() {
           ].filter(Boolean).join(' ')}
           onClick={(event) => event.stopPropagation()}
         >
-          <span className={styles.infoTitle}>{previewPhoto.name}</span>
+          <span className={styles.infoTitle}>{activeName}</span>
           <span className={styles.infoMeta}>
             {mediaMeta}
           </span>

@@ -1,4 +1,5 @@
 import os
+from io import BytesIO
 
 from backend.services.photo_gallery import photo_meta_from_path, save_photo_index
 from tests.conftest import write_config
@@ -246,3 +247,36 @@ def test_video_reconstruction_api_queues_without_exposing_paths(client, app, con
     tasks = client.get("/api/tasks").get_json()["tasks"]
     assert tasks[0]["id"] == task["id"]
     assert "source_video_path" not in tasks[0]
+
+
+def test_video_reconstruction_upload_queues_same_name_without_exposing_paths(client, app, monkeypatch):
+    monkeypatch.setattr("backend.services.video_reconstruction.check_dependencies", lambda: {
+        "required": {"available": True, "tools": [], "message": None},
+        "stable": {"available": True, "tools": [], "message": None},
+        "experimental": {"available": False, "tools": [], "message": "missing"},
+        "summary": {
+            "available": True,
+            "stable_available": True,
+            "experimental_available": False,
+        },
+    })
+
+    response = client.post(
+        "/api/video-reconstructions/upload",
+        data={
+            "file": (BytesIO(b"video"), "clip.mp4"),
+            "mode": "auto",
+            "quality": "high",
+            "engine": "auto",
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    task = response.get_json()["task"]
+    assert task["kind"] == "video_3dgs"
+    assert task["filename"] == "clip.ply"
+    assert task["output_name"] == "clip"
+    assert task["source_name"] == "clip.mp4"
+    assert "source_media_id" not in task
+    assert "source_video_path" not in task

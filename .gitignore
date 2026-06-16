@@ -7,6 +7,7 @@ __pycache__/
 *.so
 .Python
 venv/
+.video-reconstruction-env/
 ENV/
 *.egg-info/
 .eggs/
@@ -27,6 +28,7 @@ my-video/
 # Thumbnails
 .thumbnails/
 .photo-gallery-cache/
+.video-reconstruction/
 
 # Config
 config.json

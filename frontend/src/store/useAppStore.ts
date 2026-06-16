@@ -424,6 +424,7 @@ interface AppState {
   previewPhoto: PhotoItem | null;
   videoReconstructionDialogOpen: boolean;
   videoReconstructionTarget: PhotoItem | null;
+  videoReconstructionFileTarget: File | null;
   videoReconstructionDependencies: VideoReconstructionDependencies | null;
   videoReconstructionConfig: VideoReconstructionConfig;
   videoReconstructionSubmitting: boolean;
@@ -511,6 +512,7 @@ interface AppState {
   clearSelectedPhotos: () => void;
   setPreviewPhoto: (item: PhotoItem | null) => void;
   openVideoReconstructionDialog: (item: PhotoItem) => void;
+  openVideoReconstructionFileDialog: (file: File) => void;
   closeVideoReconstructionDialog: () => void;
   setVideoReconstructionStatus: (
     dependencies: VideoReconstructionDependencies | null,
@@ -596,6 +598,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   previewPhoto: null,
   videoReconstructionDialogOpen: false,
   videoReconstructionTarget: null,
+  videoReconstructionFileTarget: null,
   videoReconstructionDependencies: null,
   videoReconstructionConfig: { ...DEFAULT_VIDEO_RECONSTRUCTION_CONFIG },
   videoReconstructionSubmitting: false,
@@ -872,10 +875,17 @@ export const useAppStore = create<AppState>((set, get) => ({
   openVideoReconstructionDialog: (item) => set({
     videoReconstructionDialogOpen: true,
     videoReconstructionTarget: item,
+    videoReconstructionFileTarget: null,
+  }),
+  openVideoReconstructionFileDialog: (file) => set({
+    videoReconstructionDialogOpen: true,
+    videoReconstructionTarget: null,
+    videoReconstructionFileTarget: file,
   }),
   closeVideoReconstructionDialog: () => set({
     videoReconstructionDialogOpen: false,
     videoReconstructionTarget: null,
+    videoReconstructionFileTarget: null,
     videoReconstructionSubmitting: false,
   }),
   setVideoReconstructionStatus: (dependencies, config) => set((state) => ({

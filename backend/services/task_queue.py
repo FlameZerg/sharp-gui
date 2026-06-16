@@ -67,6 +67,7 @@ class TaskManager:
         with self.task_lock:
             self.task_status[task_id] = task_info
         self.task_queue.put(task_id)
+        runtime.log("INFO", f"Queued image task {task_id}: filename={filename} input={input_path}")
         return self._public_task(task_info)
 
     def enqueue_video_reconstruction(self, task_payload):
@@ -83,6 +84,11 @@ class TaskManager:
         with self.task_lock:
             self.task_status[task_id] = task_info
         self.task_queue.put(task_id)
+        runtime.log(
+            "INFO",
+            "Queued video reconstruction task "
+            f"{task_id}: filename={task_info.get('filename')} source={task_info.get('source_video_path')}",
+        )
         return self._public_task(task_info)
 
     def list_tasks(self):
@@ -157,6 +163,7 @@ class TaskManager:
                 continue
 
             if kind != TASK_KIND_IMAGE_SHARP:
+                runtime.log("ERROR", f"Task {task_id} failed: unsupported task kind {kind}")
                 with self.task_lock:
                     self.task_status[task_id]["status"] = "failed"
                     self.task_status[task_id]["error"] = f"Unsupported task kind: {kind}"
@@ -192,6 +199,7 @@ class TaskManager:
                 self.verbose_log(f"Task {task_id} command={runtime.format_command_for_log(cmd)}")
                 self.verbose_log(f"Task {task_id} subprocess_cwd={os.getcwd()}")
                 self.verbose_log(f"Task {task_id} subprocess_path={process_env.get('PATH', '')}")
+                runtime.log("INFO", f"Task {task_id} launching Sharp: {runtime.format_command_for_log(cmd)}")
 
                 process = subprocess.Popen(
                     cmd,
@@ -219,6 +227,7 @@ class TaskManager:
                             break
 
                     output_lines.append(line)
+                    runtime.log("DEBUG", f"Task {task_id} | {line.rstrip()}")
                     self._update_progress_from_line(task_id, filename, line)
 
                 if cancelled:
@@ -236,15 +245,13 @@ class TaskManager:
                 self._finish_process(task_id, filename, output_folder, return_code, output_lines)
 
             except Exception as exc:
-                error_text = traceback.format_exc() if runtime.SHARP_VERBOSE else str(exc)
+                error_text = traceback.format_exc()
                 with self.task_lock:
                     if self.task_status.get(task_id, {}).get("status") != "cancelled":
                         self.task_status[task_id]["status"] = "failed"
                         self.task_status[task_id]["error"] = error_text
                 print(f"❌ Task {task_id} exception: {exc}")
-                if runtime.SHARP_VERBOSE:
-                    print("[DEBUG] Full task exception traceback:", flush=True)
-                    print(error_text, flush=True)
+                runtime.log("ERROR", f"Task {task_id} exception traceback:\n{error_text}")
             finally:
                 with self.task_lock:
                     self.running_processes.pop(task_id, None)
@@ -346,10 +353,12 @@ class TaskManager:
                     self.task_status[task_id]["progress"] = 100
                     self.task_status[task_id]["stage"] = "done"
                     print(f"✅ Task {task_id} completed successfully.")
+                    runtime.log("INFO", f"Task {task_id} completed successfully: {expected_ply}")
                 else:
                     self.task_status[task_id]["status"] = "failed"
                     self.task_status[task_id]["error"] = "Output file not found after execution."
                     print(f"❌ Task {task_id} failed: Output missing.")
+                    runtime.log("ERROR", f"Task {task_id} failed: output file missing at {expected_ply}")
 
             if ply_exists:
                 try:
@@ -361,6 +370,7 @@ class TaskManager:
                         print(f"📦 SPZ converted: {ply_size/1024:.0f}KB → {spz_size/1024:.0f}KB ({ratio}% smaller)")
                 except Exception as exc:
                     print(f"⚠️ SPZ auto-convert failed for {name_without_ext}: {exc}")
+                    runtime.log("WARN", f"Task {task_id} SPZ auto-convert failed for {name_without_ext}: {exc}")
             return
 
         stderr_output = "".join(output_lines)
@@ -369,8 +379,10 @@ class TaskManager:
                 self.task_status[task_id]["status"] = "failed"
                 self.task_status[task_id]["error"] = stderr_output if stderr_output else "Unknown error"
         print(f"❌ Task {task_id} failed with return code {return_code}")
+        runtime.log("ERROR", f"Task {task_id} failed with return code {return_code}")
         if stderr_output:
             print(f"   Error output:\n{stderr_output}")
+            runtime.log("ERROR", f"Task {task_id} subprocess output:\n{stderr_output}")
 
     def start_workers(self):
         """Start worker and cleanup threads once."""

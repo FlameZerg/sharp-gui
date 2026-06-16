@@ -61,6 +61,10 @@ Do not grant owner permissions from `X-Forwarded-For`, `Forwarded`, `X-Real-IP`,
 | GET | `/api/video-play/<video_id>/<play_token>/<path:filename>` | 使用短期签名票据播放视频原文件（支持 Range） | Public when valid token / otherwise Unlocked |
 | POST | `/api/photo-downloads` | 打包下载选中的照片/视频原文件 ZIP | Unlocked |
 | POST | `/api/photo-conversions` | 将单张/多张照片加入现有 3D 生成队列 | Owner / Conditional |
+| POST | `/api/video-reconstructions` | 从本地相册视频创建视频 3DGS 重建任务 | Owner / Conditional |
+| POST | `/api/video-reconstructions/upload` | 从拖入/上传的视频文件创建视频 3DGS 重建任务 | Owner / Conditional |
+| GET | `/api/video-reconstructions/status` | 读取视频重建默认配置与依赖诊断状态，支持 `?refresh=1` 触发后台重扫 | Unlocked |
+| GET | `/api/gallery/<item_id>/source-video` | 预览视频重建模型对应的原视频（来自 sidecar 元数据解析） | Unlocked |
 
 ### 新增端点规则
 
@@ -96,6 +100,13 @@ task_manager = current_app.config["TASK_MANAGER"]
 task_info = task_manager.enqueue_file(input_path, filename)
 ```
 
+任务队列通过 `kind` 分发不同生成流程：
+
+| kind | 说明 |
+|------|------|
+| `image_sharp` 或缺省 | 现有图片 / 照片转 3D，调用 `sharp predict` |
+| `video_3dgs` | 视频重建，调用 `backend.services.video_reconstruction.run_video_reconstruction_task()` |
+
 ### 任务生命周期
 
 ```
@@ -106,11 +117,13 @@ pending → running → processing → completed
 
 ### 关键实现
 
-- **Worker 线程**：`TaskManager.start_workers()` 启动后台线程，从队列取任务，用 `subprocess` 调用 `sharp predict`
+- **Worker 线程**：`TaskManager.start_workers()` 启动后台线程，从队列取任务，按 `kind` 调用图片 SHARP 或视频重建处理函数
 - **进度解析**：实时读取 subprocess 的 stdout，解析进度阶段（downloading → loading → preprocessing → inference → postprocessing → saving）
 - **取消机制**：`process.terminate()` 终止子进程
 - **自动清理**：已完成任务 1 小时后自动从内存中移除（`TASK_RETENTION_SECONDS`）
 - **导入无副作用**：`create_app()` 和 `from app import app` 默认不启动 worker/cleanup 线程，便于 pytest 和工具导入
+
+视频重建任务的阶段应保持用户可读，不要求前端阅读完整日志即可知道状态：`video_prepare`、`video_extract_frames`、`video_estimate_geometry`、`video_train_splats`、`video_export_splats`、`video_cleanup_splats`、`video_convert_spz`、`completed` / `failed` / `cancelled`。
 
 ### 线程安全
 
@@ -141,6 +154,8 @@ photo_catalog_file = os.path.join(photo_gallery_cache_folder, 'catalog.json')
 photo_album_index_folder = os.path.join(photo_gallery_cache_folder, 'albums')
 photo_thumbnail_folder = os.path.join(photo_gallery_cache_folder, 'thumbnails')
 video_poster_folder = os.path.join(photo_gallery_cache_folder, 'video-posters')
+video_reconstruction_folder = os.path.join(workspace_folder, '.video-reconstruction')
+video_reconstruction_jobs_folder = os.path.join(video_reconstruction_folder, 'jobs')
 ```
 
 ### 规则
@@ -149,7 +164,9 @@ video_poster_folder = os.path.join(photo_gallery_cache_folder, 'video-posters')
 - `secure_filename()` 处理用户上传的文件名
 - 缩略图存储在 `{workspace}/inputs/.thumbnails/`
 - 本地媒体图库 catalog、每相册索引、照片缩略图、视频 poster 和批量下载临时 ZIP 存储在 `{workspace}/.photo-gallery-cache/`
+- 视频重建中间文件、Nerfstudio 数据、日志和拖入视频上传缓存存储在 `{workspace}/.video-reconstruction/`
 - 输出目录同时保留 `.ply` 原始模型和自动生成的 `.spz` 紧凑模型
+- 视频重建结果额外写入 `outputs/<model-id>.meta.json`，记录来源视频、模式、质量、引擎和受控源视频引用；JSON 响应不得暴露 `source_video_path`
 - 配置文件 `config.json` 位于项目根目录（`BASE_DIR`）
 - 本地媒体图库 API 只接受 photo/media/video id，不接受任意绝对路径；后端必须从索引反查原始文件并再次校验 root
 - 本地媒体图库正常读路径不得依赖全局可变索引文件：相册列表读 `catalog.json`，相册分页/筛选/排序读 `albums/<album_id>.json`，媒体解析通过可解析 media id 定位相册索引
@@ -157,6 +174,7 @@ video_poster_folder = os.path.join(photo_gallery_cache_folder, 'video-posters')
 - `/api/video-play/<video_id>/<play_token>/<filename>` 的 token 只授权短期 inline 播放，不能绕过 `/api/video-original/<video_id>?download=1` 的 Unlocked 下载权限
 - 删除相册时必须清理该相册媒体 ID 对应的照片缩略图和视频 poster；不得删除用户相册目录中的原始文件
 - 批量下载生成的 `photo-gallery-*.zip` 是临时文件：响应关闭时尝试删除，创建新 ZIP 前清理过期残留，不能误删索引、缩略图或 poster
+- 删除视频重建模型时可删除 `.ply/.spz`、同名 `.meta.json`、缩略图和受控上传缓存；如果来源是本地相册视频，必须保持原视频只读且绝不删除
 
 ---
 
@@ -182,6 +200,12 @@ video_poster_folder = os.path.join(photo_gallery_cache_folder, 'video-posters')
     "session_days": 30,
     "allow_remote_generation": false,
     "lan_bind_enabled": true
+  },
+  "video_reconstruction": {
+    "default_quality": "high",
+    "default_engine": "auto",
+    "vram_budget": "12gb",
+    "keep_intermediate": false
   }
 }
 ```
@@ -195,6 +219,21 @@ video_poster_folder = os.path.join(photo_gallery_cache_folder, 'video-posters')
 `photo_gallery_roots` 控制本地媒体图库相册目录（历史命名保留 photo 前缀）；缺省时按空数组处理，不影响旧配置启动。
 
 `access_control` 控制可选局域网门禁；缺省或 `enabled=false` 时读取资源保持旧的局域网开放行为，但 owner-only 端点仍必须限制真实 localhost。`lan_bind_enabled`（缺省 `true`）决定服务监听 `0.0.0.0`（局域网共享）还是 `127.0.0.1`（仅本机），修改后需重启生效。
+
+`video_reconstruction` 控制视频重建默认值；缺省时由 `normalize_video_reconstruction_config()` 补齐。当前已端到端验证的平台是 Windows + NVIDIA RTX 5070 Ti Laptop GPU 12GB，默认 `high` 档应优先服务该硬件，不要把未验证平台写成已支持。
+
+## 视频 3DGS 重建服务
+
+稳定路线位于 `backend/services/video_reconstruction.py`，路由位于 `backend/routes/video_reconstruction.py`。当前实现约定：
+
+- `POST /api/video-reconstructions` 只接受本地相册 video id；后端必须通过相册索引反查路径并校验真实路径仍在相册 root 内。
+- `POST /api/video-reconstructions/upload` 只接受单个受支持视频文件，并保存到 `.video-reconstruction/uploads/` 这类受控工作区缓存。
+- 默认输出名使用源视频文件名 stem；只在冲突时追加唯一后缀，不自动追加质量、帧数或 cleanup 标记。
+- 依赖检测使用进程级缓存：`app_factory.create_app()` 调用后台 warmup；`/api/video-reconstructions/status?refresh=1` 可触发后台重扫；普通任务创建读取缓存，检测中时返回 `video_reconstruction_dependencies_checking`，不得同步阻塞页面。
+- 子进程命令必须使用列表参数，不拼接 shell 字符串；日志默认只输出关键阶段、命令名、return code 和失败摘要，完整外部工具输出只在 `SHARP_LOG_LEVEL=DEBUG` 或 verbose 模式下显示。
+- OOM、缺依赖、实验引擎不可用、输出缺失、SPZ 失败、取消等错误应转换为稳定错误码，前端用 i18n 展示，不把原始堆栈作为主 UI 文案。
+- `auto` / `object` 模式默认尝试 focused cleanup；如果清理会删除过多几何，必须回退原始导出并记录原因；`environment` 模式不做主体裁剪。
+- 成功后调用现有模型图库逻辑生成视频封面缩略图、写 sidecar 元数据并刷新模型列表；源视频预览通过 `/api/gallery/<item_id>/source-video` 解析 sidecar，不能直接把绝对路径传给前端。
 
 ---
 
@@ -291,6 +330,7 @@ if not resolved.startswith(os.path.abspath(workspace)):
 - `media_id` 应内嵌可解析的 `album_id`，不要再引入全局 media lookup 表；解析失败、相册不存在、索引缺失或真实文件不在 root 内时必须返回安全失败。
 - Windows 需要避免跨盘符 `commonpath` 抛错导致接口 500；Linux/macOS 需要避免符号链接逃逸相册 root。
 - 原图/视频响应优先使用 `send_from_directory(..., download_name=...)` 交给 Werkzeug 生成兼容的 `Content-Disposition`，不要手写包含中文的 header；视频 inline 播放必须启用 `conditional=True` 以支持 Range seek。
+- 视频重建 source-video 预览同样使用受控解析 + `send_from_directory(..., conditional=True, download_name=...)`，不得绕过门禁和路径校验。
 - 路径式视频播放 token 必须绑定 video id、过期时间和 access-control session version；修改访问码或撤销会话后旧 token 失效。token 只用于播放，不用于附件下载。
 - `POST /api/photo-albums/<album_id>/uploads` 属于本地媒体图库服务：route 层只读取 multipart `file` 列表并封装响应，`services/photo_gallery.py` 必须负责相册存在/启用/目录可用检查、`PHOTO_MAX_UPLOAD_BATCH`、`secure_filename()`、扩展名白名单、唯一命名、真实路径 root 约束、Pillow `verify()`、失败清理与上传后扫描刷新。
 - 照片相册上传权限必须在集中矩阵中显式列出：门禁开启且远程已解锁时允许，门禁关闭或未解锁时远程拒绝。
@@ -315,6 +355,13 @@ if not resolved.startswith(os.path.abspath(workspace)):
 - **反向代理**：若本机前置反向代理，所有请求 `remote_addr` 会变成 `127.0.0.1` 导致全员被判 owner；文档需提示用户在反代场景关闭 `allow_localhost_bypass`（需先设访问码）
 - **subprocess 调用**使用列表参数（非字符串拼接），避免命令注入
 - **不要**在 JSON 响应中暴露服务器绝对路径或堆栈信息
+
+### 后端日志
+
+- 默认 `SHARP_LOG_LEVEL=INFO` 只输出关键业务阶段和失败摘要，避免 HTTP 轮询、缩略图请求和外部工具逐行输出刷屏。
+- `SHARP_HTTP_LOGS=1` 才输出 Werkzeug HTTP 请求日志。
+- 排查视频重建失败时优先使用 `run.bat --verbose` 或设置 `SHARP_LOG_LEVEL=DEBUG`，此时可看到完整命令、外部工具输出和 traceback。
+- 失败日志可以详细，成功路径日志必须克制：入队、阶段切换、命令开始/结束、最终完成/失败即可。
 
 ### 后续清理 TODO
 

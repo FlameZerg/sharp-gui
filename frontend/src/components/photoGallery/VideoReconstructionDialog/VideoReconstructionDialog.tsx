@@ -3,7 +3,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
 
-import { ApiError, createVideoReconstruction, fetchTasks, fetchVideoReconstructionStatus } from '@/api';
+import {
+  ApiError,
+  createVideoReconstruction,
+  createVideoReconstructionFromFile,
+  fetchTasks,
+  fetchVideoReconstructionStatus,
+} from '@/api';
 import { Button } from '@/components/common/Button';
 import { ChevronDownIcon, SparklesIcon } from '@/components/common/Icons';
 import { Modal } from '@/components/common/Modal';
@@ -36,6 +42,7 @@ export function VideoReconstructionDialog() {
   const {
     isOpen,
     target,
+    fileTarget,
     dependencies,
     config,
     submitting,
@@ -47,6 +54,7 @@ export function VideoReconstructionDialog() {
     useShallow((state) => ({
       isOpen: state.videoReconstructionDialogOpen,
       target: state.videoReconstructionTarget,
+      fileTarget: state.videoReconstructionFileTarget,
       dependencies: state.videoReconstructionDependencies,
       config: state.videoReconstructionConfig,
       submitting: state.videoReconstructionSubmitting,
@@ -66,60 +74,81 @@ export function VideoReconstructionDialog() {
   const [statusLoading, setStatusLoading] = useState(false);
 
   useEffect(() => {
-    if (!isOpen || !target) {
+    const targetName = target?.name ?? fileTarget?.name;
+    if (!isOpen || !targetName) {
       return;
     }
 
     setMode('auto');
     setQuality(config.default_quality);
     setEngine(config.default_engine);
-    setOutputName(deriveOutputName(target.name));
+    setOutputName(deriveOutputName(targetName));
     setKeepIntermediateFiles(config.keep_intermediate_files);
     setAdvancedOpen(false);
     setMessage(null);
-  }, [config.default_engine, config.default_quality, config.keep_intermediate_files, isOpen, target]);
+  }, [config.default_engine, config.default_quality, config.keep_intermediate_files, fileTarget, isOpen, target]);
 
   useEffect(() => {
     if (!isOpen) {
       return;
     }
+    if (dependencies && !dependencies.summary.checking) {
+      setStatusLoading(false);
+      return;
+    }
 
     let cancelled = false;
-    setStatusLoading(true);
-    void fetchVideoReconstructionStatus()
-      .then((status) => {
-        if (!cancelled) {
-          setStatus(status.dependencies, status.config);
-        }
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) {
-          const text = error instanceof Error ? error.message : t('videoReconStatusLoadFailed');
-          setMessage({ tone: 'error', text });
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setStatusLoading(false);
-        }
-      });
+    let retryTimer: number | undefined;
+    const loadStatus = () => {
+      setStatusLoading(true);
+      void fetchVideoReconstructionStatus()
+        .then((status) => {
+          if (!cancelled) {
+            setStatus(status.dependencies, status.config);
+          }
+        })
+        .catch((error: unknown) => {
+          if (!cancelled) {
+            const text = error instanceof Error ? error.message : t('videoReconStatusLoadFailed');
+            setMessage({ tone: 'error', text });
+          }
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setStatusLoading(false);
+          }
+        });
+    };
+
+    if (dependencies?.summary.checking) {
+      retryTimer = window.setTimeout(loadStatus, 1400);
+    } else {
+      loadStatus();
+    }
 
     return () => {
       cancelled = true;
+      if (retryTimer !== undefined) {
+        window.clearTimeout(retryTimer);
+      }
     };
-  }, [isOpen, setStatus, t]);
+  }, [dependencies, isOpen, setStatus, t]);
 
   const stableAvailable = Boolean(dependencies?.summary.stable_available);
   const experimentalAvailable = Boolean(dependencies?.summary.experimental_available);
-  const canSubmit = Boolean(target)
-    && target?.media_type === 'video'
+  const dependenciesChecking = Boolean(dependencies?.summary.checking) || statusLoading;
+  const canSubmit = (target?.media_type === 'video' || Boolean(fileTarget))
     && !submitting
+    && !dependenciesChecking
     && stableAvailable
     && outputName.trim().length > 0
     && outputName.trim().length <= MAX_OUTPUT_NAME_LENGTH
     && !(engine === 'experimental' && !experimentalAvailable);
 
   const dependencyMessage = useMemo(() => {
+    if (dependencies?.summary.checking) {
+      return t('videoReconCheckingDependencies');
+    }
     if (!dependencies) {
       return statusLoading ? t('videoReconCheckingDependencies') : null;
     }
@@ -136,21 +165,26 @@ export function VideoReconstructionDialog() {
   }, [dependencies, statusLoading, t]);
 
   const handleSubmit = async () => {
-    if (!target || !canSubmit) {
+    if (!canSubmit || (!target && !fileTarget)) {
       return;
     }
 
     setSubmitting(true);
     setMessage(null);
     try {
-      const response = await createVideoReconstruction({
-        video_id: target.id,
+      const requestOptions = {
         mode,
         quality,
         engine,
         output_name: outputName.trim(),
         keep_intermediate_files: keepIntermediateFiles,
-      });
+      };
+      const response = fileTarget
+        ? await createVideoReconstructionFromFile(fileTarget, requestOptions)
+        : await createVideoReconstruction({
+            video_id: target!.id,
+            ...requestOptions,
+          });
       if (response.task) {
         const tasksResponse = await fetchTasks();
         setTasks(tasksResponse.tasks, tasksResponse.has_active);
@@ -180,7 +214,7 @@ export function VideoReconstructionDialog() {
         <div className={styles.summary}>
           <SparklesIcon width={18} height={18} />
           <div>
-            <strong>{target?.name ?? t('photoVideo')}</strong>
+            <strong>{target?.name ?? fileTarget?.name ?? t('photoVideo')}</strong>
             <span>{dependencyMessage}</span>
           </div>
         </div>
@@ -195,7 +229,8 @@ export function VideoReconstructionDialog() {
                 onClick={() => setMode(option)}
                 type="button"
               >
-                {t(`videoReconMode.${option}`)}
+                <span>{t(`videoReconMode.${option}`)}</span>
+                <small>{t(`videoReconModeMeta.${option}`)}</small>
               </button>
             ))}
           </div>
@@ -212,7 +247,11 @@ export function VideoReconstructionDialog() {
                 type="button"
               >
                 <span>{t(`videoReconQuality.${option}`)}</span>
-                {config.default_quality === option ? <small>{t('videoReconRecommended')}</small> : null}
+                <small>
+                  {config.default_quality === option
+                    ? `${t('videoReconRecommended')} / ${t(`videoReconQualityMeta.${option}`)}`
+                    : t(`videoReconQualityMeta.${option}`)}
+                </small>
               </button>
             ))}
           </div>
@@ -264,7 +303,8 @@ export function VideoReconstructionDialog() {
                     onClick={() => setEngine(option)}
                     type="button"
                   >
-                    {t(`videoReconEngine.${option}`)}
+                    <span>{t(`videoReconEngine.${option}`)}</span>
+                    <small>{t(`videoReconEngineMeta.${option}`)}</small>
                   </button>
                 ))}
               </div>
@@ -295,7 +335,7 @@ export function VideoReconstructionDialog() {
             {message.text}
           </div>
         ) : dependencyMessage ? (
-          <div className={[styles.message, stableAvailable ? styles.success : styles.error].join(' ')}>
+          <div className={[styles.message, dependenciesChecking ? styles.warning : stableAvailable ? styles.success : styles.error].join(' ')}>
             {dependencyMessage}
           </div>
         ) : null}

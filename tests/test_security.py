@@ -1,5 +1,6 @@
 import json
 import time
+from io import BytesIO
 
 from werkzeug.security import generate_password_hash
 
@@ -105,6 +106,15 @@ def test_remote_video_reconstruction_uses_generation_gate(config_file, workspace
         response = remote_post(client, "/api/video-reconstructions", json={"video_id": "album_video"})
         assert response.status_code == 403
         assert response.get_json()["code"] == "OWNER_REQUIRED"
+
+        upload_response = remote_post(
+            client,
+            "/api/video-reconstructions/upload",
+            data={"file": (BytesIO(b"video"), "clip.mp4")},
+            content_type="multipart/form-data",
+        )
+        assert upload_response.status_code == 403
+        assert upload_response.get_json()["code"] == "OWNER_REQUIRED"
 
 
 def test_remote_photo_upload_gate_disabled_is_owner_only(config_file, workspace):

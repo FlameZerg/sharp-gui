@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 
 import { EyeIcon, DownloadIcon, DeleteIcon } from '@/components/common/Icons';
 import { useGalleryThumbnail } from '@/hooks/useGalleryThumbnail';
-import { formatFileSize, getGalleryThumbnailSrc } from '@/utils';
+import { formatFileSize, getGallerySourceVideoUrl, getGalleryThumbnailSrc } from '@/utils';
 import type { GalleryItem as GalleryItemType, ModelFormat } from '@/types';
 
 import styles from './GalleryItem.module.css';
@@ -31,6 +31,8 @@ export const GalleryItem = memo(function GalleryItem({
   const { t } = useTranslation();
 
   const thumbnailSrc = getGalleryThumbnailSrc(item);
+  const sourceVideoUrl = getGallerySourceVideoUrl(item);
+  const hasOriginalPreview = Boolean(item.image_url || sourceVideoUrl);
   const thumbnailState = useGalleryThumbnail(thumbnailSrc, Boolean(thumbnailSrc));
   const displaySize = preferredFormat === 'spz' && item.spz_size ? item.spz_size : item.size;
   const formatLabel = preferredFormat === 'spz' && item.spz_url ? 'SPZ' : 'PLY';
@@ -122,11 +124,12 @@ export const GalleryItem = memo(function GalleryItem({
         <div className={styles.meta}>{metaText}</div>
       </div>
 
-      {item.image_url ? (
+      {hasOriginalPreview ? (
         <button
           className={styles.actionBtn}
           onClick={(event) => handleButtonClick(event, onPreview)}
-          title={t('viewOriginal')}
+          aria-label={sourceVideoUrl ? t('viewOriginalVideo') : t('viewOriginal')}
+          title={sourceVideoUrl ? t('viewOriginalVideo') : t('viewOriginal')}
           type="button"
         >
           <EyeIcon width={14} height={14} />
@@ -136,6 +139,7 @@ export const GalleryItem = memo(function GalleryItem({
       <button
         className={styles.actionBtn}
         onClick={(event) => handleButtonClick(event, onDownload)}
+        aria-label={t('download')}
         title={t('download')}
         type="button"
       >
@@ -145,6 +149,7 @@ export const GalleryItem = memo(function GalleryItem({
       <button
         className={[styles.actionBtn, styles.deleteBtn].join(' ')}
         onClick={(event) => handleButtonClick(event, onDelete)}
+        aria-label={t('delete')}
         title={t('delete')}
         type="button"
       >

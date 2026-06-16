@@ -23,13 +23,14 @@ Sharp GUI 采用 **前后端分离 + 双前端模式** 架构：
 │           │ services / PathContext / TaskManager  │
 │  ┌────────┴───────────────────────────────────┐  │
 │  │  TaskManager (queue.Queue + threading.Lock) │  │
-│  │  → subprocess 调用 sharp predict            │  │
+│  │  → image_sharp: sharp predict               │  │
+│  │  → video_3dgs: Nerfstudio/Splatfacto pipeline│  │
 │  └────────────────────────────────────────────┘  │
 └───────────────────────────────────────────────────┘
             │ subprocess
 ┌───────────┴───────────────────────────────────────┐
-│  Apple ml-sharp (PyTorch + gsplat)                │
-│  sharp predict -i <input> -o <output>             │
+│  AI / reconstruction engines                       │
+│  Apple ml-sharp；Nerfstudio/Splatfacto + COLMAP    │
 └───────────────────────────────────────────────────┘
 ```
 
@@ -56,8 +57,8 @@ sharp-gui/
 │   ├── config.py             #   config.json 读写与 access_control normalize
 │   ├── paths.py              #   PathContext：workspace/inputs/outputs/cache 派生
 │   ├── security/             #   LAN 门禁、权限矩阵、request hooks
-│   ├── services/             #   模型/本地媒体图库、任务队列、导出、静态文件、文件夹选择
-│   └── routes/               #   auth/gallery/photo_gallery/tasks/settings/files/export/frontend
+│   ├── services/             #   模型/本地媒体图库、视频重建、任务队列、导出、静态文件、文件夹选择
+│   └── routes/               #   auth/gallery/photo_gallery/video_reconstruction/tasks/settings/files/export/frontend
 ├── config.json               # 运行时配置（workspace_folder, photo_gallery_roots, access_control）
 ├── install.sh / install.bat  # 一键安装脚本（Python/Git/CUDA/依赖/模型/证书）
 ├── run.sh / run.bat          # 启动脚本（支持 --legacy）
@@ -101,6 +102,7 @@ sharp-gui/
 ├── ml-sharp/                 # Apple ML-Sharp 引擎（⚠️ 不可修改）
 ├── inputs/                   # 用户上传的图片
 ├── outputs/                  # 生成的 3D 模型（.ply + 自动转换 .spz）
+├── .video-reconstruction/    # 视频重建上传缓存、jobs 与中间文件（位于 workspace_folder）
 ├── .photo-gallery-cache/     # 本地媒体图库 catalog、每相册索引、照片缩略图、视频 poster 与临时 ZIP（位于 workspace_folder）
 ├── openspec/                 # OpenSpec 变更与能力规格
 └── docs/                     # GitHub Pages 产品介绍页
@@ -133,6 +135,9 @@ sharp-gui/
 | numpy | PLY 数据处理 |
 | plyfile | PLY 文件解析 |
 | ml-sharp (sharp CLI) | AI 推理引擎 |
+| ffmpeg / ffprobe | 视频重建抽帧、元数据、poster 和源视频缩略图 |
+| Nerfstudio / Splatfacto / gsplat | 视频 3DGS 稳定重建路线（当前 Windows NVIDIA 实验能力） |
+| COLMAP | Nerfstudio 视频数据处理中的位姿/稀疏几何估计 |
 | pytest | 后端开发/重构验证（仅开发依赖，见 `requirements-dev.txt`） |
 
 ## 环境变量
@@ -141,8 +146,9 @@ sharp-gui/
 |------|--------|------|
 | `SHARP_FRONTEND_MODE` | `react` | 前端模式：`react` 或 `legacy` |
 | `SHARP_DEBUG` | 关闭 | 设为 `1` 开启 Flask 调试器 + 源码热重载（向客户端返回堆栈、暴露交互式调试器、改 `.py` 自动重启）。有安全风险，仅本机排障使用 |
-| `SHARP_VERBOSE` | 关闭 | 设为 `1` 开启详细诊断日志（werkzeug 提升到 DEBUG 并写日志文件），`run.sh --verbose` 会设置 |
+| `SHARP_VERBOSE` | 关闭 | 设为 `1` 开启详细诊断日志文件，`run.sh --verbose` / `run.bat --verbose` 会设置 |
 | `SHARP_LOG_LEVEL` | `INFO`（verbose 时 `DEBUG`） | 应用日志级别 |
+| `SHARP_HTTP_LOGS` | 关闭 | 设为 `1` 时输出 Werkzeug HTTP 请求日志；默认关闭以避免缩略图/轮询请求刷屏 |
 | `SHARP_LOG_FILE` | `sharp-gui-verbose.log` | 详细诊断日志输出路径 |
 | `SHARP_BIND_HOST` | 跟随门禁设置 | 覆盖监听地址；不设时由 `lan_bind_enabled` 决定（开 `0.0.0.0` / 关 `127.0.0.1`） |
 | `SHARP_LAN_IP` | 自动检测 | 局域网访问 IP |
@@ -172,6 +178,9 @@ sharp-gui/
 
 - 后端推理仍生成 `.ply` 原始模型。
 - 生成完成后自动转换 `.spz` 紧凑模型；用户设置可在 PLY / SPZ 之间选择默认查看和下载格式。
+- 视频重建生成的模型也写入 `outputs/`，并额外写入同名 `.meta.json` 记录来源视频、模式、质量、引擎和受控源视频引用；前端不得看到绝对磁盘路径。
+- 视频生成模型应复用现有模型图库：缩略图优先使用源视频封面帧；hover 操作中可提供原视频预览入口；删除拖入视频生成的模型时可清理受控上传缓存，但不得删除本地相册原视频。
+- 视频 3DGS 重建当前属于 Windows NVIDIA 实验能力，已验证平台为 Windows + NVIDIA RTX 5070 Ti Laptop GPU 12GB；其他平台或显卡需要单独验证后再写入已支持矩阵。
 - 图库响应包含原图 URL、缩略图 URL、PLY/SPZ 大小与版本戳；缺失缩略图会在请求时限量修复。
 - React 图库使用虚拟滚动和缩略图加载状态，避免大量模型时滚动卡顿。
 - 本地媒体图库通过 `photo_gallery_roots` 配置多个目录；每个目录作为一个相册展示，图片缩略图或视频 poster 可作为封面。
@@ -184,6 +193,30 @@ sharp-gui/
 - 照片可单张或多选批量加入现有 3D 生成队列，后端会验证 photo id 属于已配置 root 后复制到 `inputs/`。
 - 局域网门禁开启时，模型/媒体列表、预览、下载、导出与 `/files/*` 需要访问码会话；门禁关闭时这些读取恢复开放，但设置、删除、目录管理、重启等仍限制 localhost owner。
 - 远程生成/照片转 3D 默认 owner-only；只有门禁开启且 `allow_remote_generation=true` 时，已解锁远程设备才可提交。
+- 视频重建 API 与拖入视频上传 API 同样走生成权限矩阵：owner 默认可用；远程仅在门禁开启且允许远程生成时可提交。
+
+## 视频 3DGS 重建（实验）
+
+当前稳定路线：
+
+```
+本地相册视频 / 拖入视频
+  → ffprobe/ffmpeg 元数据与抽帧
+  → ns-process-data video / COLMAP 位姿估计
+  → ns-train splatfacto 高斯优化
+  → ns-export gaussian-splat 导出 PLY
+  → focused cleanup（auto/object）
+  → 现有 ply_to_spz 压缩
+  → outputs/ + 模型图库 + Spark Viewer
+```
+
+开发约束：
+
+- 默认输出名使用源视频同名 stem；只有冲突时追加 `-2`、`-3` 等唯一后缀，不把质量档、帧数或 cleanup 作为用户可见后缀。
+- `auto` / `object` 模式默认应用 focused cleanup；`environment` 模式保留完整场景。
+- 依赖检测使用进程级异步缓存：后端启动后后台预热一次，Settings 可用 `refresh=1` 手动重扫；首页、模型页、普通弹窗和任务创建不得同步重复扫描外部工具。
+- Viewer 对视频重建模型的坐标适配应优先保持 camera/OrbitControls 的干净默认状态；当前策略是在模型侧隐藏预乘 orientation 修正视频形态 Y-front 模型，避免相机落入极点导致拖拽 roll。旧 ml-sharp 单图模型不得被该适配改变预览手感。
+- Quick Controls 中的相机/模型调试读数可保留，便于后续排查新模型的坐标系、包围盒和交互问题。
 
 ## WebXR 支持
 

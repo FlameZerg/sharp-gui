@@ -32,7 +32,7 @@ from backend.services.photo_gallery import (
     scan_photo_album,
     upload_photos_to_album,
 )
-from backend.services import video_reconstruction
+from backend.services import model_gallery, video_reconstruction
 from backend.services.static_files import is_real_path_inside
 from backend.services.task_queue import TaskManager
 from tests.conftest import write_config
@@ -98,7 +98,9 @@ def test_video_reconstruction_config_and_paths_are_normalized(workspace):
         "keep_intermediate_files": True,
     }
     assert changed is True
-    assert paths.video_reconstruction_jobs_folder.endswith(".video-reconstruction/jobs")
+    assert os.path.normpath(paths.video_reconstruction_jobs_folder).endswith(
+        os.path.normpath(".video-reconstruction/jobs")
+    )
 
 
 def test_real_path_inside_handles_escape(tmp_path):
@@ -264,12 +266,78 @@ def test_video_reconstruction_quality_profile_uses_vram_budget():
     large_vram_profile = video_reconstruction.resolve_quality_profile("extreme", "24gb")
 
     assert default_profile["frame_count"] == 180
-    assert default_profile["max_num_iterations"] == 15000
+    assert default_profile["max_num_iterations"] == 30000
+    assert default_profile["downscale_factor"] == 2
     assert low_vram_profile["frame_count"] < default_profile["frame_count"]
     assert low_vram_profile["max_num_iterations"] < default_profile["max_num_iterations"]
     assert low_vram_profile["max_resolution"] == 1280
+    assert low_vram_profile["downscale_factor"] == 4
     assert large_vram_profile["frame_count"] > video_reconstruction.QUALITY_PROFILES["extreme"]["frame_count"]
-    assert large_vram_profile["max_resolution"] == 1920
+    assert large_vram_profile["max_resolution"] == 2160
+    assert large_vram_profile["downscale_factor"] == 1
+
+
+def test_video_reconstruction_commands_use_quality_profile():
+    profile = video_reconstruction.resolve_quality_profile("high", "12gb")
+
+    process_cmd = video_reconstruction.build_process_data_command("clip.mp4", "data", profile)
+    train_cmd = video_reconstruction.build_train_command("data", "train", profile)
+
+    assert process_cmd[process_cmd.index("--num-frames-target") + 1] == "180"
+    assert process_cmd[process_cmd.index("--num-downscales") + 1] == "2"
+    assert process_cmd[process_cmd.index("--matching-method") + 1] == "sequential"
+    assert train_cmd[train_cmd.index("--downscale-factor") + 1] == "2"
+    assert train_cmd[train_cmd.index("--pipeline.datamanager.train-cameras-sampling-strategy") + 1] == "fps"
+    assert train_cmd[train_cmd.index("--pipeline.model.camera-optimizer.mode") + 1] == "SO3xR3"
+    assert train_cmd[train_cmd.index("--pipeline.model.num-random") + 1] == "80000"
+    assert train_cmd[-4:] == ["--data", "data", "--downscale-factor", "2"]
+
+
+def test_video_reconstruction_focused_cleanup_removes_outliers(tmp_path):
+    import numpy as np
+    from plyfile import PlyData, PlyElement
+
+    source_path = tmp_path / "source.ply"
+    output_path = tmp_path / "focused.ply"
+    dtype = [
+        ("x", "f4"),
+        ("y", "f4"),
+        ("z", "f4"),
+        ("opacity", "f4"),
+        ("scale_0", "f4"),
+        ("scale_1", "f4"),
+        ("scale_2", "f4"),
+    ]
+    vertices = np.zeros(120, dtype=dtype)
+    vertices["x"] = np.linspace(-1.0, 1.0, 120)
+    vertices["y"] = np.linspace(-0.5, 0.5, 120)
+    vertices["z"] = np.linspace(-0.25, 0.25, 120)
+    vertices["opacity"] = 1.5
+    vertices["scale_0"] = -4.0
+    vertices["scale_1"] = -4.0
+    vertices["scale_2"] = -4.0
+    vertices[-1]["x"] = 50.0
+    vertices[-1]["y"] = 50.0
+    vertices[-1]["z"] = 50.0
+    vertices[-2]["opacity"] = -10.0
+    vertices[-3]["scale_0"] = 4.0
+    PlyData([PlyElement.describe(vertices, "vertex")], text=False).write(source_path)
+
+    stats = video_reconstruction.clean_gaussian_splat_ply(
+        source_path,
+        output_path,
+        {
+            **video_reconstruction.FOCUSED_CLEANUP_PROFILE,
+            "min_vertices": 10,
+            "min_keep_ratio": 0.2,
+        },
+    )
+    cleaned = PlyData.read(output_path)["vertex"].data
+
+    assert not stats["skipped"]
+    assert stats["output_vertices"] < stats["input_vertices"]
+    assert cleaned["x"].max() < 50.0
+    assert cleaned["opacity"].min() > -10.0
 
 
 def test_video_reconstruction_resolves_source_video_safely(config_file, workspace):
@@ -1023,11 +1091,103 @@ def make_video_task(paths, workspace, **overrides):
     return task
 
 
+def test_video_task_creation_writes_source_metadata(config_file, workspace, monkeypatch):
+    album_dir = workspace / "album"
+    album_dir.mkdir()
+    video_path = album_dir / "clip.mp4"
+    video_path.write_bytes(b"video")
+    write_config(
+        config_file,
+        {
+            "workspace_folder": str(workspace),
+            "photo_gallery_roots": [{"id": "album1", "name": "Album", "path": str(album_dir), "enabled": True}],
+        },
+    )
+    paths = build_path_context({"workspace_folder": str(workspace)})
+    meta = photo_meta_from_path({"id": "album1", "path": str(album_dir)}, str(video_path))
+    save_photo_index(paths, {"photos": {meta["id"]: meta}})
+    monkeypatch.setattr("backend.services.video_reconstruction.check_dependencies", lambda: {
+        "required": {"available": True, "tools": [], "message": None},
+        "stable": {"available": True, "tools": [], "message": None},
+        "experimental": {"available": False, "tools": [], "message": "missing"},
+        "summary": {
+            "available": True,
+            "stable_available": True,
+            "experimental_available": False,
+        },
+    })
+
+    task, error, status_code = video_reconstruction.build_video_task(paths, {
+        "video_id": meta["id"],
+        "mode": "auto",
+        "quality": "high",
+        "engine": "auto",
+        "vram_budget": "12gb",
+        "keep_intermediate_files": False,
+        "output_name": "",
+    })
+
+    assert error is None
+    assert status_code == 200
+    metadata = model_gallery.read_model_metadata(paths, task["output_name"])
+    assert metadata["source_media_type"] == "video"
+    assert metadata["source_media_id"] == meta["id"]
+    assert metadata["source_name"] == "clip.mp4"
+
+
+def test_gallery_backfills_legacy_video_metadata_from_unique_source(config_file, workspace, monkeypatch):
+    album_dir = workspace / "album"
+    album_dir.mkdir()
+    video_path = album_dir / "clip.mp4"
+    video_path.write_bytes(b"video")
+    write_config(
+        config_file,
+        {
+            "workspace_folder": str(workspace),
+            "photo_gallery_roots": [{"id": "album1", "name": "Album", "path": str(album_dir), "enabled": True}],
+        },
+    )
+    paths = build_path_context({"workspace_folder": str(workspace)})
+    meta = photo_meta_from_path({"id": "album1", "path": str(album_dir)}, str(video_path))
+    save_photo_index(paths, {"photos": {meta["id"]: meta}})
+    os.makedirs(paths.output_folder, exist_ok=True)
+    with open(os.path.join(paths.output_folder, "clip-2.ply"), "wb") as f:
+        f.write(b"ply")
+
+    def fake_generate_video_thumbnail(paths_arg, _source_path, item_id):
+        thumb_path = model_gallery.get_thumbnail_path(paths_arg, item_id)
+        os.makedirs(os.path.dirname(thumb_path), exist_ok=True)
+        with open(thumb_path, "wb") as f:
+            f.write(b"jpg")
+        return thumb_path
+
+    monkeypatch.setattr(
+        "backend.services.model_gallery.generate_video_thumbnail",
+        fake_generate_video_thumbnail,
+    )
+
+    item = model_gallery.build_gallery_item(paths, "clip-2.ply", repair_missing_thumbnail=True)
+
+    assert item["thumb_url"] == "/api/thumbnail/clip-2"
+    assert item["source_video_url"] == "/api/gallery/clip-2/source-video"
+    metadata = model_gallery.read_model_metadata(paths, "clip-2")
+    assert metadata["source_media_type"] == "video"
+    assert metadata["source_media_id"] == meta["id"]
+    assert metadata["recovered_from"] == "gallery-video-stem"
+
+
 def test_video_reconstruction_service_success_and_spz_failure(workspace, monkeypatch):
     paths = build_path_context({"workspace_folder": str(workspace)})
     task_manager = TaskManager(paths=paths, spz_converter=lambda *_args: (_ for _ in ()).throw(RuntimeError("spz boom")))
     task = make_video_task(paths, workspace)
     task_manager.task_status[task["id"]] = task
+
+    def fake_generate_video_thumbnail(paths_arg, _source_path, item_id):
+        thumb_path = model_gallery.get_thumbnail_path(paths_arg, item_id)
+        os.makedirs(os.path.dirname(thumb_path), exist_ok=True)
+        with open(thumb_path, "wb") as f:
+            f.write(b"jpg")
+        return thumb_path
 
     def fake_run_command(_manager, _task_id, cmd, **_kwargs):
         if cmd[0] == "ns-train":
@@ -1043,6 +1203,10 @@ def test_video_reconstruction_service_success_and_spz_failure(workspace, monkeyp
         return 0, [], False
 
     monkeypatch.setattr("backend.services.video_reconstruction.run_command", fake_run_command)
+    monkeypatch.setattr(
+        "backend.services.model_gallery.generate_video_thumbnail",
+        fake_generate_video_thumbnail,
+    )
 
     video_reconstruction.run_video_reconstruction_task(task_manager, task["id"], task)
     public_task = task_manager.list_tasks()[0][0]
@@ -1051,6 +1215,13 @@ def test_video_reconstruction_service_success_and_spz_failure(workspace, monkeyp
     assert public_task["stage"] == "video_done"
     assert public_task["error_code"] == "video_reconstruction_spz_failed"
     assert os.path.exists(task["output_path"])
+    metadata = model_gallery.read_model_metadata(paths, "clip")
+    assert metadata["source_media_type"] == "video"
+    assert metadata["source_media_id"] == "album_clip"
+    assert metadata["source_name"] == "clip.mp4"
+    item = model_gallery.build_gallery_item(paths, "clip.ply")
+    assert item["thumb_url"] == "/api/thumbnail/clip"
+    assert item["source_video_url"] == "/api/gallery/clip/source-video"
     assert not os.path.exists(os.path.join(paths.video_reconstruction_jobs_folder, task["id"]))
 
 

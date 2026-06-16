@@ -12,6 +12,7 @@ from backend.routes import register_routes
 from backend.security.hooks import register_security_hooks
 from backend.services.model_gallery import generate_thumbnail
 from backend.services.task_queue import TaskManager
+from backend.services import video_reconstruction
 
 
 def create_app(start_background_workers=False):
@@ -42,6 +43,7 @@ def create_app(start_background_workers=False):
 
     register_security_hooks(app)
     register_routes(app)
+    video_reconstruction.start_dependency_warmup()
 
     if start_background_workers:
         task_manager.start_workers()

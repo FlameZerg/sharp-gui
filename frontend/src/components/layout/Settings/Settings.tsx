@@ -85,6 +85,7 @@ export const Settings: React.FC = () => {
         setCurrentModel,
         authStatus,
         setAuthStatus,
+        setVideoReconstructionStatus,
     } = useAppStore();
     const [workspaceFolder, setWorkspaceFolder] = useState('');
     const [modelFormat, setModelFormat] = useState<ModelFormat>('spz');
@@ -190,13 +191,14 @@ export const Settings: React.FC = () => {
         }
     }, [isLocalAccess, t]);
 
-    const loadVideoReconstructionStatus = useCallback(async () => {
+    const loadVideoReconstructionStatus = useCallback(async (forceRefresh = false) => {
         setVideoStatusLoading(true);
         try {
-            const status = await fetchVideoReconstructionStatus();
+            const status = await fetchVideoReconstructionStatus({ refresh: forceRefresh });
             setVideoConfig(status.config);
             setSavedVideoConfig(status.config);
             setVideoDependencies(status.dependencies);
+            setVideoReconstructionStatus(status.dependencies, status.config);
             setVideoMessage(null);
         } catch (error) {
             const message = error instanceof Error ? error.message : t('videoReconStatusLoadFailed');
@@ -204,7 +206,7 @@ export const Settings: React.FC = () => {
         } finally {
             setVideoStatusLoading(false);
         }
-    }, [t]);
+    }, [setVideoReconstructionStatus, t]);
 
     // Load settings when modal opens
     useEffect(() => {
@@ -396,15 +398,25 @@ export const Settings: React.FC = () => {
         groupKey: 'required' | 'stable' | 'experimental',
         group?: VideoReconstructionDependencies['required'],
     ) => {
+        const checking = Boolean(videoDependencies?.summary.checking && !group?.tools.length);
         const available = Boolean(group?.available);
+        const dependencyMessage = checking
+            ? t('videoReconCheckingDependencies')
+            : groupKey === 'experimental' && !available
+                ? t('videoReconDependencyExperimentalMissingHint')
+                : group?.message || t(`videoReconDependencyHint.${groupKey}`);
         return (
             <div className={styles.dependencyRow}>
                 <div>
                     <span className={styles.dependencyTitle}>{t(`videoReconDependency.${groupKey}`)}</span>
-                    <p>{group?.message || t(`videoReconDependencyHint.${groupKey}`)}</p>
+                    <p>{dependencyMessage}</p>
                 </div>
                 <span className={`${styles.statusPill} ${available ? styles.statusOk : styles.statusWarn}`}>
-                    {available ? t('videoReconDependencyAvailable') : t('videoReconDependencyMissing')}
+                    {checking
+                        ? t('videoReconDependencyChecking')
+                        : available
+                            ? t('videoReconDependencyAvailable')
+                            : t('videoReconDependencyMissing')}
                 </span>
             </div>
         );
@@ -433,6 +445,7 @@ export const Settings: React.FC = () => {
         videoConfig.default_engine !== savedVideoConfig.default_engine ||
         videoConfig.vram_budget !== savedVideoConfig.vram_budget ||
         videoConfig.keep_intermediate_files !== savedVideoConfig.keep_intermediate_files;
+    const isExperimentalEngineAvailable = Boolean(videoDependencies?.summary.experimental_available);
 
     const accessSettingsStateText = (() => {
         if (hasAccessSettingsChanges) {
@@ -788,7 +801,7 @@ export const Settings: React.FC = () => {
                             <button
                                 type="button"
                                 className={styles.browseBtn}
-                                onClick={loadVideoReconstructionStatus}
+                                onClick={() => loadVideoReconstructionStatus(true)}
                                 disabled={videoStatusLoading}
                             >
                                 {videoStatusLoading ? t('loading') : t('videoReconRefreshDiagnostics')}
@@ -797,41 +810,62 @@ export const Settings: React.FC = () => {
 
                         <div className={styles.videoSettingsGrid}>
                             <div>
-                                <label className={styles.label}>{t('videoReconDefaultQuality')}</label>
+                                <label className={styles.labelRow}>
+                                    <span>{t('videoReconDefaultQuality')}</span>
+                                    <small>{t('videoReconDefaultQualityMeta')}</small>
+                                </label>
                                 <div className={styles.segmentedControl}>
                                     {(['preview', 'high', 'extreme'] as VideoReconstructionQuality[]).map((quality) => (
                                         <button
                                             key={quality}
                                             type="button"
-                                            className={`${styles.segmentBtn} ${videoConfig.default_quality === quality ? styles.segmentActive : ''}`}
+                                            className={`${styles.segmentBtn} ${styles.segmentBtnStack} ${videoConfig.default_quality === quality ? styles.segmentActive : ''}`}
                                             disabled={!isLocalAccess}
                                             onClick={() => updateVideoConfig({ default_quality: quality })}
                                         >
-                                            {t(`videoReconQuality.${quality}`)}
+                                            <span>{t(`videoReconQuality.${quality}`)}</span>
+                                            <small>{t(`videoReconQualityMeta.${quality}`)}</small>
                                         </button>
                                     ))}
                                 </div>
+                                <p className={styles.optionHint}>{t(`videoReconQualityHint.${videoConfig.default_quality}`)}</p>
                             </div>
 
                             <div>
-                                <label className={styles.label}>{t('videoReconDefaultEngine')}</label>
+                                <label className={styles.labelRow}>
+                                    <span>{t('videoReconDefaultEngine')}</span>
+                                    <small>{t('videoReconDefaultEngineMeta')}</small>
+                                </label>
                                 <div className={styles.segmentedControl}>
-                                    {(['auto', 'stable', 'experimental'] as VideoReconstructionEngine[]).map((engine) => (
-                                        <button
-                                            key={engine}
-                                            type="button"
-                                            className={`${styles.segmentBtn} ${videoConfig.default_engine === engine ? styles.segmentActive : ''}`}
-                                            disabled={!isLocalAccess}
-                                            onClick={() => updateVideoConfig({ default_engine: engine })}
-                                        >
-                                            {t(`videoReconEngine.${engine}`)}
-                                        </button>
-                                    ))}
+                                    {(['auto', 'stable', 'experimental'] as VideoReconstructionEngine[]).map((engine) => {
+                                        const engineDisabled = !isLocalAccess || (engine === 'experimental' && !isExperimentalEngineAvailable);
+                                        return (
+                                            <button
+                                                key={engine}
+                                                type="button"
+                                                className={[
+                                                    styles.segmentBtn,
+                                                    styles.segmentBtnStack,
+                                                    videoConfig.default_engine === engine ? styles.segmentActive : '',
+                                                    engineDisabled ? styles.segmentDisabled : '',
+                                                ].filter(Boolean).join(' ')}
+                                                disabled={engineDisabled}
+                                                onClick={() => updateVideoConfig({ default_engine: engine })}
+                                            >
+                                                <span>{t(`videoReconEngine.${engine}`)}</span>
+                                                <small>{t(`videoReconEngineMeta.${engine}`)}</small>
+                                            </button>
+                                        );
+                                    })}
                                 </div>
+                                <p className={styles.optionHint}>{t(`videoReconEngineHint.${videoConfig.default_engine}`)}</p>
                             </div>
 
                             <div>
-                                <label className={styles.label}>{t('videoReconVramBudget')}</label>
+                                <label className={styles.labelRow}>
+                                    <span>{t('videoReconVramBudget')}</span>
+                                    <small>{t('videoReconVramBudgetMeta')}</small>
+                                </label>
                                 <div className={`${styles.segmentedControl} ${styles.segmentedControlWrap}`}>
                                     {(['auto', '8gb', '12gb', '16gb', '24gb'] as VideoReconstructionVramBudget[]).map((budget) => (
                                         <button

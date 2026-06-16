@@ -123,6 +123,8 @@ Built on [Apple ml-sharp](https://github.com/apple/ml-sharp). No cloud uploads n
 
 **🗂️ Local Media Gallery** — Configure local, external-drive, or NAS folders as albums. Browse, filter, preview, and download photos and videos together; photos can be converted to 3D one by one or in batches, while videos can be played, scrubbed, and viewed fullscreen.
 
+**🎥 Video 3DGS Reconstruction (Experimental)** — On Windows with an NVIDIA RTX 5070 Ti Laptop GPU, local videos have been verified end-to-end through the Nerfstudio/Splatfacto stable route, producing `.ply/.spz` models with quality presets, focused cleanup, video-poster thumbnails, source-video replay, and viewer orientation adaptation.
+
 **📥 Upload Into Current Album** — Add photos directly to the current album with file picker or drag-and-drop; the album refreshes automatically after upload.
 
 **⚡ Faster Gallery Startup** — Gallery indexing now loads on demand, so startup no longer waits for a full album scan and large libraries show the first screen faster.
@@ -148,8 +150,9 @@ No need to install apps on every device. Run Sharp GUI on one computer, and any 
 | Feature                    | Description                                                                                                                                                              |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **📸 Image to 3D**         | Upload any image; Apple ML-Sharp generates a 3D Gaussian Splatting model. The ~500MB model is pre-downloaded during install.                                             |
+| **🎥 Video 3DGS Reconstruction** | Create static Gaussian Splat models from local album videos or dropped video files through the Nerfstudio/Splatfacto stable route, with quality presets, focused cleanup, task stages, thumbnails, and source-video replay. |
 | **🖼️ Modern Workflow**     | Multi-select / drag-and-drop upload, virtualized gallery, in-app original viewer, smart task queue (2s while active, 10s idle), slide-out delete, cancellable jobs.      |
-| **🗂️ Local Media Gallery** | Configure multiple local/NAS folders as albums, browse and filter photos/videos together, preview and download media, convert photos to 3D, and play videos directly. |
+| **🗂️ Local Media Gallery** | Configure multiple local/NAS folders as albums, browse and filter photos/videos together, preview and download media, convert photos to 3D, play videos, and start video reconstruction. |
 | **👁️ Real-time Viewer**    | Three.js + Spark 2.0 WASM-accelerated viewer with mouse / touch / keyboard (WASD) / gyroscope controls, click-to-focus with a GPU focus ring, quick transform panel.     |
 | **🎭 Reveal Effects**      | Magic / Spread / Unroll / Twister / Rain entrance animations with replay support.                                                                                        |
 | **📱 Mobile Optimized**    | Phones / tablets get gyroscope controls (iOS-style indicator ball), virtual joystick, touch gestures, and a drawer-style sidebar.                                        |
@@ -265,6 +268,8 @@ Built with Apple Human Interface Guidelines for a premium feel:
 | **Linux x86_64 + NVIDIA**   | ✅ CUDA           | ❓ Unverified |
 | **macOS Intel**             | ✅ CPU            | ❓ Unverified |
 
+> 🎥 **Current video reconstruction platform**: Video 3DGS reconstruction has currently only been verified end-to-end on **Windows + NVIDIA RTX 5070 Ti Laptop GPU (12GB VRAM)**. Other Windows NVIDIA GPUs may work, but Linux, macOS, CPU, and MPS video reconstruction are not yet verified.
+>
 > 🚀 **NVIDIA GPU recommended**: 3D Gaussian Splatting inference is compute-heavy. CUDA typically delivers **multiple-x to ~10x** speedups over pure CPU, with a noticeably better experience.
 >
 > 💡 **CPU-only still works**: inference runs fine without a GPU, just slower per image. Apple Silicon users get a near-GPU experience via the MPS backend.
@@ -344,6 +349,7 @@ The install script automatically handles all setup steps, no manual configuratio
 - 📦 **Detect/Install Git** - Auto-installs if missing (Windows)
 - 🎮 **Detect NVIDIA GPU** - Auto-installs the CUDA-enabled PyTorch that matches your driver (cu118 / cu126 / cu128)
 - 🧩 **Install Dependencies** - Creates virtual environment, installs ml-sharp core and GUI deps
+- 🎥 **Install video reconstruction environment (Windows NVIDIA, experimental)** - Installs or reuses `.video-reconstruction-env`, CUDA/PyTorch, Nerfstudio/Splatfacto, gsplat, COLMAP, and `ffmpeg/ffprobe`
 - 📥 **Pre-download Model** - Downloads inference model (~500MB) during install, no wait on first run
 - 🔐 **Generate HTTPS Certificate** - Auto-generates self-signed certificate for secure LAN access
 
@@ -403,6 +409,20 @@ rm -rf sharp-gui/
 3. **Browse Media** - Photos use cached thumbnails and open originals on demand; videos can be previewed, scrubbed, viewed fullscreen, and downloaded
 4. **Upload to Album** - Pick or drag photos into the current album; the album refreshes automatically
 5. **Convert to 3D** - Convert photos from cards or the preview layer, or multi-select and queue a batch into the existing workflow
+
+### Generate 3D Models from Video (Experimental)
+
+1. **Choose a video** - Select one video in the local media gallery, or drop a single video onto the model view, model list, or "Generate New" entry
+2. **Pick settings** - Choose mode (Auto / Object / Environment), quality (Quick Preview / High Quality / Extreme), and engine (Auto / Stable / Experimental)
+3. **Wait for reconstruction** - The task queue reports stages such as frame extraction, pose estimation, Gaussian optimization, export, and SPZ compression
+4. **Open the result** - The model appears in the existing model gallery, uses the video poster as its thumbnail when available, and exposes source-video replay from the hover actions
+
+Current guidance:
+
+- **Default quality**: High Quality, tuned for RTX 5070 Ti Laptop 12GB-class machines, about 180 frames / 30k iterations / 2x input downscale
+- **Default engine**: Auto. If experimental initialization is not configured, it falls back to the stable Nerfstudio/Splatfacto route
+- **Default cleanup**: Auto / Object modes enable focused cleanup to remove distant loose splats; Environment mode keeps the full scene
+- **Current limits**: One video per task; dynamic 4D, mesh repair, manual trimming, and cloud training are out of scope
 
 ### 3D Interaction Controls
 
@@ -476,8 +496,20 @@ The system auto-creates:
 - `inputs/` - Uploaded images
 - `outputs/` - Generated models
 - `.photo-gallery-cache/` - Local photo gallery index and cached thumbnails
+- `.video-reconstruction/` - Video reconstruction jobs, uploaded video cache, and intermediate files
 
 > 💡 `photo_gallery_roots` can be added from the UI. When editing manually, use paths from the server machine. Windows, Linux, and macOS are supported; LAN clients browse folders on the host running Sharp GUI.
+
+### Video Reconstruction Settings (Experimental)
+
+The Settings > Video Reconstruction area is for dependency diagnostics and defaults:
+
+- **Default quality**: Quick Preview / High Quality / Extreme, mapped to different frame, iteration, and input-resolution budgets
+- **Default engine**: Auto / Stable / Experimental; the experimental engine is optional, and missing it does not block Auto or Stable
+- **VRAM budget**: Auto / 8GB / 12GB / 16GB / 24GB, used to tighten or relax resource boundaries
+- **Keep intermediate files**: Useful for inspecting frames, poses, and Nerfstudio logs; when off, completed/cancelled jobs clean their job folders
+
+The backend starts an asynchronous dependency warmup once per process. Opening the home page or reconstruction dialog does not synchronously scan external tools. Pressing refresh in Settings triggers a background re-check.
 
 ### Enable HTTPS (Recommended)
 
@@ -550,8 +582,8 @@ sharp-gui/
 │   ├── 📄 config.py          # config.json and access-control normalization
 │   ├── 📄 paths.py           # workspace/inputs/outputs/cache path context
 │   ├── 📁 security/          # LAN access gate, permission matrix, request hooks
-│   ├── 📁 services/          # Model/photo gallery, task queue, export, static-file services
-│   └── 📁 routes/            # auth/gallery/photo_gallery/tasks/settings/files/export/frontend
+│   ├── 📁 services/          # Model/photo gallery, video reconstruction, task queue, export, static-file services
+│   └── 📁 routes/            # auth/gallery/photo_gallery/video_reconstruction/tasks/settings/files/export/frontend
 ├── 📄 install.sh/bat         # One-click install scripts
 ├── 📄 run.sh/bat             # Startup scripts (supports --legacy flag)
 ├── 📄 run_verbose.sh/bat     # Verbose entry (writes sharp-gui-verbose.log)
@@ -570,6 +602,7 @@ sharp-gui/
 ├── 📁 ml-sharp/              # (after install) Apple ML-Sharp core
 ├── 📁 inputs/                # Input images
 ├── 📁 outputs/               # Output models (.ply + .spz)
+├── 📁 .video-reconstruction/ # Video reconstruction jobs, uploaded video cache, and intermediates (inside workspace by default)
 └── 📁 .photo-gallery-cache/  # Photo gallery index and thumbnail cache (inside workspace by default)
 ```
 
@@ -604,7 +637,7 @@ frontend/
 | **i18n**         | i18next + react-i18next                                |
 | **Styling**      | CSS Modules + Apple Glass Morphism                     |
 | **Backend**      | Python 3.10+, Flask app factory + Blueprints, TaskManager |
-| **AI Engine**    | Apple ML-Sharp (PyTorch, gsplat)                       |
+| **AI Engine**    | Apple ML-Sharp (PyTorch, gsplat); experimental video reconstruction uses Nerfstudio/Splatfacto + COLMAP/ffmpeg |
 | **3D Rendering** | Three.js + Spark 2.0 (WASM-accelerated Gaussian Splatting) |
 
 ### Performance Optimizations
@@ -613,6 +646,7 @@ frontend/
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | **Code Splitting**        | Vite manualChunks: three.js (~493KB), spark (~487KB), react-vendor (4KB)                                                                 |
 | **Thumbnail System**      | Model gallery uses 200px JPEG thumbnails; photo gallery creates cached thumbnails on demand and only loads originals for preview/download |
+| **Video Reconstruction Cache** | Backend warms and caches video reconstruction dependency status once per process; Settings can refresh it, and video outputs use sidecar metadata in the existing model gallery |
 | **Smart Polling**         | Active 2s polling, idle 10s, saves resources                                                                                             |
 | **Format Conversion**     | Auto-converts generated models to compact SPZ; share export embeds SPZ by default while preserving the legacy PLY/Splat path             |
 | **Memory Cleanup**        | Completed tasks auto-removed from memory after 1 hour                                                                                    |
@@ -654,8 +688,9 @@ The `app.py` compatibility entry and `backend/` modules honor the following envi
 |----------|---------|-------------|
 | `SHARP_FRONTEND_MODE` | `react` | Frontend mode: `react` (built) or `legacy` (single-file). `run.sh --legacy` sets it to `legacy`. |
 | `SHARP_DEBUG` | off | Set `1`/`true` to enable the Flask debugger (returns stack traces to the browser, enables the interactive debugger). **Security risk — local troubleshooting only, never enable on a LAN/public network.** |
-| `SHARP_VERBOSE` | off | Set `1`/`true` for detailed diagnostics (werkzeug raised to DEBUG, logs every request and writes a log file). `run.sh --verbose` sets it. |
+| `SHARP_VERBOSE` | off | Set `1`/`true` for the detailed diagnostics log file. `run.sh --verbose` / `run.bat --verbose` sets it. |
 | `SHARP_LOG_LEVEL` | `INFO` (`DEBUG` when verbose) | Application log level. |
+| `SHARP_HTTP_LOGS` | off | Set `1`/`true` to print Werkzeug HTTP request logs; off by default to avoid thumbnail/polling request spam. |
 | `SHARP_LOG_FILE` | `sharp-gui-verbose.log` | Output path for the detailed diagnostics log. |
 | `SHARP_BIND_HOST` | follows the gate setting | Overrides the listen address. When unset it follows the "LAN access" toggle in Settings (on → `0.0.0.0` / off → `127.0.0.1`). |
 | `SHARP_LAN_IP` | auto-detected | LAN IP shown in the startup banner; injected automatically by `run.sh`. |

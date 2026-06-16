@@ -95,6 +95,26 @@ def get_original_image(item_id):
     )
 
 
+@bp.route("/api/gallery/<item_id>/source-video")
+def get_gallery_source_video(item_id):
+    """按模型图库条目获取其源视频，支持 inline 播放和附件下载。"""
+    paths = get_paths()
+    source_video = model_gallery.resolve_gallery_source_video(paths, item_id)
+    if not source_video:
+        return jsonify({"error": "Source video not found"}), 404
+
+    download = request.args.get("download", "0").lower() in ("1", "true", "yes")
+    return send_from_directory(
+        os.path.dirname(source_video["path"]),
+        os.path.basename(source_video["path"]),
+        as_attachment=download,
+        download_name=source_video["name"],
+        mimetype=source_video.get("mime_type"),
+        conditional=True,
+        max_age=model_gallery.DEFAULT_FILE_CACHE_SECONDS,
+    )
+
+
 @bp.route("/api/thumbnail/<item_id>")
 def get_thumbnail(item_id):
     """按图库条目 ID 获取缩略图。"""

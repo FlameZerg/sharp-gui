@@ -499,6 +499,33 @@
     margin-top: 14px;
 }
 
+.labelRow {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 6px;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.labelRow small {
+    min-width: 0;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.35;
+    text-align: right;
+}
+
+.optionHint {
+    margin: 6px 0 0;
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1.45;
+}
+
 .videoToggleRow {
     display: flex;
     align-items: center;
@@ -588,6 +615,16 @@
     .dependencyRow {
         align-items: stretch;
         flex-direction: column;
+    }
+
+    .labelRow {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 3px;
+    }
+
+    .labelRow small {
+        text-align: left;
     }
 
     .cacheStats {
@@ -743,6 +780,24 @@
     align-items: center;
     justify-content: center;
     gap: 4px;
+}
+
+.segmentBtnStack {
+    min-height: 42px;
+    flex-direction: column;
+    gap: 2px;
+    padding: 7px 8px;
+    line-height: 1.25;
+}
+
+.segmentBtnStack small {
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 500;
+}
+
+.segmentBtnStack.segmentActive small {
+    color: color-mix(in srgb, var(--accent-blue) 70%, var(--text-muted));
 }
 
 .segmentBtn:hover {

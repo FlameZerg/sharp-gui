@@ -144,7 +144,7 @@ export function Sidebar({ onUpload, children }: SidebarProps) {
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept="image/*,video/mp4,video/quicktime,video/webm,.mp4,.m4v,.mov,.webm"
             multiple
             hidden
             onChange={handleFileChange}

@@ -23,8 +23,15 @@ SHARP_VERBOSE = os.environ.get("SHARP_VERBOSE", "").strip().lower() in {
     "debug",
     "verbose",
 }
-SHARP_LOG_LEVEL = os.environ.get("SHARP_LOG_LEVEL", "DEBUG" if SHARP_VERBOSE else "INFO").strip().upper()
+SHARP_LOG_LEVEL = os.environ.get("SHARP_LOG_LEVEL", "INFO").strip().upper()
 SHARP_LOG_FILE = os.environ.get("SHARP_LOG_FILE", os.path.join(BASE_DIR, "sharp-gui-verbose.log"))
+SHARP_HTTP_LOGS = os.environ.get("SHARP_HTTP_LOGS", "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+    "debug",
+}
 SHARP_DEBUG = os.environ.get("SHARP_DEBUG", "").strip().lower() in {
     "1",
     "true",
@@ -34,6 +41,31 @@ SHARP_DEBUG = os.environ.get("SHARP_DEBUG", "").strip().lower() in {
 }
 
 DEFAULT_WORKSPACE_FOLDER = BASE_DIR
+LOG_LEVEL_VALUES = {
+    "DEBUG": 10,
+    "INFO": 20,
+    "WARN": 30,
+    "WARNING": 30,
+    "ERROR": 40,
+}
+
+
+def get_log_level_value(level=None):
+    return LOG_LEVEL_VALUES.get((level or SHARP_LOG_LEVEL or "INFO").upper(), 20)
+
+
+def is_log_enabled(level):
+    return get_log_level_value(level) >= get_log_level_value()
+
+
+def log(level, message):
+    """Print backend diagnostics using the configured SHARP_LOG_LEVEL."""
+    normalized = (level or "INFO").upper()
+    if normalized == "WARNING":
+        normalized = "WARN"
+    if not is_log_enabled(normalized):
+        return
+    print(f"[{normalized}] {message}", flush=True)
 
 
 def get_config_file():
@@ -87,8 +119,7 @@ def select_sharp_device():
 
 
 def verbose_log(message):
-    if SHARP_VERBOSE:
-        print(f"[DEBUG] {message}", flush=True)
+    log("DEBUG", message)
 
 
 class TeeStream:
@@ -134,8 +165,9 @@ def format_command_for_log(cmd):
 
 
 def configure_werkzeug_logging():
+    logging.basicConfig(level=get_log_level_value(), format="[%(levelname)s] %(name)s: %(message)s")
     log = logging.getLogger("werkzeug")
-    log.setLevel(logging.DEBUG if SHARP_VERBOSE else logging.WARNING)
+    log.setLevel(get_log_level_value() if SHARP_HTTP_LOGS else logging.WARNING)
 
 
 def print_runtime_diagnostics(protocol=None, local_ip=None):

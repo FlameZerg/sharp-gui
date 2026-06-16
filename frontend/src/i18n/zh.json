@@ -4,9 +4,9 @@
   "generateNew": "生成新模型",
   "processingQueue": "处理队列",
 
-  "emptyStateTitle": "从画廊选择或生成新模型",
-  "emptyStateHint": "拖拽 .ply / .splat / .spz / .rad 文件到此处预览",
-  "dragToSidebarHint": "拖拽源图片到左侧直接生成模型",
+  "emptyStateTitle": "选择模型，或拖入图片/视频生成新模型",
+  "emptyStateHint": "拖拽 .ply / .splat / .spz / .rad 可直接预览；拖拽图片或单个视频可生成 3D 模型",
+  "dragToSidebarHint": "拖拽图片或视频到左侧直接生成模型",
 
   "loading": "加载中...",
   "loadingModel": "正在加载模型...",
@@ -54,6 +54,34 @@
   "quickControlsLodScale": "LoD 比例",
   "quickControlsConeFoveate": "视锥注视系数",
   "quickControlsBehindFoveate": "背向注视系数",
+  "quickControlsDebug": "调试读数",
+  "quickControlsDebugCopy": "复制",
+  "quickControlsDebugCopied": "已复制",
+  "quickControlsDebugWaiting": "打开模型后会显示实时相机和模型姿态读数。",
+  "quickControlsDebugResetMode": "重置模式",
+  "quickControlsDebugResetModeDefault": "默认",
+  "quickControlsDebugResetModeBoundsCentered": "包围盒居中",
+  "quickControlsDebugResetModeBoundsYFront": "Y 正面适配",
+  "quickControlsDebugResetModeBoundsDefault": "包围盒未触发",
+  "quickControlsDebugResetModeBoundsUnavailable": "包围盒不可用",
+  "quickControlsDebugCameraPosition": "相机位置",
+  "quickControlsDebugCameraRotation": "相机旋转",
+  "quickControlsDebugCameraUp": "相机上方向",
+  "quickControlsDebugCameraForward": "相机朝向",
+  "quickControlsDebugControlsTarget": "控制目标点",
+  "quickControlsDebugOrbit": "轨道角度",
+  "quickControlsDebugDistanceShort": "距",
+  "quickControlsDebugAzimuthShort": "方位",
+  "quickControlsDebugPolarShort": "极角",
+  "quickControlsDebugModelPosition": "模型位置",
+  "quickControlsDebugModelRotation": "模型旋转",
+  "quickControlsDebugModelScale": "模型缩放",
+  "quickControlsDebugModelRight": "模型右轴",
+  "quickControlsDebugModelUp": "模型上轴",
+  "quickControlsDebugModelForward": "模型前轴",
+  "quickControlsDebugBoundsCenter": "包围盒中心",
+  "quickControlsDebugBoundsSize": "包围盒尺寸",
+  "quickControlsDebugTargetDelta": "目标偏差",
 
   "revealEffectsTitle": "渲染效果",
   "revealEffectsOpenAria": "打开渲染效果面板，当前效果：{{effect}}",
@@ -114,6 +142,7 @@
   "precisionMode": "精细模式",
 
   "viewOriginal": "查看原图",
+  "viewOriginalVideo": "预览原视频",
   "download": "下载模型",
   "delete": "删除",
   "galleryThumbLoading": "正在加载预览",
@@ -219,6 +248,7 @@
   "selectImageFiles": "请选择图片文件",
   "uploadFailed": "上传失败",
   "uploadingFiles": "正在上传 {{count}} 个文件...",
+  "uploadingVideo": "正在上传视频并创建重建任务...",
 
   "ready": "就绪",
   "viewerError": "查看器错误",
@@ -226,7 +256,7 @@
   "pageWillRefresh": "页面将自动刷新",
 
   "dropModelHint": "拖拽 .ply / .splat / .spz / .rad 文件预览",
-  "unsupportedFormat": "不支持的格式，请拖拽 .ply、.splat、.spz 或 .rad 文件",
+  "unsupportedFormat": "不支持的格式。可拖拽模型文件（.ply / .splat / .spz / .rad）、图片，或单个视频（.mp4 / .mov / .m4v / .webm）。",
   "modelLoaded": "模型已加载",
   "modelLoadFailed": "模型加载失败",
 
@@ -439,26 +469,55 @@
   "videoReconSettingsHint": "控制本地视频生成 Gaussian Splat 模型时默认使用的预设。",
   "videoReconRefreshDiagnostics": "刷新",
   "videoReconDefaultQuality": "默认质量",
+  "videoReconDefaultQualityMeta": "影响帧数、分辨率、迭代与耗时",
   "videoReconDefaultEngine": "默认引擎",
+  "videoReconDefaultEngineMeta": "选择重建路线；建议保持自动",
+  "videoReconVramBudgetMeta": "按本机显存限制资源边界",
   "videoReconSettingsSaved": "视频重建设置已保存。",
   "videoReconSettingsUnsaved": "视频重建设置有未保存更改",
   "videoReconSettingsCurrent": "已保存：视频重建默认值为最新",
   "videoReconDependencyAvailable": "可用",
+  "videoReconDependencyChecking": "检测中",
   "videoReconDependencyMissing": "缺失",
   "videoReconMode": {
     "auto": "自动",
     "object": "物品",
     "environment": "环境"
   },
+  "videoReconModeMeta": {
+    "auto": "推荐",
+    "object": "主体优先",
+    "environment": "空间优先"
+  },
   "videoReconQuality": {
     "preview": "快速预览",
     "high": "高质量",
     "extreme": "极致"
   },
+  "videoReconQualityMeta": {
+    "preview": "90 帧 / 7k",
+    "high": "180 帧 / 30k",
+    "extreme": "360 帧 / 50k"
+  },
+  "videoReconQualityHint": {
+    "preview": "用于快速确认相机路径和主体清理效果，输入细节和 splat 数量较少。",
+    "high": "当前推荐：2x 输入分辨率、focused 清理，这段 4K 视频约 50 分钟级。",
+    "extreme": "提高帧数和训练预算，适合长时间离线追求上限，显存和耗时压力更大。"
+  },
   "videoReconEngine": {
     "auto": "自动",
     "stable": "稳定",
     "experimental": "实验"
+  },
+  "videoReconEngineMeta": {
+    "auto": "推荐",
+    "stable": "Nerfstudio",
+    "experimental": "VGGT 可选"
+  },
+  "videoReconEngineHint": {
+    "auto": "使用当前已就绪的最佳路线；实验初始化缺失时会自动回退到稳定 3DGS。",
+    "stable": "固定使用 COLMAP + Nerfstudio Splatfacto，也是当前跑出干净高细节结果的路线。",
+    "experimental": "预留给 VGGT 类几何初始化，需要另行配置本地模型和依赖；未就绪时不能运行。"
   },
   "videoReconVram": {
     "auto": "自动",
@@ -477,8 +536,10 @@
     "stable": "Nerfstudio Splatfacto 用于训练并导出 Gaussian Splat 模型。",
     "experimental": "VGGT 类初始化为可选增强，系统不会自动下载受限模型。"
   },
+  "videoReconDependencyExperimentalMissingHint": "本机未配置 VGGT 类初始化模型。这是可选增强，不影响自动或稳定路线重建。",
   "videoReconError": {
     "video_reconstruction_dependency_missing": "缺少视频重建必需依赖。",
+    "video_reconstruction_dependencies_checking": "本机重建工具仍在后台检测中，请稍后再试。",
     "video_reconstruction_stable_unavailable": "稳定 Nerfstudio / Splatfacto 路线不可用。",
     "video_reconstruction_experimental_unavailable": "本机尚未配置实验初始化。",
     "video_reconstruction_invalid_request": "视频重建请求包含非法选项。",
@@ -486,7 +547,8 @@
     "video_reconstruction_cancelled": "视频重建已取消。",
     "video_reconstruction_oom": "GPU 显存不足。请降低质量档位或减少帧数。",
     "video_reconstruction_output_missing": "重建完成但没有得到可用的 PLY 输出。",
-    "video_reconstruction_spz_failed": "SPZ 压缩失败，但已保留 PLY 输出。"
+    "video_reconstruction_spz_failed": "SPZ 压缩失败，但已保留 PLY 输出。",
+    "video_reconstruction_unsupported_video": "不支持的视频格式。请使用 MP4、MOV、M4V 或 WebM。"
   },
   "taskStatus": {
     "pending": "等待中",

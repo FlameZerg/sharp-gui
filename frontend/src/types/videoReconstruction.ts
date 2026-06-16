@@ -35,6 +35,9 @@ export interface VideoReconstructionDependencies {
     available: boolean;
     stable_available: boolean;
     experimental_available: boolean;
+    checking?: boolean;
+    checked_at?: number | null;
+    cached?: boolean;
   };
 }
 

@@ -1,9 +1,15 @@
 import datetime
+import json
 import os
+import re
+import shutil
+import subprocess
+import uuid
+from urllib.parse import quote
 
 from PIL import Image
 
-from backend.services.static_files import get_relative_files_path
+from backend.services.static_files import get_relative_files_path, is_real_path_inside
 
 ALLOWED_IMAGE_EXTENSIONS = (
     ".jpg",
@@ -18,6 +24,8 @@ ALLOWED_IMAGE_EXTENSIONS = (
 MAX_THUMBNAIL_REPAIRS_PER_REQUEST = 6
 THUMBNAIL_CACHE_SECONDS = 86400
 DEFAULT_FILE_CACHE_SECONDS = 3600
+MODEL_METADATA_SUFFIX = ".meta.json"
+VIDEO_THUMBNAIL_WIDTH = 200
 
 
 def generate_thumbnail(paths, input_path, filename):
@@ -41,6 +49,181 @@ def generate_thumbnail(paths, input_path, filename):
 def get_thumbnail_path(paths, item_id):
     """获取图库条目的缩略图路径。"""
     return os.path.join(paths.thumbnail_folder, item_id + ".jpg")
+
+
+def get_model_metadata_path(paths, item_id):
+    """获取模型图库条目的 sidecar 元数据路径。"""
+    return os.path.join(paths.output_folder, item_id + MODEL_METADATA_SUFFIX)
+
+
+def get_video_uploads_folder(paths):
+    """获取拖拽上传视频的持久源文件目录。"""
+    return os.path.join(paths.video_reconstruction_folder, "uploads")
+
+
+def read_model_metadata(paths, item_id):
+    """读取模型图库条目的 sidecar 元数据。"""
+    metadata_path = get_model_metadata_path(paths, item_id)
+    try:
+        with open(metadata_path, "r", encoding="utf-8") as file:
+            data = json.load(file)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def write_model_metadata(paths, item_id, metadata):
+    """写入模型图库条目的 sidecar 元数据。"""
+    os.makedirs(paths.output_folder, exist_ok=True)
+    metadata_path = get_model_metadata_path(paths, item_id)
+    payload = {
+        **(metadata if isinstance(metadata, dict) else {}),
+        "id": item_id,
+        "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    }
+    temp_path = f"{metadata_path}.tmp-{uuid.uuid4().hex[:8]}"
+    with open(temp_path, "w", encoding="utf-8") as file:
+        json.dump(payload, file, ensure_ascii=False, indent=2, sort_keys=True)
+    os.replace(temp_path, metadata_path)
+    return metadata_path
+
+
+def resolve_gallery_source_video(paths, item_id):
+    """解析图库条目的源视频，仅允许照片图库视频或受控上传缓存。"""
+    metadata = read_model_metadata(paths, item_id)
+    if metadata.get("source_media_type") != "video":
+        return None
+
+    source_media_id = metadata.get("source_media_id")
+    if isinstance(source_media_id, str) and source_media_id:
+        from backend.services import photo_gallery
+
+        resolved = photo_gallery.resolve_media_path(
+            paths,
+            source_media_id,
+            expected_type=photo_gallery.MEDIA_TYPE_VIDEO,
+            allow_stale=True,
+        )
+        if resolved:
+            _, full_path, meta = resolved
+            return {
+                "path": full_path,
+                "name": meta.get("name") or os.path.basename(full_path),
+                "mime_type": meta.get("mime_type") or photo_gallery.get_video_mime_type(full_path),
+            }
+
+    source_video_path = metadata.get("source_video_path")
+    if not isinstance(source_video_path, str) or not source_video_path:
+        return None
+
+    upload_root = os.path.realpath(get_video_uploads_folder(paths))
+    real_path = os.path.realpath(source_video_path)
+    if not is_real_path_inside(real_path, upload_root) or not os.path.isfile(real_path):
+        return None
+
+    from backend.services import photo_gallery
+
+    return {
+        "path": real_path,
+        "name": metadata.get("source_name") or os.path.basename(real_path),
+        "mime_type": metadata.get("source_mime_type") or photo_gallery.get_video_mime_type(real_path),
+    }
+
+
+def normalize_stem_for_match(value):
+    """Normalize a media/model stem for conservative legacy video backfill."""
+    stem = os.path.splitext(os.path.basename(str(value or "")))[0]
+    stem = re.sub(r"\s+", "_", stem).strip("._ ").lower()
+    return stem
+
+
+def legacy_video_match_stems(item_id):
+    """Return possible source video stems for old generated model names."""
+    stem = normalize_stem_for_match(item_id)
+    stems = {stem}
+    without_collision_suffix = re.sub(r"-\d+$", "", stem)
+    if without_collision_suffix:
+        stems.add(without_collision_suffix)
+    legacy_suffixes = (
+        "_high180_focused",
+        "_preview_final_clean_focused",
+        "_preview_clean_focused",
+        "_preview_focused",
+        "_focused",
+    )
+    for suffix in legacy_suffixes:
+        if stem.endswith(suffix):
+            stems.add(stem[: -len(suffix)])
+    return {candidate for candidate in stems if candidate}
+
+
+def find_unique_gallery_video_for_model(paths, item_id):
+    """Find a unique same-name gallery video for legacy outputs missing sidecar metadata."""
+    from backend.services import photo_gallery
+
+    target_stems = legacy_video_match_stems(item_id)
+    if not target_stems:
+        return None
+
+    matched_meta = []
+    for meta in photo_gallery.load_photo_index(paths).get("photos", {}).values():
+        if not isinstance(meta, dict) or meta.get("media_type") != photo_gallery.MEDIA_TYPE_VIDEO:
+            continue
+        name = meta.get("name") or meta.get("relative_path") or meta.get("id")
+        if normalize_stem_for_match(name) in target_stems:
+            matched_meta.append(meta)
+
+    resolved_by_path = {}
+    for meta in matched_meta:
+        resolved = photo_gallery.resolve_media_path(
+            paths,
+            meta["id"],
+            expected_type=photo_gallery.MEDIA_TYPE_VIDEO,
+            allow_stale=True,
+        )
+        if not resolved:
+            continue
+        _, full_path, resolved_meta = resolved
+        resolved_by_path[os.path.realpath(full_path)] = (full_path, resolved_meta)
+
+    if len(resolved_by_path) != 1:
+        return None
+
+    return next(iter(resolved_by_path.values()))
+
+
+def backfill_legacy_video_metadata(paths, item_id):
+    """Create video sidecar metadata for old video reconstruction outputs when it is safe."""
+    if read_model_metadata(paths, item_id):
+        return {}
+
+    original_filename, original_path = find_original_image(paths, item_id)
+    if original_filename and original_path:
+        return {}
+
+    match = find_unique_gallery_video_for_model(paths, item_id)
+    if not match:
+        return {}
+
+    from backend.services import photo_gallery
+
+    full_path, meta = match
+    metadata = {
+        "source_media_type": "video",
+        "source_media_id": meta.get("id"),
+        "source_name": meta.get("name") or os.path.basename(full_path),
+        "source_video_path": full_path,
+        "source_mime_type": meta.get("mime_type") or photo_gallery.get_video_mime_type(full_path),
+        "generator": "video_3dgs",
+        "recovered_from": "gallery-video-stem",
+    }
+    try:
+        write_model_metadata(paths, item_id, metadata)
+        generate_video_thumbnail(paths, full_path, item_id)
+        return metadata
+    except Exception as exc:
+        print(f"⚠️ Failed to backfill video metadata for {item_id}: {exc}")
+        return {}
 
 
 def find_original_image(paths, item_id):
@@ -69,6 +252,54 @@ def ensure_thumbnail_for_item(paths, item_id, allow_generation=False):
     return generate_thumbnail(paths, original_path, original_filename)
 
 
+def generate_video_thumbnail(paths, source_video_path, item_id):
+    """从源视频抽一帧生成模型缩略图。"""
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg or not os.path.isfile(source_video_path):
+        return None
+
+    os.makedirs(paths.thumbnail_folder, exist_ok=True)
+    thumb_path = get_thumbnail_path(paths, item_id)
+    temp_path = f"{thumb_path}.tmp-{uuid.uuid4().hex[:8]}.jpg"
+    try:
+        result = subprocess.run(
+            [
+                ffmpeg,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-ss",
+                "0.5",
+                "-i",
+                source_video_path,
+                "-frames:v",
+                "1",
+                "-vf",
+                f"scale={VIDEO_THUMBNAIL_WIDTH}:-2",
+                "-q:v",
+                "4",
+                "-y",
+                temp_path,
+            ],
+            check=False,
+            capture_output=True,
+            timeout=12,
+        )
+        if result.returncode != 0 or not os.path.exists(temp_path):
+            return None
+        os.replace(temp_path, thumb_path)
+        return thumb_path
+    except Exception as exc:
+        print(f"⚠️ Video thumbnail generation failed for {item_id}: {exc}")
+        return None
+    finally:
+        try:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+        except OSError:
+            pass
+
+
 def get_file_version(path):
     """获取文件版本号（基于修改时间）。"""
     return int(os.path.getmtime(path) * 1000)
@@ -92,6 +323,12 @@ def build_gallery_item(paths, ply_filename, repair_missing_thumbnail=False):
 
     ply_size = os.path.getsize(ply_path)
     file_timestamps = [os.path.getmtime(ply_path)]
+    metadata = read_model_metadata(paths, name_without_ext)
+    if not metadata and repair_missing_thumbnail:
+        metadata = backfill_legacy_video_metadata(paths, name_without_ext)
+    metadata_path = get_model_metadata_path(paths, name_without_ext)
+    if os.path.exists(metadata_path):
+        file_timestamps.append(os.path.getmtime(metadata_path))
 
     spz_filename = name_without_ext + ".spz"
     spz_path = os.path.join(paths.output_folder, spz_filename)
@@ -110,7 +347,12 @@ def build_gallery_item(paths, ply_filename, repair_missing_thumbnail=False):
 
     thumb_path = get_thumbnail_path(paths, name_without_ext)
     if not os.path.exists(thumb_path) and repair_missing_thumbnail:
-        thumb_path = ensure_thumbnail_for_item(paths, name_without_ext, allow_generation=True)
+        if metadata.get("source_media_type") == "video":
+            source_video = resolve_gallery_source_video(paths, name_without_ext)
+            if source_video:
+                thumb_path = generate_video_thumbnail(paths, source_video["path"], name_without_ext)
+        else:
+            thumb_path = ensure_thumbnail_for_item(paths, name_without_ext, allow_generation=True)
 
     thumb_url = None
     thumb_version = None
@@ -121,7 +363,7 @@ def build_gallery_item(paths, ply_filename, repair_missing_thumbnail=False):
 
     latest_timestamp = max(file_timestamps)
 
-    return {
+    item = {
         "id": name_without_ext,
         "name": name_without_ext,
         "model_url": f"/files/{get_relative_files_path(ply_path, paths)}",
@@ -138,6 +380,16 @@ def build_gallery_item(paths, ply_filename, repair_missing_thumbnail=False):
         ).isoformat(),
     }
 
+    if metadata.get("source_media_type") == "video":
+        item.update({
+            "source_media_type": "video",
+            "source_media_id": metadata.get("source_media_id"),
+            "source_name": metadata.get("source_name"),
+            "source_video_url": f"/api/gallery/{quote(name_without_ext, safe='')}/source-video",
+        })
+
+    return item
+
 
 def list_gallery_items(paths):
     """获取图库列表。"""
@@ -145,26 +397,29 @@ def list_gallery_items(paths):
     if os.path.exists(paths.output_folder):
         files = [f for f in os.listdir(paths.output_folder) if f.endswith(".ply")]
         files.sort(key=lambda x: os.path.getmtime(os.path.join(paths.output_folder, x)), reverse=True)
-        remaining_thumbnail_repairs = MAX_THUMBNAIL_REPAIRS_PER_REQUEST
+        remaining_asset_repairs = MAX_THUMBNAIL_REPAIRS_PER_REQUEST
 
         for ply_filename in files:
             item_id = os.path.splitext(ply_filename)[0]
             thumb_missing = not os.path.exists(get_thumbnail_path(paths, item_id))
-            repair_thumbnail = thumb_missing and remaining_thumbnail_repairs > 0
+            metadata_missing = not os.path.exists(get_model_metadata_path(paths, item_id))
+            repair_assets = (thumb_missing or metadata_missing) and remaining_asset_repairs > 0
             gallery_item = build_gallery_item(
                 paths,
                 ply_filename,
-                repair_missing_thumbnail=repair_thumbnail,
+                repair_missing_thumbnail=repair_assets,
             )
             if gallery_item:
                 items.append(gallery_item)
-            if repair_thumbnail:
-                remaining_thumbnail_repairs -= 1
+            if repair_assets:
+                remaining_asset_repairs -= 1
     return items
 
 
 def delete_gallery_item(paths, item_id):
     """删除图库项目，包括原图、PLY、SPZ 模型和缩略图。"""
+    metadata = read_model_metadata(paths, item_id)
+
     ply_path = os.path.join(paths.output_folder, item_id + ".ply")
     if os.path.exists(ply_path):
         os.remove(ply_path)
@@ -181,6 +436,36 @@ def delete_gallery_item(paths, item_id):
         img_path = os.path.join(paths.input_folder, item_id + ext)
         if os.path.exists(img_path):
             os.remove(img_path)
+
+    delete_uploaded_source_video(paths, metadata)
+
+    metadata_path = get_model_metadata_path(paths, item_id)
+    if os.path.exists(metadata_path):
+        os.remove(metadata_path)
+
+
+def delete_uploaded_source_video(paths, metadata):
+    """删除拖拽上传视频的源文件缓存，不触碰照片图库原视频。"""
+    if not isinstance(metadata, dict) or metadata.get("source_media_id"):
+        return
+
+    source_video_path = metadata.get("source_video_path")
+    if not isinstance(source_video_path, str) or not source_video_path:
+        return
+
+    upload_root = os.path.realpath(get_video_uploads_folder(paths))
+    real_path = os.path.realpath(source_video_path)
+    if not is_real_path_inside(real_path, upload_root):
+        return
+
+    try:
+        if os.path.isfile(real_path):
+            os.remove(real_path)
+        parent = os.path.dirname(real_path)
+        if is_real_path_inside(parent, upload_root) and not os.listdir(parent):
+            os.rmdir(parent)
+    except OSError:
+        pass
 
 
 def find_original_image_filename(paths, item_id):

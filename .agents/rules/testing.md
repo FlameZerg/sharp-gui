@@ -41,7 +41,22 @@ python -m pytest -q
 - LAN 门禁：门禁开/关、owner-only、远程生成条件、转发头不能提权。
 - 静态文件：模型文件允许访问，敏感文件和路径穿越拒绝。
 - 本地媒体图库：media/photo/video id 解析、缓存优先分页、迁移后不重建全局索引、视频扫描、poster/metadata 降级、Range 播放、相册上传文件名净化/扩展名白名单/无效图片清理。
+- 视频重建：`/api/video-reconstructions`、`/api/video-reconstructions/upload`、`/api/video-reconstructions/status`、任务 kind 分发、依赖缓存、输出名唯一化、focused cleanup、sidecar 元数据、source-video 路径安全和 OOM/取消/缺依赖错误码。
 - 任务队列：无需真实推理即可验证入队、列出、取消和状态变更。
+
+### 视频 3DGS 重建 smoke checklist
+
+视频重建当前属于 Windows NVIDIA 实验能力；已验证平台仅写为 Windows + NVIDIA RTX 5070 Ti Laptop GPU 12GB。新增或修改相关逻辑时，至少覆盖：
+
+- `GET /api/video-reconstructions/status` 首次可返回 checking 或缓存状态；Settings `?refresh=1` 触发后台重扫；普通首页、弹窗和任务创建不会重复同步扫描外部工具。
+- 本地相册视频创建任务：只接受 video media id，拒绝照片 id、未知 id、root 外路径和源视频缺失；响应和 `/api/tasks` 不暴露 `source_video_path`。
+- 拖入视频创建任务：单视频可入队，默认输出名为源视频同名 stem；多个视频或混合图片/视频时前端给出明确提示。
+- 成功任务生成 `outputs/<id>.ply`，尽量生成 `.spz`，写入 `.meta.json`，并生成或复用源视频封面缩略图。
+- 原视频预览入口通过 `/api/gallery/<id>/source-video` 打开，支持 Range/下载名，且不泄露绝对路径；删除本地相册来源模型不得删除原视频。
+- `auto` / `object` 模式 focused cleanup 能移除外围游离 splat；清理过度时回退原始导出并记录原因；`environment` 模式不裁剪完整场景。
+- Viewer 打开视频重建模型时初始画面朝向主体，左右拖拽为正常 yaw；旧 ml-sharp 单图模型预览手感不回归。
+- 失败路径至少覆盖缺依赖、实验引擎不可用、非法选项、输出名冲突、CUDA OOM 文本、SPZ 失败和取消清理。
+- 后端默认日志只显示关键阶段和失败摘要；`SHARP_LOG_LEVEL=DEBUG` 或 verbose 模式下再输出完整外部工具日志。
 
 ### 本地媒体图库 smoke checklist
 

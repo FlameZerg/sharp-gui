@@ -193,6 +193,75 @@ details
 - 把中间文件放 `inputs/`：会污染现有图片输入目录，并可能被误认为 SHARP 输入。
 - 把输出放单独 `video_outputs/`：会迫使模型图库、下载、导出、分享路径全部改造。
 
+### 决策：视频生成结果写入来源元数据，并默认使用源视频同名输出
+
+视频生成结果仍然输出到现有 `outputs/`，但额外写入轻量 sidecar：
+
+```text
+outputs/<model-id>.ply
+outputs/<model-id>.spz
+outputs/<model-id>.meta.json
+inputs/.thumbnails/<model-id>.jpg
+```
+
+`meta.json` 记录来源类型、来源媒体 ID（如果来自本地相册）、源视频缓存路径（如果来自拖拽上传）、源文件名、模式、质量和引擎。前端只接收安全 URL，例如 `/api/gallery/<id>/source-video`，不得看到绝对磁盘路径。
+
+默认命名策略和图片生成保持一致：从源视频文件名去掉扩展名得到模型名，不自动追加 `high180`、`focused` 或质量后缀；只有与已有 `.ply/.spz` 冲突时才追加 `-2`、`-3` 这类唯一化后缀。这样模型列表里的视频结果和图片结果一样可读，不把实现细节暴露给用户。
+
+**原因**
+
+- 模型图库继续扫描 `outputs/*.ply`，无需引入新表或新输出目录。
+- 缩略图继续复用现有 `inputs/.thumbnails/` 路径，列表 UI 不需要特殊分支。
+- 原视频预览使用受控 API 解析 sidecar，既能支持本地相册视频，也能支持用户直接拖入的视频。
+- 删除拖入视频生成的模型时，可以根据 sidecar 清理受控上传缓存；来自本地相册的原视频仍保持只读，绝不随模型删除。
+
+**备选方案**
+
+- 把源视频复制到 `inputs/` 并按图片输入处理：会污染图片生成目录，也容易让现有 SHARP 图片任务误判。
+- 把视频输出放入 `video_outputs/`：会割裂模型图库和下载/分享路径，用户也需要理解两套模型来源。
+- 只在前端按文件名前缀推断源视频：无法覆盖用户改名、输出名冲突和拖入视频缓存，也无法安全支持原视频预览。
+
+### 决策：Viewer reset 对明显离轴的视频重建模型使用包围盒中心
+
+Nerfstudio/Splatfacto 导出的 3DGS 坐标系不一定像 ml-sharp 单图模型一样围绕现有 Viewer 默认视轴。若继续把 OrbitControls 目标点固定在默认前方位置，模型可能出现在相机正下方或正上方，初始画面会朝向空区域，左右拖拽也会表现得像围绕错误中心倾斜旋转。
+
+修复策略：
+
+```text
+模型加载完成
+  → 从 Spark SplatMesh 读取 world-space bounding box
+  → 先计算旧版 reset 的默认 lookAt
+  → 如果模型中心相对默认 lookAt 的横向偏移足够大
+       camera.position = bbox.center + front-view fit distance
+       controls.target = bbox.center
+     否则
+       保持旧版 reset 逻辑
+```
+
+**原因**
+
+- OrbitControls 的旋转中心是 `controls.target`，目标点错误会直接导致拖拽手感错误。
+- 只在偏移明显时启用包围盒居中，可以修复视频重建模型的坐标偏移，同时避免改变已居中的 ml-sharp 单图模型预览行为。
+- 同时移动 camera position 和 target，而不是只改 lookAt，可以让初始画面和后续左右拖拽都围绕主体中心。
+
+**备选方案**
+
+- 改写视频输出 PLY 坐标使其居中：会改变下载/分享模型数据，且无法修复已经生成的旧结果。
+- 按文件名识别视频模型：实现简单但脆弱，用户自定义输出名或导入外部视频模型时容易失效。
+- 全部模型都用包围盒中心 reset：会改变旧单图模型已验证的预览手感。
+
+调试补充：由于同一视频重建模型在第三方高斯预览器中也出现初始朝向和交互轴向异常，后续需要同时排查导出坐标系和 Viewer 坐标适配。为便于校准，Quick Controls 临时显示实时相机/模型姿态读数，包括 camera position/rotation/up/forward、OrbitControls target、orbit azimuth/polar、模型 world 轴向、包围盒 center/size 以及 target 到包围盒中心的偏差，并提供复制按钮便于反馈。
+
+2026-06-12 最终校准补充：实时读数确认 `targetDelta=0` 后，进一步排查发现问题不是 pivot 仍偏离，而是 Nerfstudio/Splatfacto 视频模型的主体正面落在 Viewer 默认 `Y-up / -Z forward` 轨道体系的侧向轴上。相机侧强行切换 `+Y` 正面或 `+Z` up 虽能让画面短暂看正，但会让 OrbitControls 初始状态靠近极点，造成左右拖拽像 roll，且切换“正面视角”时容易触发不必要的重置/重载感。最终采用模型侧隐藏坐标适配：仅对符合视频重建形态的 Y-front 模型，在 `SplatMesh` 的用户变换之前预乘 `RotX(+90°)` orientation quaternion，把模型正面映射回 Viewer 的默认 `-Z` 观察轴；camera/controls 继续保持干净的默认 `Y-up`、`polar≈90°`、`rotation≈0` 状态。普通 ml-sharp 单图模型仍走原有 reset 和交互路径，不受该适配影响。Quick Controls 的实时调试读数保留为长期排查工具。
+
+2026-06-16 当前实现约束补充：
+
+- 视频模型预览已以用户实测为准初步稳定，后续不要再通过相机侧极角、camera up 或 front-view clamp 去“修正画面”。如果新视频模型仍朝向异常，优先检查 sidecar 来源、模型包围盒、隐藏 orientation 判定和 Quick Controls 调试读数。
+- 模型列表中的视频来源操作必须贴合既有模型 item 交互：下载、删除、原视频预览等图标按钮在 hover/focus 或触控可达时出现；不要因为视频模型增加常驻大按钮。
+- 视频生成模型的用户可见名称默认等同源视频 stem；质量档、帧数、focused cleanup 等实现细节只记录在任务详情或 sidecar 中，不写进默认文件名。
+- 后端日志分层：普通 INFO 面向用户排查，只保留阶段、命令名、return code 和失败摘要；DEBUG/verbose 才面向开发排查，包含完整命令、外部工具逐行输出和 traceback。
+- README 和规则文档只把 Windows + NVIDIA RTX 5070 Ti Laptop GPU 12GB 写为视频推理已验证平台；其他平台需要真实验证后再更新。
+
 ### 决策：物品模式引入自动前景处理，但首版允许分阶段落地
 
 物品模式应优先支持自动前景隔离：
@@ -241,6 +310,54 @@ Settings 中新增“视频重建”区域：
 - 所有选项都放开始弹窗：信息密度过高，破坏快速创建体验。
 - 不提供设置项：高级用户无法调校 5070 Ti Laptop 的质量/显存取舍。
 
+### 决策：依赖诊断使用进程级异步缓存，不在每次创建任务时重复扫描
+
+视频重建依赖检测包含 `ffmpeg/ffprobe`、Nerfstudio/Splatfacto、COLMAP/hloc、可选实验初始化工具等外部命令探测。它们的结果在一次应用进程生命周期内通常不会频繁变化，因此不应在首页加载、打开弹窗或每次提交任务时同步重扫。
+
+当前策略：
+
+```text
+后端应用启动
+  → 后台线程异步扫描视频重建依赖
+  → 状态 API 返回缓存；若尚未完成则返回 checking
+  → Settings 手动刷新用 ?refresh=1 触发后台重扫
+  → 创建任务读取同一份缓存；检测中时返回可本地化错误
+```
+
+**原因**
+
+- 首页和模型视图不应被本地工具探测阻塞，尤其是在 Windows PATH、conda 环境或外部命令响应较慢时。
+- Settings 是诊断和手动刷新位置；普通生成弹窗只需要复用已有结果。
+- 依赖状态在同一进程中足够稳定，缓存能避免重复启动多个外部命令，也减少用户点击“生成”后的等待。
+- `checking` 状态比同步阻塞更可解释：用户知道系统正在准备诊断，而不是界面卡住。
+
+**备选方案**
+
+- 每次任务创建前同步检查：实现直接，但会让每次视频推理都重复探测重建工具，点击后容易长时间无响应。
+- 只在 Settings 打开时检查：能减少开销，但用户从拖拽或视频预览直接生成时可能没有诊断结果。
+- 完全信任环境变量不检查：最快，但缺依赖时会退化成难读的进程错误。
+
+### 决策：视频生成弹窗延续 Settings 玻璃态，而不是独立白底表单
+
+视频重建弹窗承载的选项比普通上传更多，但仍属于 Sharp GUI 的主工作流入口。它需要和 Settings、侧栏、媒体预览保持同一视觉语言：
+
+- 使用项目现有玻璃态变量、半透明层、柔和边框和阴影。
+- 文本层级优先可读性，状态提示使用低饱和玻璃卡片，不使用突兀实心白底。
+- 分段控件展示模式、质量和引擎，档位小标题解释资源差异。
+- 使用 `prefers-color-scheme` 兼容浅色/深色系统模式。
+- 移动端自动降为单列选项，避免横向溢出。
+
+**原因**
+
+- 视频重建是高价值入口，视觉割裂会降低用户对功能成熟度的信任。
+- 设置页已经建立了本项目的玻璃态密度和层级，弹窗应复用这套语言。
+- 浅色和深色模式都要可读，不能只在当前深色背景下“看起来能用”。
+
+**备选方案**
+
+- 使用浏览器默认表单或普通白底弹窗：实现快，但在当前深色玻璃主界面中割裂明显，浅色/深色可读性也难统一。
+- 将所有说明移到 Settings：弹窗会更短，但用户在创建任务时看不到当前档位和引擎差异。
+
 ### 决策：UI 延续本地媒体图库风格，不做新的视觉体系
 
 新增 UI 组件遵守：
@@ -260,6 +377,54 @@ Settings 中新增“视频重建”区域：
 
 - 做一个完整向导页：可解释更多信息，但会打断“选中视频 → 生成”的短路径。
 - 用浏览器原生 select/prompt/confirm：实现快，但与项目玻璃态风格明显割裂。
+
+## 2026-06-12 本机校准与实测结论
+
+本轮在 Windows + NVIDIA GeForce RTX 5070 Ti Laptop GPU 12GB 上完成了稳定路线的真实端到端验证，源视频为 `C:\Users\dddd\Downloads\VID_20260612_091523.mp4`。
+
+### 环境落地
+
+- 本地视频重建环境使用仓库内 `.video-reconstruction-env`，避免污染主 Python 环境。
+- 已验证 CUDA Toolkit 12.8、PyTorch CUDA、Nerfstudio 1.1.5、Splatfacto、gsplat 1.5.3 CUDA extension、COLMAP CUDA 和 `ffmpeg/ffprobe` 可用。
+- `install.bat` 现在会调用 `tools/install_video_reconstruction.py`，用于自动安装或复用 VS Build Tools、CUDA Toolkit、PyTorch CUDA、Nerfstudio/gsplat 和 COLMAP。
+- `run.bat` 会在检测到本地 `.video-reconstruction-env` 时自动把 Nerfstudio Scripts 和 COLMAP bin 加入运行时路径。
+
+### 当前质量档参数
+
+| 档位 | 当前用途 | 关键参数 |
+| --- | --- | --- |
+| 快速预览 | 快速检查相机路径、主体范围和 focused cleanup 效果 | 约 90 帧、7k 迭代、4x 输入下采样 |
+| 高质量 | 当前推荐的可交付结果档 | 约 180 帧、30k 迭代、2x 输入下采样、FPS 相机采样、SO3xR3 相机优化、focused cleanup |
+| 极致 | 离线追求上限，预计耗时和资源压力更高 | 约 360 帧、50k 迭代、更高分辨率预算；会按显存预算自动收紧 |
+
+曾尝试 240 帧高质量方案，但 COLMAP 几何阶段耗时过高，性价比不如 180 帧 + 2x 输入分辨率 + 30k 训练迭代。因此 12GB 机器上的高质量默认应优先保留 180 帧方案。
+
+### Focused cleanup 后处理
+
+视频 3DGS 原始导出容易包含大范围游离 splat，造成模型文件看似完整但 viewer 中出现碎片、相机中心偏移和交互别扭。当前后处理策略：
+
+- `auto` / `object` 模式默认应用 focused cleanup。
+- `environment` 模式不应用主体裁剪，保留完整环境语义。
+- focused cleanup 使用位置分位数、透明度和异常尺度共同筛选：默认位置分位数 5%-95%、alpha 下限 0.12、scale 98.5 分位上限。
+- 为避免误删，若保留顶点数低于最小阈值或保留比例低于 25%，自动退回原始导出。
+- 任务详情记录 cleanup 统计，便于排查输出为何变小或是否退回 raw export。
+
+### 实测产物
+
+| 输出 | PLY 大小 | SPZ 大小 | splat 数量 | 备注 |
+| --- | ---: | ---: | ---: | --- |
+| `VID_20260612_091523_preview_final_clean_focused.ply` | 72.96 MB | 约 4.97 MB | 308,469 | 用户确认主体纯净、可作为 focused cleanup 基准 |
+| `VID_20260612_091523_high180_focused.ply` | 135.39 MB | 8.58 MB | 572,457 | 用户确认细节明显提升且仍保持纯净 |
+| high180 raw export | 202.47 MB | N/A | 856,055 | focused cleanup 前的原始导出，仍包含外围碎片 |
+
+`high180_focused` 任务 ID：`f9af3d22-796c-40a8-b3e4-ca27f5625e42`。端到端耗时约 52 分 17 秒，其中 COLMAP/抽帧约 8 分多，Splatfacto 30k 训练约 42 分多，导出和 SPZ 压缩约 1 分。
+
+### 引擎策略结论
+
+- `stable` 路线已经能产生可用结果，当前由 COLMAP + Nerfstudio Splatfacto 负责。
+- `auto` 应作为推荐默认；实验初始化未配置时自动回退稳定路线。
+- `experimental` 暂时保留为可选增强入口，定位为 VGGT/VGGT-Omega 类几何初始化。它可能帮助后续减少相机失败和提升初始化质量，但不应作为当前必需依赖，也不应自动下载 gated 或许可受限模型。
+- UI 中应明确实验引擎未就绪不代表视频重建不可用，并在未配置时禁用强制实验选择。
 
 ## 风险 / 取舍
 
@@ -321,8 +486,9 @@ Settings 中新增“视频重建”区域：
 
 ## 待确认问题
 
-- 稳定路线第一版具体选择：直接 COLMAP + `ns-train splatfacto`，还是完全交给 Nerfstudio `ns-process-data video` 管理数据处理？
+- 稳定路线第一版已落定为 Nerfstudio `ns-process-data video` 管理 COLMAP 数据处理，并由 `ns-train splatfacto` / `ns-export gaussian-splat` 训练导出。
 - 物品模式首版是否强依赖 SAM2，还是先实现无 mask 降级，再把 SAM2 作为后续增强？
-- `高质量` 档在 RTX 5070 Ti Laptop 12GB 上的默认关键帧数、训练步数和分辨率需要本机 benchmark 后确定。
+- `高质量` 档已在 RTX 5070 Ti Laptop 12GB 上完成一次本机 benchmark，当前推荐默认是 180 帧、2x 输入下采样、30k 迭代。
 - 中间文件默认是否删除：用户体验上应默认清理，但排障阶段可能需要保留日志和抽帧样本。
 - 是否需要为任务详情增加“查看日志摘要”入口，避免长任务失败时用户只能看到一句错误。
+- focused cleanup 的阈值是否需要暴露为高级设置；当前不建议暴露，先作为安全默认并记录统计。

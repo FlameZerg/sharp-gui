@@ -1,3 +1,5 @@
+> 当前进度（2026-06-16）：85/94 已完成。剩余项主要是现有图片/照片回归、视频播放控件回归、失败路径完整覆盖、响应式视觉检查、语言切换实测、Windows 一键安装验收、视频生成模型缩略图/原视频预览/拖拽生成入口和新视频重建弹窗视觉的实际页面回归。
+
 ## 1. 现状梳理与任务模型基础
 
 - [x] 1.1 梳理当前 `TaskManager` 的任务字段、worker 调度、取消逻辑、完成检查和 SPZ 自动转换流程，记录哪些字段必须保持前端兼容。
@@ -96,8 +98,62 @@
 - [ ] 11.3 手动验证现有图片上传生成仍调用 SHARP，并生成 `.ply/.spz`。
 - [ ] 11.4 手动验证本地相册照片转 3D 仍可用，视频不会进入照片转换流程。
 - [ ] 11.5 手动验证本地视频预览、下载、seek、音量、全屏、关闭和前后导航不回归。
-- [ ] 11.6 手动验证受支持视频能创建视频重建任务，展示阶段，取消后进入 cancelled。
-- [ ] 11.7 在依赖可用环境下手动验证视频任务成功生成 `.ply`，并生成或尝试生成 `.spz`，模型图库刷新后可打开。
+- [x] 11.6 手动验证受支持视频能创建视频重建任务，展示阶段，取消后进入 cancelled。
+- [x] 11.7 在依赖可用环境下手动验证视频任务成功生成 `.ply`，并生成或尝试生成 `.spz`，模型图库刷新后可打开。
 - [ ] 11.8 手动验证缺依赖、无权限、非法 video id、非法选项、输出名冲突、OOM 文本等失败路径。
 - [ ] 11.9 在 375px、768px、1024px、1440px 视口检查选择栏、视频预览操作、重建弹窗和设置诊断无溢出或遮挡。
 - [ ] 11.10 切换中英文语言，确认所有新增 UI 文案、任务阶段和错误提示都来自 i18n。
+- [ ] 11.11 手动验证 Settings 视频重建说明：质量档小标题、当前档位说明、引擎说明、实验未就绪禁用/提示在中英文下可读且无溢出。
+- [x] 11.12 手动验证 focused cleanup 行为：`auto`/`object` 默认输出聚焦主体，任务详情记录清理统计；`environment` 模式不裁剪完整场景。
+- [ ] 11.13 在干净或半干净 Windows 环境验证一键安装脚本：可安装/复用 `.video-reconstruction-env`、CUDA/VS Build Tools、Nerfstudio/gsplat 和 COLMAP wrapper。
+
+## 12. 模型查看器相机兼容性
+
+- [x] 12.1 调查 Viewer 当前 reset 逻辑、OrbitControls 目标点行为和 Spark `SplatMesh.getBoundingBox()` 可用性，确认视频重建模型手感问题来自模型中心偏离默认视轴后仍围绕旧 target 旋转。
+- [x] 12.2 为 Spark Viewer 增加 bounds-aware reset 分支：当模型包围盒中心相对默认 lookAt 横向偏移明显时，同时将 camera position 和 `controls.target` 对齐到模型中心。
+- [x] 12.3 保持兼容保护：模型已居中、包围盒不可用或 RAD/分页源无 CPU splat 数据时继续使用旧 reset 算法，避免影响现有 ml-sharp 单图模型。
+- [x] 12.4 运行前端 `npm run lint` 和 `npm run build`，确认 viewer 相机修改通过静态检查和生产构建。
+- [x] 12.5 在 Quick Controls 中增加临时实时调试读数：相机位置/旋转/up/forward、OrbitControls target、orbit 方位/极角、模型 world 姿态轴、包围盒 center/size、target 偏差。
+- [x] 12.6 为临时调试读数增加中英文 i18n、复制调试信息按钮，并保持面板样式可读。
+- [x] 12.7 手动验证 `VID_20260612_091523_high180_focused.ply/.spz` 或同类视频重建模型：初始画面朝向主体，左右拖拽为围绕主体 yaw，且旧 ml-sharp 单图模型预览手感不回归。
+- [x] 12.8 根据调试读数将视频重建模型适配从相机侧修正改为模型侧隐藏 orientation：对符合视频重建形态的 Y-front 模型在用户姿态变换前预乘 `RotX(+90°)`，让 camera/OrbitControls 继续保持默认 `Y-up / -Z forward / polar≈90°` 的干净初始状态，避免 roll 手感，并保护 ml-sharp 单图模型行为。
+
+## 13. 视频生成模型图库来源体验
+
+- [x] 13.1 为视频重建完成结果写入 `outputs/<model-id>.meta.json`，记录源视频、模式、质量、引擎等来源元数据，且前端响应不暴露绝对路径。
+- [x] 13.2 视频重建完成后从源视频抽帧生成模型图库缩略图，复用现有 `/api/thumbnail/<id>` 和列表缩略图显示路径。
+- [x] 13.3 为视频生成模型提供原视频预览入口：模型列表小眼睛按钮可打开同一套视频预览层，支持播放、进度、音量、下载和全屏。
+- [x] 13.4 统一模型视图拖拽/生成入口：模型文件直接预览，图片走现有 SHARP 生成，单个视频走视频重建上传 API；多个视频或混合拖入给出明确提示。
+- [x] 13.5 更新首页/空状态/侧栏生成入口文案和中英文 i18n，明确图片、视频和模型文件三类入口。
+
+## 14. 视频重建弹窗视觉与依赖检测缓存
+
+- [x] 14.1 将视频生成弹窗改为与 Settings 一致的 Apple 玻璃态视觉：半透明面板、可读文本层级、玻璃态摘要卡、分段控件、状态提示和高级折叠区。
+- [x] 14.2 为视频生成弹窗补齐浅色/深色模式适配、focus-visible、移动端单列分段布局和各档位小标题说明。
+- [x] 14.3 将视频重建依赖诊断改为每个后端进程启动后异步预热一次；状态 API 读取缓存或返回 checking 状态，不阻塞首页加载。
+- [x] 14.4 让 Settings 手动刷新使用 `?refresh=1` 触发后台重扫；Settings 和视频生成弹窗共享 store 中的依赖状态，普通打开弹窗不再重复同步扫描工具。
+- [x] 14.5 任务创建复用 `check_dependencies()` 的进程级缓存；缓存仍在后台检测时返回本地化的 `video_reconstruction_dependencies_checking` 错误，而不是阻塞启动。
+- [x] 14.6 运行 `venv\Scripts\python.exe -m pytest tests/test_api_contract.py tests/test_services.py tests/test_security.py tests/test_route_map.py`、`npm run lint`、`npm run build`、`python -m compileall backend tests`、`openspec validate add-video-3dgs-reconstruction --strict` 和 `git diff --check`。
+- [ ] 14.7 手动验证视频生成弹窗在真实页面深色/浅色模式下的玻璃态观感、可读性、滚动和移动端布局。
+
+### 2026-06-12 实测记录
+
+- 已完成 Windows 依赖配置：CUDA Toolkit 12.8、PyTorch CUDA、Nerfstudio/Splatfacto、gsplat CUDA extension、COLMAP CUDA、`ffmpeg/ffprobe` 均可用。
+- 已完成视频任务创建与取消验证：任务 `82e2325e-0803-4529-97b1-07dd636e4477` 在 COLMAP 阶段取消后进入 `cancelled`。
+- 已完成视频任务成功输出验证：任务 `f9af3d22-796c-40a8-b3e4-ca27f5625e42` 生成 `VID_20260612_091523_high180_focused.ply` 和 `.spz`。
+- `VID_20260612_091523_high180_focused.ply`：约 135.39 MB、572,457 splats；`.spz`：约 8.58 MB。用户截图确认细节明显提升且保持纯净。
+- 高质量档本机端到端耗时约 52 分 17 秒：COLMAP/抽帧约 8 分多，30k 训练约 42 分多，导出和 SPZ 压缩约 1 分。
+- 已完成设置页说明增强的静态验证：`npm run lint`、`npm run build` 通过；`git diff --check` 通过。
+- 已部分覆盖失败路径：缺 `video_id` 请求返回 `video_reconstruction_invalid_request`；依赖诊断 API 显示稳定路线可用、实验初始化未配置。完整无权限、输出名冲突、OOM 等路径仍待 11.8 验证。
+- 已完成 Viewer 相机修复的代码级验证：`frontend/src/hooks/useViewer.ts` 会在模型包围盒明显离轴时按 bounds center 重置 camera/target；`npm run lint`、`npm run build` 和 `git diff --check` 均通过。后续人工反馈显示仅靠 bounds center 不足以修复视频模型轴向问题，因此继续推进到模型侧 orientation 适配。
+- 已完成临时 Viewer 调试读数：Quick Controls 可实时显示并复制相机、OrbitControls、模型姿态轴和包围盒偏差数据；`npm run lint`、`npm run build` 和 `git diff --check` 通过。用户确认调试面板位置和内容适合长期保留。
+- 根据用户反馈读数确认 `targetDelta=0`，pivot 已正确居中；真正问题来自视频重建模型正面接近世界 `+Y/-Y` 方向，而 OrbitControls 默认 `Y-up` 轨道在该方向附近会接近极点。已放弃相机侧 `+Y/+Z` reset 方案，改为仅对视频形态 Y-front 模型在模型侧隐藏预乘 `RotX(+90°)` orientation quaternion，使画面正向和相机初始读数同时保持干净。用户已确认视角和左右拖拽手感恢复正常，且不会影响旧 ml-sharp 单图模型预览。
+- 已完成视频生成模型来源体验的代码级验证：后端新增 sidecar 元数据、视频缩略图抽帧、原视频安全预览路由和拖入视频上传重建 API；前端统一侧栏/主画布拖拽入口并复用视频预览层。`venv\Scripts\python.exe -m pytest tests/test_api_contract.py tests/test_services.py tests/test_security.py tests/test_route_map.py` 通过 50 项；`npm run lint`、`npm run build`、`python -m compileall backend tests`、`openspec validate add-video-3dgs-reconstruction --strict` 通过。实际页面拖拽、缩略图生成和原视频预览仍待浏览器手动回归。
+
+### 2026-06-16 文档与人工确认记录
+
+- 用户已确认 focused cleanup 输出方向正确：`VID_20260612_091523_preview_final_clean_focused.ply` 清除了外围杂乱碎片，只保留主体；后续 `auto` / `object` 结果应保持这一类 focused 输出。
+- 用户已确认 `VID_20260612_091523_high180_focused.ply` 质量较前一版明显提升，细节清晰且主体纯净；当前 12GB 机器的高质量默认继续按 180 帧、30k 迭代、2x 输入下采样记录。
+- 用户已确认视频模型预览交互“初步看下来没什么大问题”：后续应保持模型侧 orientation 适配，不再通过相机侧极角或 up 向量硬修画面，避免重新引入左右拖拽 roll。
+- 文档同步范围：OpenSpec proposal/design/spec/tasks、`.agents/rules`、中文/英文 README。README 中视频推理已验证平台仅记录 Windows + NVIDIA RTX 5070 Ti Laptop GPU 12GB。
+- 日志策略已在规则中沉淀：默认 INFO 只显示关键阶段和失败摘要，HTTP 请求日志与外部工具逐行输出仅在 `SHARP_HTTP_LOGS=1`、`SHARP_LOG_LEVEL=DEBUG` 或 verbose 模式启用。
