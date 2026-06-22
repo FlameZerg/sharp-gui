@@ -27,14 +27,22 @@ export interface VideoReconstructionDependencyGroup {
   message?: string | null;
 }
 
+export interface VideoReconstructionFeedforwardGroup extends VideoReconstructionDependencyGroup {
+  engine_available?: boolean;
+  weights_available?: boolean;
+  weights_path?: string | null;
+  weights_dir?: string | null;
+}
+
 export interface VideoReconstructionDependencies {
   required: VideoReconstructionDependencyGroup;
   stable: VideoReconstructionDependencyGroup;
-  experimental: VideoReconstructionDependencyGroup;
+  experimental: VideoReconstructionFeedforwardGroup;
   summary: {
     available: boolean;
     stable_available: boolean;
     experimental_available: boolean;
+    training_available?: boolean;
     checking?: boolean;
     checked_at?: number | null;
     cached?: boolean;

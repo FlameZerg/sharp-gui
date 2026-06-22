@@ -1291,32 +1291,50 @@ def test_resolve_engine_strategy_covers_fallbacks():
     both = {
         "stable": {"available": True},
         "experimental": {"available": True},
+        "summary": {"training_available": True},
     }
     stable_only = {
         "stable": {"available": True},
         "experimental": {"available": False},
+        "summary": {"training_available": True},
     }
-    experimental_only = {
+    feedforward_only = {
         "stable": {"available": False},
         "experimental": {"available": True},
+        "summary": {"training_available": True},
+    }
+    feedforward_without_training = {
+        "stable": {"available": False},
+        "experimental": {"available": True},
+        "summary": {"training_available": False},
     }
     none_available = {
         "stable": {"available": False},
         "experimental": {"available": False},
+        "summary": {"training_available": False},
     }
 
+    # auto prefers feed-forward when both it and the training core are ready.
+    assert video_reconstruction.resolve_engine_strategy("auto", both) == ("feedforward", None)
+    # auto falls back to stable COLMAP when feed-forward is missing.
     assert video_reconstruction.resolve_engine_strategy("auto", stable_only) == ("stable", None)
     assert video_reconstruction.resolve_engine_strategy("stable", stable_only) == ("stable", None)
-    assert video_reconstruction.resolve_engine_strategy("experimental", both) == ("experimental", None)
+    # experimental forces feed-forward and resolves to the feedforward engine.
+    assert video_reconstruction.resolve_engine_strategy("experimental", both) == ("feedforward", None)
     assert video_reconstruction.resolve_engine_strategy("experimental", stable_only) == (
         None,
         video_reconstruction.ERROR_EXPERIMENTAL_UNAVAILABLE,
     )
-    assert video_reconstruction.resolve_engine_strategy("stable", experimental_only) == (
+    assert video_reconstruction.resolve_engine_strategy("stable", feedforward_only) == (
         None,
         video_reconstruction.ERROR_STABLE_UNAVAILABLE,
     )
-    assert video_reconstruction.resolve_engine_strategy("auto", experimental_only) == (
+    # feed-forward ready but the training core (ns-train/export) is missing.
+    assert video_reconstruction.resolve_engine_strategy("experimental", feedforward_without_training) == (
+        None,
+        video_reconstruction.ERROR_STABLE_UNAVAILABLE,
+    )
+    assert video_reconstruction.resolve_engine_strategy("auto", feedforward_without_training) == (
         None,
         video_reconstruction.ERROR_STABLE_UNAVAILABLE,
     )

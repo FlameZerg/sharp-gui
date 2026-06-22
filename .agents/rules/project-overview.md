@@ -218,6 +218,13 @@ sharp-gui/
 - Viewer 对视频重建模型的坐标适配应优先保持 camera/OrbitControls 的干净默认状态；当前策略是在模型侧隐藏预乘 orientation 修正视频形态 Y-front 模型，避免相机落入极点导致拖拽 roll。旧 ml-sharp 单图模型不得被该适配改变预览手感。
 - Quick Controls 中的相机/模型调试读数可保留，便于后续排查新模型的坐标系、包围盒和交互问题。
 
+### π³ 前馈引擎（实验，可选增强）
+
+- 实验引擎落地为 π³（Pi3）前馈重建：只替换最慢的 COLMAP 几何阶段（抽帧 → π³ 一次推理估计相机内外参 → 写 Nerfstudio `transforms.json`，跳过 COLMAP），训练/导出/cleanup/SPZ/图库后段完全复用稳定路线。集成代码在 `backend/services/feedforward_reconstruction.py`，GPU 推理在独立 worker `backend/services/feedforward_inference_worker.py`（在 `.video-reconstruction-env` 的 Python 下作为子进程运行，后端模块本身不导入 torch）。
+- 引擎策略：`auto` 前馈优先、失败/不可用自动回退 COLMAP；`stable` 仅 COLMAP；`experimental` 强制前馈、不可用以可本地化错误拒绝且不静默回退。
+- **合规红线**：π³ 代码为 BSD-3，但**模型权重为 CC BY-NC 4.0（非商业）**，DINOv2 backbone 为 Apache 2.0。权重**默认不打包、不自动下载**，由用户自行下载并接受许可后放置到约定目录（默认 `.feedforward-weights/`，可用 `SHARP_GUI_FEEDFORWARD_WEIGHTS_DIR` 覆盖）；项目只分发集成代码。
+- 第一验证平台为 Windows + NVIDIA RTX 5070 Ti Laptop GPU 12GB；π³ 推理跑通、位姿/内参精度、显存上限与耗时对比需在真实 GPU 上验证后再写入支持矩阵。
+
 ## WebXR 支持
 
 React 前端支持 WebXR 双模式：

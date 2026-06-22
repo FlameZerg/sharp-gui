@@ -420,7 +420,7 @@ rm -rf sharp-gui/
 Current guidance:
 
 - **Default quality**: High Quality, tuned for RTX 5070 Ti Laptop 12GB-class machines, about 180 frames / 30k iterations / 2x input downscale
-- **Default engine**: Auto. If experimental initialization is not configured, it falls back to the stable Nerfstudio/Splatfacto route
+- **Default engine**: Auto. When the π³ feed-forward engine is ready it runs first to estimate camera poses in a single pass (replacing the slowest COLMAP geometry stage, down to minutes); if it is missing or fails, Auto falls back to the stable Nerfstudio/Splatfacto route
 - **Default cleanup**: Auto / Object modes enable focused cleanup to remove distant loose splats; Environment mode keeps the full scene
 - **Current limits**: One video per task; dynamic 4D, mesh repair, manual trimming, and cloud training are out of scope
 
@@ -505,7 +505,8 @@ The system auto-creates:
 The Settings > Video Reconstruction area is for dependency diagnostics and defaults:
 
 - **Default quality**: Quick Preview / High Quality / Extreme, mapped to different frame, iteration, and input-resolution budgets
-- **Default engine**: Auto / Stable / Experimental; the experimental engine is optional, and missing it does not block Auto or Stable
+- **Default engine**: Auto / Stable / Experimental; the experimental engine is the π³ (Pi3) feed-forward engine, an optional enhancement, and missing it does not block Auto or Stable
+- **π³ feed-forward engine (experimental, optional)**: Estimates camera poses with a single network pass, replacing the slowest COLMAP geometry stage. **π³ code is BSD-3, but its model weights are CC BY-NC 4.0 (non-commercial research/education only)**, and the DINOv2 backbone is Apache 2.0. To respect these licenses, **the project never bundles or auto-downloads the weights**; you must download them yourself, accept their license, and place them in the configured folder (default `.feedforward-weights/`, overridable via `SHARP_GUI_FEEDFORWARD_WEIGHTS_DIR`). First validation platform: **Windows + NVIDIA RTX 5070 Ti Laptop GPU 12GB**
 - **VRAM budget**: Auto / 8GB / 12GB / 16GB / 24GB, used to tighten or relax resource boundaries
 - **Keep intermediate files**: Useful for inspecting frames, poses, and Nerfstudio logs; when off, completed/cancelled jobs clean their job folders
 
