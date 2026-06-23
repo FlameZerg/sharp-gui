@@ -459,15 +459,17 @@ Configure via UI settings or edit `config.json` (generated on first run):
 ```json
 {
   "workspace_folder": "/path/to/workspace",
-  "photo_gallery_roots": [
-    {
-      "id": "my-album",
-      "name": "Photos",
-      "path": "/path/to/photos",
-      "recursive": true,
-      "enabled": true
-    }
-  ]
+  "photo_gallery_roots_by_workspace": {
+    "/path/to/workspace": [
+      {
+        "id": "my-album",
+        "name": "Photos",
+        "path": "/path/to/photos",
+        "recursive": true,
+        "enabled": true
+      }
+    ]
+  }
 }
 ```
 
@@ -477,7 +479,9 @@ The system auto-creates:
 - `outputs/` - Generated models
 - `.photo-gallery-cache/` - Local photo gallery index and cached thumbnails
 
-> 💡 `photo_gallery_roots` can be added from the UI. When editing manually, use paths from the server machine. Windows, Linux, and macOS are supported; LAN clients browse folders on the host running Sharp GUI.
+> 💡 Albums can be added from the UI and are remembered per workspace: `photo_gallery_roots_by_workspace` is keyed by the normalized workspace path, so switching workspaces shows each one's own albums and switching back restores them. When editing manually, use paths from the server machine. Windows, Linux, and macOS are supported; LAN clients browse folders on the host running Sharp GUI.
+>
+> ⚠️ Older versions stored albums in a top-level `photo_gallery_roots` array. On the first launch after upgrading, it is automatically migrated into the bucket for the current workspace — no manual action needed.
 
 ### Enable HTTPS (Recommended)
 
