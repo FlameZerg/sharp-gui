@@ -186,15 +186,17 @@ video_reconstruction_jobs_folder = os.path.join(video_reconstruction_folder, 'jo
 {
   "workspace_folder": "/path/to/workspace",
   "model_format": "spz",
-  "photo_gallery_roots": [
-    {
-      "id": "stable-root-id",
-      "name": "Screenshots",
-      "path": "D:/Pictures/Screenshots",
-      "recursive": true,
-      "enabled": true
-    }
-  ],
+  "photo_gallery_roots_by_workspace": {
+    "/path/to/workspace": [
+      {
+        "id": "stable-root-id",
+        "name": "Screenshots",
+        "path": "D:/Pictures/Screenshots",
+        "recursive": true,
+        "enabled": true
+      }
+    ]
+  },
   "access_control": {
     "enabled": false,
     "session_days": 30,
@@ -216,7 +218,12 @@ video_reconstruction_jobs_folder = os.path.join(video_reconstruction_folder, 'jo
 
 `model_format` 控制前端默认查看和下载格式，当前有效值为 `spz` / `ply`。
 
-`photo_gallery_roots` 控制本地媒体图库相册目录（历史命名保留 photo 前缀）；缺省时按空数组处理，不影响旧配置启动。
+`photo_gallery_roots_by_workspace` 控制本地媒体图库相册目录（历史命名保留 photo 前缀），**按工作目录分桶记忆**：以归一化后的工作目录路径（`os.path.normcase(os.path.realpath(...))`）为键，值为该工作目录下的相册列表。切换工作目录时只展示对应桶的相册，切回原目录即可恢复；这与模型列表绑定 `{workspace}/outputs` 的行为一致。
+
+- 读：`get_photo_gallery_roots_for_config(config)` 取当前 `workspace_folder` 对应桶；`normalize_photo_album_roots()` 在其之上做规范化。
+- 写：`set_photo_gallery_roots_for_config(config, roots)` 写入当前工作目录桶并清理旧字段。
+- 迁移：旧配置使用顶层 `photo_gallery_roots` 数组，`migrate_photo_gallery_roots_config(config)` 会在应用启动（`app_factory`）和切换工作目录前（`settings` 路由）把它归档到当前工作目录的桶并移除顶层字段；缺省时按空数组处理，不影响旧配置启动。
+- 切换工作目录的逻辑切勿直接清空相册；必须依赖分桶切换，否则会丢失其它工作目录已记忆的相册。
 
 `access_control` 控制可选局域网门禁；缺省或 `enabled=false` 时读取资源保持旧的局域网开放行为，但 owner-only 端点仍必须限制真实 localhost。`lan_bind_enabled`（缺省 `true`）决定服务监听 `0.0.0.0`（局域网共享）还是 `127.0.0.1`（仅本机），修改后需重启生效。
 

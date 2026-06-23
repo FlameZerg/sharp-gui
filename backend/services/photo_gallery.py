@@ -14,6 +14,7 @@ from urllib.parse import quote
 from PIL import Image, ImageOps
 from werkzeug.utils import secure_filename
 
+from backend import runtime
 from backend.config import load_config, save_config
 from backend.security.access_control import create_video_play_token
 from backend.services.static_files import is_real_path_inside, to_url_path
@@ -77,10 +78,76 @@ def make_photo_album_id(path):
     return hashlib.sha1(normalized.encode("utf-8", "surrogatepass")).hexdigest()[:16]
 
 
+def normalize_workspace_key(workspace_folder):
+    """归一化工作目录路径，作为相册分桶的稳定键。"""
+    if not isinstance(workspace_folder, str) or not workspace_folder.strip():
+        workspace_folder = runtime.DEFAULT_WORKSPACE_FOLDER
+    return os.path.normcase(
+        os.path.realpath(os.path.abspath(os.path.expanduser(workspace_folder.strip())))
+    )
+
+
+def migrate_photo_gallery_roots_config(config_data):
+    """把旧的全局 ``photo_gallery_roots`` 迁移到按工作目录分桶的结构。
+
+    旧配置只有一个顶层 ``photo_gallery_roots`` 列表，它逻辑上属于配置里当前记录的
+    ``workspace_folder``。迁移会把它归档到对应工作目录的分桶，并移除顶层字段。
+    返回是否发生了变化（用于决定是否需要持久化）。
+    """
+    buckets = config_data.get("photo_gallery_roots_by_workspace")
+    if not isinstance(buckets, dict):
+        buckets = {}
+
+    legacy = config_data.get("photo_gallery_roots")
+    if not isinstance(legacy, list):
+        # 没有可迁移的旧字段；仅在缺少分桶字段时补一个空字典。
+        if "photo_gallery_roots_by_workspace" not in config_data:
+            config_data["photo_gallery_roots_by_workspace"] = buckets
+            return True
+        return False
+
+    key = normalize_workspace_key(config_data.get("workspace_folder"))
+    # 仅当该工作目录尚无分桶记录时迁移，避免覆盖已有分桶数据。
+    if key not in buckets:
+        buckets[key] = legacy
+    config_data["photo_gallery_roots_by_workspace"] = buckets
+    config_data.pop("photo_gallery_roots", None)
+    return True
+
+
+def get_photo_gallery_roots_for_config(config_data):
+    """读取当前工作目录对应的相册原始配置列表。"""
+    buckets = config_data.get("photo_gallery_roots_by_workspace")
+    if isinstance(buckets, dict):
+        key = normalize_workspace_key(config_data.get("workspace_folder"))
+        roots = buckets.get(key)
+        if isinstance(roots, list):
+            return roots
+        if key in buckets:
+            return []
+    # 兼容尚未迁移的旧配置：顶层 photo_gallery_roots 视为属于当前工作目录。
+    legacy = config_data.get("photo_gallery_roots")
+    if isinstance(legacy, list):
+        return legacy
+    return []
+
+
+def set_photo_gallery_roots_for_config(config_data, roots):
+    """写入当前工作目录对应的相册配置列表，并清理旧的全局字段。"""
+    key = normalize_workspace_key(config_data.get("workspace_folder"))
+    buckets = config_data.get("photo_gallery_roots_by_workspace")
+    if not isinstance(buckets, dict):
+        buckets = {}
+    buckets[key] = roots
+    config_data["photo_gallery_roots_by_workspace"] = buckets
+    config_data.pop("photo_gallery_roots", None)
+    return config_data
+
+
 def normalize_photo_album_roots(config_data=None):
     """读取并规范化照片图库目录配置。"""
     source_config = config_data or load_config()
-    raw_roots = source_config.get("photo_gallery_roots", [])
+    raw_roots = get_photo_gallery_roots_for_config(source_config)
     if not isinstance(raw_roots, list):
         raw_roots = []
 
@@ -1240,7 +1307,7 @@ def add_photo_album(paths, data):
         "enabled": True,
     }
 
-    current_config["photo_gallery_roots"] = [
+    set_photo_gallery_roots_for_config(current_config, [
         {
             "id": album["id"],
             "name": album["name"],
@@ -1249,7 +1316,7 @@ def add_photo_album(paths, data):
             "enabled": album["enabled"],
         }
         for album in albums
-    ] + [new_album]
+    ] + [new_album])
     save_config(current_config)
 
     update_catalog_album(paths, new_album, scan_status=PHOTO_SCAN_STATUS_NEEDS_INDEX)
@@ -1264,7 +1331,7 @@ def delete_photo_album(paths, album_id):
     if len(next_albums) == len(albums):
         return {"error": "Album not found"}, 404
 
-    current_config["photo_gallery_roots"] = next_albums
+    set_photo_gallery_roots_for_config(current_config, next_albums)
     save_config(current_config)
 
     index_data = load_album_index(paths, album_id)

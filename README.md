@@ -480,15 +480,17 @@ rm -rf sharp-gui/
 ```json
 {
   "workspace_folder": "/path/to/workspace",
-  "photo_gallery_roots": [
-    {
-      "id": "my-album",
-      "name": "Photos",
-      "path": "/path/to/photos",
-      "recursive": true,
-      "enabled": true
-    }
-  ]
+  "photo_gallery_roots_by_workspace": {
+    "/path/to/workspace": [
+      {
+        "id": "my-album",
+        "name": "Photos",
+        "path": "/path/to/photos",
+        "recursive": true,
+        "enabled": true
+      }
+    ]
+  }
 }
 ```
 
@@ -499,7 +501,9 @@ rm -rf sharp-gui/
 - `.photo-gallery-cache/` - 本地照片图库索引与缩略图缓存
 - `.video-reconstruction/` - 视频重建中间文件、上传视频缓存和任务 job 目录
 
-> 💡 `photo_gallery_roots` 可通过界面添加；手动编辑时请按部署端系统填写路径。Windows、Linux、macOS 均可使用，局域网设备访问时读取的是服务器所在机器的目录。
+> 💡 相册可通过界面添加，并按工作目录分别记忆：`photo_gallery_roots_by_workspace` 以归一化后的工作目录路径为键，切换工作目录时各自展示对应相册，切回原目录即可恢复。手动编辑时请按部署端系统填写路径。Windows、Linux、macOS 均可使用，局域网设备访问时读取的是服务器所在机器的目录。
+>
+> ⚠️ 旧版本使用顶层 `photo_gallery_roots` 数组保存相册，升级后首次启动会自动迁移到当前工作目录对应的分桶，无需手动处理。
 
 ### 视频重建配置（实验）
 

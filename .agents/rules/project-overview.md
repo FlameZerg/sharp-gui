@@ -59,7 +59,7 @@ sharp-gui/
 │   ├── security/             #   LAN 门禁、权限矩阵、request hooks
 │   ├── services/             #   模型/本地媒体图库、视频重建、任务队列、导出、静态文件、文件夹选择
 │   └── routes/               #   auth/gallery/photo_gallery/video_reconstruction/tasks/settings/files/export/frontend
-├── config.json               # 运行时配置（workspace_folder, photo_gallery_roots, access_control）
+├── config.json               # 运行时配置（workspace_folder, photo_gallery_roots_by_workspace, access_control）
 ├── install.sh / install.bat  # 一键安装脚本（Python/Git/CUDA/依赖/模型/证书）
 ├── run.sh / run.bat          # 启动脚本（支持 --legacy）
 ├── build.sh / build.bat      # 前端构建脚本
@@ -183,7 +183,7 @@ sharp-gui/
 - 视频 3DGS 重建当前属于 Windows NVIDIA 实验能力，已验证平台为 Windows + NVIDIA RTX 5070 Ti Laptop GPU 12GB；其他平台或显卡需要单独验证后再写入已支持矩阵。
 - 图库响应包含原图 URL、缩略图 URL、PLY/SPZ 大小与版本戳；缺失缩略图会在请求时限量修复。
 - React 图库使用虚拟滚动和缩略图加载状态，避免大量模型时滚动卡顿。
-- 本地媒体图库通过 `photo_gallery_roots` 配置多个目录；每个目录作为一个相册展示，图片缩略图或视频 poster 可作为封面。
+- 本地媒体图库通过 `photo_gallery_roots_by_workspace` 配置多个目录，并**按工作目录分桶记忆**（键为归一化后的工作目录路径）；每个目录作为一个相册展示，图片缩略图或视频 poster 可作为封面。切换工作目录时只展示对应桶的相册，切回原目录即可恢复，与模型列表绑定 `{workspace}/outputs` 的行为一致；旧的顶层 `photo_gallery_roots` 会在启动或切换工作目录前自动迁移到对应桶。
 - 本地媒体图库启动时只加载认证、设置、模型等必要数据；不得因为配置了大量相册而阻塞应用 boot。相册摘要应在进入图库视图后按需加载。
 - 本地媒体图库缓存采用 `{workspace_folder}/.photo-gallery-cache/catalog.json` 保存相册摘要，`albums/<album_id>.json` 保存单相册媒体索引；普通相册列表只读 catalog，普通分页/筛选/排序只读单相册索引，不应触发目录扫描。
 - 媒体列表 API 支持 `type=all|photo|video`，仅返回分页元数据、照片缩略图 URL、视频 poster URL 和播放/下载 URL；预览和下载再加载原图或视频流。
