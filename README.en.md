@@ -516,6 +516,172 @@ The Settings > Video Reconstruction area is for dependency diagnostics and defau
 
 The backend starts an asynchronous dependency warmup once per process. Opening the home page or reconstruction dialog does not synchronously scan external tools. Pressing refresh in Settings triggers a background re-check.
 
+### Video Reconstruction Manual Environment Setup
+
+This guide covers setting up all video reconstruction routes (stable COLMAP + experimental feed-forward) from scratch. The only verified platform so far is **Windows + NVIDIA GPU (RTX 5070 Ti Laptop 12GB)**.
+
+#### Prerequisites
+
+| Dependency | Purpose | How to get |
+|------------|---------|-----------|
+| Python 3.10–3.12 | Video reconstruction virtual environment | [python.org](https://www.python.org/downloads/) or system package manager |
+| NVIDIA GPU + Driver ≥ 535 | CUDA inference and training | [nvidia.com/drivers](https://www.nvidia.com/Download/index.aspx) |
+| Git | Clone dependency repos | [git-scm.com](https://git-scm.com/) |
+
+#### 1. Create the video reconstruction virtual environment
+
+```bash
+# Create a separate venv at the project root (isolated from the main project venv)
+python -m venv .video-reconstruction-env
+
+# Activate (Windows)
+.video-reconstruction-env\Scripts\activate
+# Activate (Linux/macOS)
+source .video-reconstruction-env/bin/activate
+```
+
+#### 2. Install PyTorch (CUDA)
+
+Choose the CUDA version matching your GPU and driver. Check supported CUDA version: top-right in `nvidia-smi` output.
+
+```bash
+# RTX 50 series (CUDA 12.8, requires driver >= 570)
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+
+# RTX 20/30/40 series mainstream (CUDA 12.6, requires driver >= 560)
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
+
+# Older GPUs (CUDA 11.8, requires driver >= 520)
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+```
+
+#### 3. Install stable route dependencies (Nerfstudio / COLMAP / ffmpeg)
+
+##### 3a. Nerfstudio + gsplat (Splatfacto training/export engine)
+
+```bash
+# gsplat (Gaussian Splatting CUDA kernels, a Nerfstudio dependency)
+pip install gsplat
+
+# Nerfstudio (provides ns-process-data / ns-train / ns-export commands)
+pip install nerfstudio
+```
+
+> Verify: `ns-train --help`, `ns-process-data --help`, and `ns-export --help` all produce output.
+
+##### 3b. COLMAP (sparse reconstruction / pose estimation)
+
+- **Windows**: Download prebuilt from [COLMAP releases](https://github.com/colmap/colmap/releases), extract, and add `bin/` to system `PATH`
+- **Linux (Ubuntu/Debian)**: `sudo apt install colmap`
+- **macOS**: `brew install colmap`
+
+> Verify: `colmap -h` produces output.
+
+##### 3c. ffmpeg + ffprobe (video decoding / frame extraction)
+
+- **Windows**: Download from [gyan.dev builds](https://www.gyan.dev/ffmpeg/builds/) or [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds/releases), extract, add `bin/` to `PATH`
+- **Linux**: `sudo apt install ffmpeg`
+- **macOS**: `brew install ffmpeg`
+
+> Verify: `ffmpeg -version` and `ffprobe -version` produce output.
+
+#### 4. Install experimental route dependencies (π³ feed-forward engine, optional)
+
+This step is entirely optional — without it, `auto` and `stable` engines work normally; you just cannot use the feed-forward acceleration.
+
+##### 4a. Install the π³ inference package
+
+```bash
+# Inside the activated .video-reconstruction-env
+git clone https://github.com/yyfz/Pi3.git /path/to/Pi3
+cd /path/to/Pi3
+pip install -r requirements.txt
+# Ensure the pi3 package is importable (the repo installs as a local package)
+pip install -e .
+```
+
+> Verify: `python -c "from pi3.models.pi3x import Pi3X; print('ok')"`
+
+##### 4b. Download π³ model weights
+
+> ⚠️ **License notice**: π³ model weights are licensed under **CC BY-NC 4.0** (non-commercial research/education only). By downloading you accept those terms. This project never auto-downloads or distributes these weights.
+
+```bash
+# Create the default weights directory (at the sharp-gui project root)
+mkdir -p .feedforward-weights/pi3x
+
+# Download Pi3X weights (recommended, ~2.1 GB)
+wget -O .feedforward-weights/pi3x/model.safetensors \
+  https://huggingface.co/yyfz233/Pi3X/resolve/main/model.safetensors
+
+# Or download original Pi3 weights (~2.1 GB)
+# mkdir -p .feedforward-weights/pi3
+# wget -O .feedforward-weights/pi3/model.safetensors \
+#   https://huggingface.co/yyfz233/Pi3/resolve/main/model.safetensors
+```
+
+Custom weights directory via environment variable:
+```bash
+export SHARP_GUI_FEEDFORWARD_WEIGHTS_DIR=/your/custom/path
+```
+
+##### 4c. Other inference dependencies
+
+```bash
+# safetensors (for loading .safetensors checkpoints)
+pip install safetensors
+
+# Pillow (image loading, usually already installed by torchvision)
+pip install Pillow
+```
+
+#### 5. Verify the environment
+
+After starting Sharp GUI, open Settings > Video Reconstruction, or query the diagnostics API directly:
+
+```bash
+curl http://127.0.0.1:5050/api/video-reconstructions/status | python -m json.tool
+```
+
+When correctly configured, each group should report:
+
+| Group | Status | Tools checked |
+|-------|--------|--------------|
+| **Video tools** (required) | ✅ Available | ffmpeg, ffprobe |
+| **Stable 3DGS route** (stable) | ✅ Available | ns-process-data, ns-train, ns-export, colmap |
+| **π³ feed-forward engine** (experimental) | ✅ Available (or ⚠️ Missing if not installed) | pi3-engine (package importable), pi3-weights (checkpoint present) |
+
+#### Verified dependency versions
+
+| Package | Verified version | Notes |
+|---------|-----------------|-------|
+| Python | 3.11.x | Used in .video-reconstruction-env |
+| PyTorch | 2.5+ (cu128) | RTX 5070 Ti needs cu128; mainstream GPUs use cu126 |
+| Nerfstudio | 1.1.x+ | Must support `splatfacto` method and `nerfstudio-data` dataparser |
+| gsplat | 1.4+ | Nerfstudio's Gaussian Splatting CUDA backend |
+| COLMAP | 3.9+ | Prebuilt binaries are fine, no source build needed |
+| ffmpeg / ffprobe | 6.x+ | Must support `-vf fps=` filter |
+| Pi3 (π³) | main branch | `pi3.models.pi3x.Pi3X` importable |
+| safetensors | 0.4+ | For loading .safetensors weights |
+
+#### Directory layout
+
+```
+sharp-gui/
+├── .video-reconstruction-env/    # Video reconstruction venv (gitignored)
+│   ├── Scripts/ or bin/          #   → python, ns-train, ns-export, colmap, etc.
+│   └── Lib/ or lib/             #   → torch, nerfstudio, gsplat, pi3, etc.
+├── .feedforward-weights/          # π³ weights directory (gitignored, user-managed)
+│   └── pi3x/
+│       └── model.safetensors     #   Pi3X weights (~2.1 GB, CC BY-NC 4.0)
+├── .video-reconstruction/         # Runtime intermediate files (inside workspace, auto-created)
+│   ├── jobs/                     #   Per-task working directory (cleaned after completion)
+│   └── uploads/                  #   Drag-and-drop video upload cache
+└── outputs/                       # Final outputs: *.ply + *.spz + *.meta.json
+```
+
+> 💡 Both `.video-reconstruction-env` and `.feedforward-weights` are excluded in `.gitignore` and will not be committed to the repository.
+
 ### Enable HTTPS (Recommended)
 
 HTTPS enables **gyroscope on LAN devices** (browsers require secure context for sensor APIs).
