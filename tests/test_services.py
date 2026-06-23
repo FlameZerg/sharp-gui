@@ -287,11 +287,25 @@ def test_video_reconstruction_commands_use_quality_profile():
     assert process_cmd[process_cmd.index("--num-frames-target") + 1] == "180"
     assert process_cmd[process_cmd.index("--num-downscales") + 1] == "2"
     assert process_cmd[process_cmd.index("--matching-method") + 1] == "exhaustive"
+    assert train_cmd[train_cmd.index("--vis") + 1] == "viewer"
     assert train_cmd[train_cmd.index("--downscale-factor") + 1] == "2"
     assert train_cmd[train_cmd.index("--pipeline.datamanager.train-cameras-sampling-strategy") + 1] == "fps"
     assert train_cmd[train_cmd.index("--pipeline.model.camera-optimizer.mode") + 1] == "SO3xR3"
     assert train_cmd[train_cmd.index("--pipeline.model.num-random") + 1] == "80000"
     assert train_cmd[-4:] == ["--data", "data", "--downscale-factor", "2"]
+
+
+def test_video_reconstruction_train_command_can_disable_viewer():
+    profile = video_reconstruction.resolve_quality_profile("high", "12gb")
+
+    train_cmd = video_reconstruction.build_train_command(
+        "data",
+        "train",
+        profile,
+        visualizer="tensorboard",
+    )
+
+    assert train_cmd[train_cmd.index("--vis") + 1] == "tensorboard"
 
 
 def test_video_reconstruction_focused_cleanup_removes_outliers(tmp_path):
@@ -1226,6 +1240,77 @@ def test_video_reconstruction_service_success_and_spz_failure(workspace, monkeyp
     assert not os.path.exists(os.path.join(paths.video_reconstruction_jobs_folder, task["id"]))
 
 
+def test_video_reconstruction_retries_viewer_failure_with_tensorboard(workspace, monkeypatch):
+    paths = build_path_context({"workspace_folder": str(workspace)})
+
+    def fake_spz_converter(_source_path, spz_path):
+        with open(spz_path, "wb") as f:
+            f.write(b"spz")
+
+    task_manager = TaskManager(paths=paths, spz_converter=fake_spz_converter)
+    task = make_video_task(paths, workspace, mode="environment")
+    task_manager.task_status[task["id"]] = task
+    visualizers = []
+
+    def fake_generate_video_thumbnail(paths_arg, _source_path, item_id):
+        thumb_path = model_gallery.get_thumbnail_path(paths_arg, item_id)
+        os.makedirs(os.path.dirname(thumb_path), exist_ok=True)
+        with open(thumb_path, "wb") as f:
+            f.write(b"jpg")
+        return thumb_path
+
+    def fake_run_command(_manager, _task_id, cmd, **_kwargs):
+        if cmd[0] == "ns-train":
+            visualizer = cmd[cmd.index("--vis") + 1]
+            train_dir = cmd[cmd.index("--output-dir") + 1]
+            visualizers.append(visualizer)
+            stale_marker = os.path.join(train_dir, "partial-viewer-start")
+            if visualizer == "viewer":
+                os.makedirs(train_dir, exist_ok=True)
+                with open(stale_marker, "w", encoding="utf-8") as f:
+                    f.write("partial")
+                return 1, [
+                    "File \"nerfstudio\\viewer\\viewer.py\", line 114, in __init__\n",
+                    "self.viser_server = viser.ViserServer(host=config.websocket_host, port=websocket_port)\n",
+                    "File \"viser\\_client_autobuild.py\", line 41, in ensure_client_is_built\n",
+                    "psutil.NoSuchProcess: process no longer exists (pid=34908)\n",
+                ], False
+            assert visualizer == "tensorboard"
+            assert not os.path.exists(stale_marker)
+            os.makedirs(train_dir, exist_ok=True)
+            with open(os.path.join(train_dir, "config.yml"), "w", encoding="utf-8") as f:
+                f.write("config")
+        if cmd[0] == "ns-export":
+            export_dir = cmd[-1]
+            os.makedirs(export_dir, exist_ok=True)
+            with open(os.path.join(export_dir, "model.ply"), "wb") as f:
+                f.write(b"ply")
+        return 0, [], False
+
+    monkeypatch.setattr("backend.services.video_reconstruction.run_command", fake_run_command)
+    monkeypatch.setattr(
+        "backend.services.model_gallery.generate_video_thumbnail",
+        fake_generate_video_thumbnail,
+    )
+
+    video_reconstruction.run_video_reconstruction_task(task_manager, task["id"], task)
+    public_task = task_manager.list_tasks()[0][0]
+
+    assert visualizers == ["viewer", "tensorboard"]
+    assert public_task["status"] == "completed"
+    assert task["details"]["train_visualizer_fallback"] == {
+        "from": "viewer",
+        "to": "tensorboard",
+        "reason": "viser_startup_failed",
+    }
+    assert any(
+        warning["code"] == "video_reconstruction_viewer_disabled"
+        for warning in public_task["details"]["warnings"]
+    )
+    assert os.path.exists(task["output_path"])
+    assert os.path.exists(task["spz_path"])
+
+
 def test_video_reconstruction_service_oom_failure_keeps_no_output(workspace, monkeypatch):
     paths = build_path_context({"workspace_folder": str(workspace)})
     task_manager = TaskManager(paths=paths)
@@ -1246,10 +1331,58 @@ def test_video_reconstruction_service_oom_failure_keeps_no_output(workspace, mon
     assert not os.path.exists(task["output_path"])
 
 
-def test_video_reconstruction_service_cancel_cleans_job(workspace, monkeypatch):
+def test_video_reconstruction_failure_cleans_uploaded_source_and_prepared_assets(workspace, monkeypatch):
     paths = build_path_context({"workspace_folder": str(workspace)})
+    upload_dir = os.path.join(model_gallery.get_video_uploads_folder(paths), "upload-failed")
+    os.makedirs(upload_dir, exist_ok=True)
+    uploaded_video = os.path.join(upload_dir, "clip.mp4")
+    with open(uploaded_video, "wb") as f:
+        f.write(b"uploaded")
+
     task_manager = TaskManager(paths=paths)
-    task = make_video_task(paths, workspace)
+    task = make_video_task(
+        paths,
+        workspace,
+        source_media_id=None,
+        source_video_path=uploaded_video,
+        source_mime_type="video/mp4",
+    )
+    task_manager.task_status[task["id"]] = task
+    model_gallery.write_model_metadata(paths, task["output_name"], video_reconstruction.build_video_model_metadata(task))
+    thumb_path = model_gallery.get_thumbnail_path(paths, task["output_name"])
+    os.makedirs(os.path.dirname(thumb_path), exist_ok=True)
+    with open(thumb_path, "wb") as f:
+        f.write(b"jpg")
+    os.makedirs(paths.output_folder, exist_ok=True)
+    with open(task["output_path"], "wb") as f:
+        f.write(b"partial")
+
+    monkeypatch.setattr(
+        "backend.services.video_reconstruction.run_command",
+        lambda *_args, **_kwargs: (1, ["RuntimeError: CUDA out of memory\n"], False),
+    )
+
+    video_reconstruction.run_video_reconstruction_task(task_manager, task["id"], task)
+    public_task = task_manager.list_tasks()[0][0]
+
+    assert public_task["status"] == "failed"
+    assert not os.path.exists(uploaded_video)
+    assert not os.path.exists(upload_dir)
+    assert not os.path.exists(model_gallery.get_model_metadata_path(paths, task["output_name"]))
+    assert not os.path.exists(thumb_path)
+    assert not os.path.exists(task["output_path"])
+
+
+def test_video_reconstruction_service_cancel_cleans_job_and_uploaded_source(workspace, monkeypatch):
+    paths = build_path_context({"workspace_folder": str(workspace)})
+    upload_dir = os.path.join(model_gallery.get_video_uploads_folder(paths), "upload-cancelled")
+    os.makedirs(upload_dir, exist_ok=True)
+    uploaded_video = os.path.join(upload_dir, "clip.mp4")
+    with open(uploaded_video, "wb") as f:
+        f.write(b"uploaded")
+
+    task_manager = TaskManager(paths=paths)
+    task = make_video_task(paths, workspace, source_media_id=None, source_video_path=uploaded_video)
     task_manager.task_status[task["id"]] = task
 
     def fake_cancel(_manager, _task_id, *_args, **_kwargs):
@@ -1263,6 +1396,86 @@ def test_video_reconstruction_service_cancel_cleans_job(workspace, monkeypatch):
 
     assert public_task["status"] == "cancelled"
     assert not os.path.exists(os.path.join(paths.video_reconstruction_jobs_folder, task["id"]))
+    assert not os.path.exists(uploaded_video)
+    assert not os.path.exists(upload_dir)
+
+
+def test_video_reconstruction_startup_cleanup_removes_orphans_but_keeps_referenced_uploads(workspace):
+    paths = build_path_context({"workspace_folder": str(workspace)})
+    stale_job = os.path.join(paths.video_reconstruction_jobs_folder, "stale-task")
+    os.makedirs(stale_job, exist_ok=True)
+    with open(os.path.join(stale_job, "partial.txt"), "w", encoding="utf-8") as f:
+        f.write("partial")
+
+    upload_root = model_gallery.get_video_uploads_folder(paths)
+    orphan_dir = os.path.join(upload_root, "orphan")
+    referenced_dir = os.path.join(upload_root, "referenced")
+    os.makedirs(orphan_dir, exist_ok=True)
+    os.makedirs(referenced_dir, exist_ok=True)
+    orphan_video = os.path.join(orphan_dir, "clip.mp4")
+    referenced_video = os.path.join(referenced_dir, "clip.mp4")
+    with open(orphan_video, "wb") as f:
+        f.write(b"orphan")
+    with open(referenced_video, "wb") as f:
+        f.write(b"referenced")
+
+    os.makedirs(paths.output_folder, exist_ok=True)
+    with open(os.path.join(paths.output_folder, "kept.ply"), "wb") as f:
+        f.write(b"ply")
+    model_gallery.write_model_metadata(paths, "kept", {
+        "generator": video_reconstruction.TASK_KIND_VIDEO_3DGS,
+        "source_video_path": referenced_video,
+    })
+    model_gallery.write_model_metadata(paths, "unfinished", {
+        "generator": video_reconstruction.TASK_KIND_VIDEO_3DGS,
+        "source_video_path": orphan_video,
+    })
+
+    summary = video_reconstruction.cleanup_stale_runtime_artifacts(paths, terminate_processes=False)
+
+    assert summary["jobs_removed"] == 1
+    assert summary["uploads_removed"] == 1
+    assert summary["sidecars_removed"] == 1
+    assert not os.path.exists(stale_job)
+    assert not os.path.exists(orphan_dir)
+    assert os.path.exists(referenced_video)
+    assert os.path.exists(model_gallery.get_model_metadata_path(paths, "kept"))
+    assert not os.path.exists(model_gallery.get_model_metadata_path(paths, "unfinished"))
+
+
+def test_video_reconstruction_upload_cleanup_can_keep_recent_orphans(workspace):
+    paths = build_path_context({"workspace_folder": str(workspace)})
+    upload_dir = os.path.join(model_gallery.get_video_uploads_folder(paths), "recent")
+    os.makedirs(upload_dir, exist_ok=True)
+    with open(os.path.join(upload_dir, "clip.mp4"), "wb") as f:
+        f.write(b"recent")
+
+    removed = video_reconstruction.cleanup_orphan_video_uploads(paths, stale_age_seconds=3600)
+
+    assert removed == 0
+    assert os.path.exists(upload_dir)
+
+
+def test_video_reconstruction_process_matcher_requires_tool_and_workspace(workspace):
+    paths = build_path_context({"workspace_folder": str(workspace)})
+    job_db = os.path.join(paths.video_reconstruction_jobs_folder, "task", "database.db")
+
+    assert video_reconstruction.process_info_matches_video_runtime(
+        {"name": "colmap.exe", "cmdline": ["colmap", "mapper", "--database_path", job_db], "cwd": None},
+        paths.video_reconstruction_folder,
+    )
+    assert video_reconstruction.process_info_matches_video_runtime(
+        {"name": "python.exe", "cmdline": ["python", "ns-train", "--output-dir", job_db], "cwd": None},
+        paths.video_reconstruction_folder,
+    )
+    assert not video_reconstruction.process_info_matches_video_runtime(
+        {"name": "colmap.exe", "cmdline": ["colmap", "mapper", "--database_path", r"C:\other\database.db"], "cwd": None},
+        paths.video_reconstruction_folder,
+    )
+    assert not video_reconstruction.process_info_matches_video_runtime(
+        {"name": "python.exe", "cmdline": ["python", "script.py", job_db], "cwd": None},
+        paths.video_reconstruction_folder,
+    )
 
 
 def test_build_failure_message_detects_oom_text():
@@ -1279,6 +1492,19 @@ def test_build_failure_message_detects_oom_text():
     assert "GPU memory" in oom_message
     assert plain_code is None
     assert "generic failure line" in plain_message
+
+
+def test_viewer_startup_failure_triggers_tensorboard_retry():
+    output_lines = [
+        "File \"nerfstudio\\viewer\\viewer.py\", line 114, in __init__\n",
+        "self.viser_server = viser.ViserServer(host=config.websocket_host, port=websocket_port)\n",
+        "File \"viser\\_client_autobuild.py\", line 41, in ensure_client_is_built\n",
+        "psutil.NoSuchProcess: process no longer exists (pid=34908)\n",
+    ]
+
+    assert video_reconstruction.is_viewer_startup_failure(output_lines) is True
+    assert video_reconstruction.should_retry_train_without_viewer("viewer", output_lines) is True
+    assert video_reconstruction.should_retry_train_without_viewer("tensorboard", output_lines) is False
 
 
 def test_contains_oom_matches_known_patterns():
@@ -1447,7 +1673,7 @@ def test_resolve_training_profile_falls_back_to_random_when_few_cameras(tmp_path
 def test_quality_profiles_bind_matching_method_per_tier():
     assert video_reconstruction.resolve_quality_profile("preview", "12gb")["matching_method"] == "sequential"
     assert video_reconstruction.resolve_quality_profile("high", "12gb")["matching_method"] == "exhaustive"
-    assert video_reconstruction.resolve_quality_profile("extreme", "24gb")["matching_method"] == "vocab_tree"
+    assert video_reconstruction.resolve_quality_profile("extreme", "24gb")["matching_method"] == "exhaustive"
 
 
 def test_estimate_object_focus_from_orbit_geometry(tmp_path):

@@ -33,6 +33,7 @@ def create_app(start_background_workers=False):
 
     paths = build_path_context(config)
     ensure_runtime_directories(paths)
+    video_reconstruction.cleanup_stale_runtime_artifacts(paths)
     install_path_config(app, paths)
 
     task_manager = TaskManager(

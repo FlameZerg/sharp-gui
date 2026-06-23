@@ -39,12 +39,13 @@ ERROR_OUTPUT_MISSING = "video_reconstruction_output_missing"
 ERROR_SPZ_FAILED = "video_reconstruction_spz_failed"
 ERROR_UNSUPPORTED_VIDEO = "video_reconstruction_unsupported_video"
 
-# COLMAP 特征匹配策略按质量档绑定（方案 C）：
+# COLMAP 特征匹配策略按质量档绑定：
 # - preview: sequential，只匹配相邻帧，最快，快速预览可接受偶尔断链；
 # - high: exhaustive，180 帧两两匹配（~1.6 万对）最大化相机注册率，避免长视频
 #   sequential 断链导致只重建前半段甚至相机过少崩溃，且无需联网下载词表；
-# - extreme: vocab_tree，360 帧时 exhaustive 的 O(n^2) 过慢，改用词汇树检索匹配
-#   兼顾回环与速度（Nerfstudio 首次会自动下载词表，需联网一次）。
+# - extreme: exhaustive，与高质量档保持同一匹配策略，宁可增加 COLMAP 匹配耗时，
+#   也优先保证注册完整性；词表检索在部分素材上可能配准过少，导致极致档反而
+#   只重建极少视角。
 QUALITY_PROFILES = {
     "preview": {
         "frame_count": 90,
@@ -86,7 +87,7 @@ QUALITY_PROFILES = {
         "max_num_iterations": 50000,
         "num_downscales": 1,
         "downscale_factor": 1,
-        "matching_method": "vocab_tree",
+        "matching_method": "exhaustive",
         "train_cameras_sampling_strategy": "fps",
         "camera_optimizer_mode": "SO3xR3",
         "num_random": 120000,
@@ -163,6 +164,23 @@ OOM_PATTERNS = (
     "cudnn_status_alloc_failed",
     "hip out of memory",
     "memoryerror",
+)
+
+TRAIN_VISUALIZER_VIEWER = "viewer"
+TRAIN_VISUALIZER_FALLBACK = "tensorboard"
+
+VISER_STARTUP_FAILURE_PATTERNS = (
+    "psutil.nosuchprocess",
+    "process no longer exists",
+    "_client_autobuild",
+    "ensure_client_is_built",
+)
+
+VIDEO_RUNTIME_PROCESS_TOKENS = (
+    "ns-process-data",
+    "ns-train",
+    "ns-export",
+    "colmap",
 )
 
 _DEPENDENCY_STATUS_LOCK = threading.Lock()
@@ -1406,6 +1424,19 @@ def contains_oom(text):
     return any(pattern in normalized for pattern in OOM_PATTERNS)
 
 
+def is_viewer_startup_failure(output_lines):
+    normalized = "\n".join(str(line or "") for line in (output_lines or [])).lower()
+    return (
+        "viser" in normalized
+        and ("viewerstate" in normalized or "viserserver" in normalized or "viewer.py" in normalized)
+        and any(pattern in normalized for pattern in VISER_STARTUP_FAILURE_PATTERNS)
+    )
+
+
+def should_retry_train_without_viewer(visualizer, output_lines):
+    return visualizer == TRAIN_VISUALIZER_VIEWER and is_viewer_startup_failure(output_lines)
+
+
 def build_failure_message(return_code, output_lines):
     output = "".join(output_lines or [])
     tail = "\n".join(output.splitlines()[-24:])
@@ -1424,6 +1455,310 @@ def clean_job_dir(job_dir, keep):
         shutil.rmtree(job_dir)
     except OSError:
         pass
+
+
+def _remove_file_if_inside(path, root):
+    if not path:
+        return False
+    try:
+        real_path = os.path.realpath(path)
+        real_root = os.path.realpath(root)
+        if real_path == real_root or not is_real_path_inside(real_path, real_root):
+            return False
+        if os.path.isfile(real_path):
+            os.remove(real_path)
+            return True
+    except OSError:
+        return False
+    return False
+
+
+def _remove_tree_if_inside(path, root):
+    if not path:
+        return False
+    try:
+        real_path = os.path.realpath(path)
+        real_root = os.path.realpath(root)
+        if real_path == real_root or not is_real_path_inside(real_path, real_root):
+            return False
+        if os.path.isdir(real_path):
+            shutil.rmtree(real_path)
+            return True
+    except OSError:
+        return False
+    return False
+
+
+def _is_path_stale(path, stale_age_seconds, now=None):
+    if stale_age_seconds <= 0:
+        return True
+    try:
+        return (now or time.time()) - os.path.getmtime(path) >= stale_age_seconds
+    except OSError:
+        return False
+
+
+def cleanup_unfinished_model_assets(paths, task):
+    """Remove output placeholders for a video task that did not complete."""
+    removed = 0
+    for key in ("output_path", "spz_path"):
+        if _remove_file_if_inside(task.get(key), paths.output_folder):
+            removed += 1
+
+    model_id = task.get("output_name")
+    if not model_id and task.get("output_path"):
+        model_id = os.path.splitext(os.path.basename(task["output_path"]))[0]
+    if model_id:
+        if _remove_file_if_inside(model_gallery.get_model_metadata_path(paths, model_id), paths.output_folder):
+            removed += 1
+        if _remove_file_if_inside(model_gallery.get_thumbnail_path(paths, model_id), paths.thumbnail_folder):
+            removed += 1
+    return removed
+
+
+def cleanup_failed_task_artifacts(paths, task, job_dir, keep_intermediate):
+    """Clean controlled temporary artifacts for a failed or cancelled video task."""
+    clean_job_dir(job_dir, keep_intermediate)
+    removed = cleanup_unfinished_model_assets(paths, task)
+    try:
+        model_gallery.delete_uploaded_source_video(paths, task)
+    except Exception as exc:
+        runtime.log("WARN", f"Failed to clean uploaded source video for task {task.get('id')}: {exc}")
+    return removed
+
+
+def collect_referenced_uploaded_source_paths(paths):
+    """Return uploaded source files still referenced by completed video models."""
+    references = set()
+    if not os.path.isdir(paths.output_folder):
+        return references
+
+    upload_root = os.path.realpath(model_gallery.get_video_uploads_folder(paths))
+    suffix = model_gallery.MODEL_METADATA_SUFFIX
+    try:
+        entries = list(os.scandir(paths.output_folder))
+    except OSError:
+        return references
+
+    for entry in entries:
+        if not entry.is_file() or not entry.name.endswith(suffix):
+            continue
+        model_id = entry.name[:-len(suffix)]
+        if not os.path.isfile(os.path.join(paths.output_folder, model_id + ".ply")):
+            continue
+        try:
+            with open(entry.path, "r", encoding="utf-8") as file:
+                metadata = json.load(file)
+        except (OSError, ValueError):
+            continue
+        source_video_path = metadata.get("source_video_path") if isinstance(metadata, dict) else None
+        if not isinstance(source_video_path, str) or not source_video_path:
+            continue
+        real_path = os.path.realpath(source_video_path)
+        if is_real_path_inside(real_path, upload_root):
+            references.add(real_path)
+    return references
+
+
+def _path_is_or_contains_reference(path, references):
+    if not references:
+        return False
+    real_path = os.path.realpath(path)
+    for reference in references:
+        if reference == real_path or is_real_path_inside(reference, real_path):
+            return True
+    return False
+
+
+def cleanup_orphan_video_uploads(paths, stale_age_seconds=0):
+    upload_root = model_gallery.get_video_uploads_folder(paths)
+    if not os.path.isdir(upload_root):
+        return 0
+
+    referenced_paths = collect_referenced_uploaded_source_paths(paths)
+    removed = 0
+    now = time.time()
+    try:
+        entries = list(os.scandir(upload_root))
+    except OSError:
+        return removed
+
+    for entry in entries:
+        if _path_is_or_contains_reference(entry.path, referenced_paths):
+            continue
+        if not _is_path_stale(entry.path, stale_age_seconds, now=now):
+            continue
+        if entry.is_dir(follow_symlinks=False):
+            if _remove_tree_if_inside(entry.path, upload_root):
+                removed += 1
+        elif entry.is_file(follow_symlinks=False):
+            if _remove_file_if_inside(entry.path, upload_root):
+                removed += 1
+    return removed
+
+
+def cleanup_unfinished_video_sidecars(paths):
+    if not os.path.isdir(paths.output_folder):
+        return 0
+
+    suffix = model_gallery.MODEL_METADATA_SUFFIX
+    removed = 0
+    try:
+        entries = list(os.scandir(paths.output_folder))
+    except OSError:
+        return removed
+
+    for entry in entries:
+        if not entry.is_file() or not entry.name.endswith(suffix):
+            continue
+        model_id = entry.name[:-len(suffix)]
+        if os.path.isfile(os.path.join(paths.output_folder, model_id + ".ply")):
+            continue
+        try:
+            with open(entry.path, "r", encoding="utf-8") as file:
+                metadata = json.load(file)
+        except (OSError, ValueError):
+            continue
+        if not isinstance(metadata, dict) or metadata.get("generator") != TASK_KIND_VIDEO_3DGS:
+            continue
+        if _remove_file_if_inside(entry.path, paths.output_folder):
+            removed += 1
+        _remove_file_if_inside(model_gallery.get_thumbnail_path(paths, model_id), paths.thumbnail_folder)
+    return removed
+
+
+def cleanup_stale_job_dirs(paths, stale_age_seconds=0):
+    jobs_root = paths.video_reconstruction_jobs_folder
+    if not os.path.isdir(jobs_root):
+        return 0
+
+    removed = 0
+    now = time.time()
+    try:
+        entries = list(os.scandir(jobs_root))
+    except OSError:
+        return removed
+
+    for entry in entries:
+        if not entry.is_dir(follow_symlinks=False):
+            continue
+        if not _is_path_stale(entry.path, stale_age_seconds, now=now):
+            continue
+        if _remove_tree_if_inside(entry.path, jobs_root):
+            removed += 1
+    return removed
+
+
+def _normalized_path_fragment(path):
+    return os.path.normcase(os.path.normpath(os.path.realpath(path)))
+
+
+def _text_mentions_path(value, root):
+    if not value:
+        return False
+    normalized = os.path.normcase(os.path.normpath(str(value).strip("\"'")))
+    return root in normalized
+
+
+def process_info_matches_video_runtime(info, runtime_root):
+    cmdline = info.get("cmdline") or []
+    name = info.get("name") or ""
+    process_text = " ".join(str(part) for part in [name, *cmdline]).lower()
+    if not any(token in process_text for token in VIDEO_RUNTIME_PROCESS_TOKENS):
+        return False
+
+    real_runtime_root = os.path.realpath(runtime_root)
+    cwd = info.get("cwd")
+    if cwd:
+        try:
+            if is_real_path_inside(os.path.realpath(cwd), real_runtime_root):
+                return True
+        except OSError:
+            pass
+
+    root_fragment = _normalized_path_fragment(real_runtime_root)
+    return any(_text_mentions_path(part, root_fragment) for part in cmdline)
+
+
+def _terminate_psutil_process_tree(psutil_module, process):
+    try:
+        targets = list(process.children(recursive=True))
+        targets.append(process)
+        for target in targets:
+            try:
+                target.terminate()
+            except (psutil_module.NoSuchProcess, psutil_module.AccessDenied):
+                pass
+        _, alive = psutil_module.wait_procs(targets, timeout=5)
+        for target in alive:
+            try:
+                target.kill()
+            except (psutil_module.NoSuchProcess, psutil_module.AccessDenied):
+                pass
+        if alive:
+            psutil_module.wait_procs(alive, timeout=5)
+        return True
+    except psutil_module.NoSuchProcess:
+        return False
+    except Exception as exc:
+        runtime.log("WARN", f"Failed to terminate stale video reconstruction process tree: {exc}")
+        return False
+
+
+def terminate_stale_video_processes(paths):
+    try:
+        import psutil
+    except Exception:
+        return 0
+
+    terminated = 0
+    runtime_root = paths.video_reconstruction_folder
+    current_pid = os.getpid()
+    for process in psutil.process_iter(["pid", "name", "cmdline", "cwd"]):
+        try:
+            if process.pid == current_pid:
+                continue
+            if not process_info_matches_video_runtime(process.info, runtime_root):
+                continue
+            if _terminate_psutil_process_tree(psutil, process):
+                terminated += 1
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
+        except Exception as exc:
+            runtime.log("WARN", f"Failed to inspect video reconstruction process: {exc}")
+    return terminated
+
+
+def cleanup_stale_runtime_artifacts(
+    paths,
+    *,
+    stale_job_age_seconds=0,
+    stale_upload_age_seconds=0,
+    terminate_processes=True,
+):
+    """Best-effort cleanup for artifacts left behind by interrupted video tasks."""
+    summary = {
+        "processes_terminated": 0,
+        "jobs_removed": 0,
+        "uploads_removed": 0,
+        "sidecars_removed": 0,
+    }
+    if terminate_processes:
+        summary["processes_terminated"] = terminate_stale_video_processes(paths)
+    summary["jobs_removed"] = cleanup_stale_job_dirs(paths, stale_age_seconds=stale_job_age_seconds)
+    summary["sidecars_removed"] = cleanup_unfinished_video_sidecars(paths)
+    summary["uploads_removed"] = cleanup_orphan_video_uploads(paths, stale_age_seconds=stale_upload_age_seconds)
+
+    if any(summary.values()):
+        runtime.log(
+            "INFO",
+            "Cleaned stale video reconstruction runtime artifacts: "
+            f"processes={summary['processes_terminated']} "
+            f"jobs={summary['jobs_removed']} "
+            f"sidecars={summary['sidecars_removed']} "
+            f"uploads={summary['uploads_removed']}",
+        )
+    return summary
 
 
 def find_exported_ply(export_dir):
@@ -1820,7 +2155,7 @@ def run_geometry_stage(task_manager, task_id, task, job_dir, data_dir, profile):
         return "failed", exc.code, exc.message
 
 
-def build_train_command(data_dir, output_dir, profile):
+def build_train_command(data_dir, output_dir, profile, visualizer=TRAIN_VISUALIZER_VIEWER):
     return [
         "ns-train",
         "splatfacto",
@@ -1828,6 +2163,8 @@ def build_train_command(data_dir, output_dir, profile):
         output_dir,
         "--max-num-iterations",
         str(profile["max_num_iterations"]),
+        "--vis",
+        visualizer,
         "--viewer.quit-on-train-completion",
         "True",
         "--pipeline.datamanager.train-cameras-sampling-strategy",
@@ -1927,6 +2264,25 @@ def add_object_mode_warning(task):
         warnings.append(warning)
 
 
+def record_train_visualizer_fallback(task, from_visualizer, to_visualizer, reason):
+    details = task.setdefault("details", {})
+    details["train_visualizer_fallback"] = {
+        "from": from_visualizer,
+        "to": to_visualizer,
+        "reason": reason,
+    }
+    warnings = details.setdefault("warnings", [])
+    warning = {
+        "code": "video_reconstruction_viewer_disabled",
+        "message": (
+            "Nerfstudio's live viewer failed to start on this machine; "
+            "retrying training without the viewer."
+        ),
+    }
+    if warning not in warnings:
+        warnings.append(warning)
+
+
 def run_video_reconstruction_task(task_manager, task_id, task):
     job_dir = os.path.join(task_manager.paths.video_reconstruction_jobs_folder, task_id)
     source_dir = os.path.join(job_dir, "source")
@@ -1937,6 +2293,9 @@ def run_video_reconstruction_task(task_manager, task_id, task):
     keep_intermediate = bool(task.get("keep_intermediate_files"))
     profile = resolve_quality_profile(task.get("quality"), task.get("vram_budget"))
     task.setdefault("details", {})["resource_profile"] = profile
+
+    def cleanup_failed():
+        cleanup_failed_task_artifacts(task_manager.paths, task, job_dir, keep_intermediate)
 
     for folder in (source_dir, data_dir, train_dir, export_dir, logs_dir):
         os.makedirs(folder, exist_ok=True)
@@ -1969,7 +2328,7 @@ def run_video_reconstruction_task(task_manager, task_id, task):
         )
         if geometry_status == "cancelled":
             update_task(task_manager, task_id, status="cancelled", error=None)
-            clean_job_dir(job_dir, keep_intermediate)
+            cleanup_failed()
             return
         if geometry_status != "ok":
             update_task(
@@ -1979,7 +2338,7 @@ def run_video_reconstruction_task(task_manager, task_id, task):
                 error=geometry_message,
                 error_code=geometry_code,
             )
-            clean_job_dir(job_dir, keep_intermediate)
+            cleanup_failed()
             return
 
         training_profile = resolve_training_profile(
@@ -1989,7 +2348,8 @@ def run_video_reconstruction_task(task_manager, task_id, task):
             task_id=task_id,
             task=task,
         )
-        train_cmd = build_train_command(data_dir, train_dir, training_profile)
+        train_visualizer = TRAIN_VISUALIZER_VIEWER
+        train_cmd = build_train_command(data_dir, train_dir, training_profile, visualizer=train_visualizer)
         return_code, output_lines, cancelled = run_command(
             task_manager,
             task_id,
@@ -2001,16 +2361,64 @@ def run_video_reconstruction_task(task_manager, task_id, task):
         )
         if cancelled:
             update_task(task_manager, task_id, status="cancelled", error=None)
-            clean_job_dir(job_dir, keep_intermediate)
+            cleanup_failed()
             return
         if is_task_cancelled(task_manager, task_id):
             update_task(task_manager, task_id, status="cancelled", error=None)
-            clean_job_dir(job_dir, keep_intermediate)
+            cleanup_failed()
             return
+        if return_code != 0 and should_retry_train_without_viewer(train_visualizer, output_lines):
+            fallback_visualizer = TRAIN_VISUALIZER_FALLBACK
+            record_train_visualizer_fallback(
+                task,
+                train_visualizer,
+                fallback_visualizer,
+                "viser_startup_failed",
+            )
+            append_task_log(
+                task_manager,
+                task_id,
+                (
+                    "Nerfstudio viewer failed during startup; "
+                    f"retrying ns-train with --vis {fallback_visualizer}."
+                ),
+            )
+            runtime.log(
+                "WARN",
+                "Video task "
+                f"{task_id} retrying ns-train with --vis {fallback_visualizer} "
+                "because the Viser live viewer failed to start.",
+            )
+            shutil.rmtree(train_dir, ignore_errors=True)
+            os.makedirs(train_dir, exist_ok=True)
+            train_visualizer = fallback_visualizer
+            train_cmd = build_train_command(
+                data_dir,
+                train_dir,
+                training_profile,
+                visualizer=train_visualizer,
+            )
+            return_code, output_lines, cancelled = run_command(
+                task_manager,
+                task_id,
+                train_cmd,
+                cwd=job_dir,
+                stage="video_optimize",
+                progress=STAGE_PROGRESS["video_optimize"],
+                profile=training_profile,
+            )
+            if cancelled:
+                update_task(task_manager, task_id, status="cancelled", error=None)
+                cleanup_failed()
+                return
+            if is_task_cancelled(task_manager, task_id):
+                update_task(task_manager, task_id, status="cancelled", error=None)
+                cleanup_failed()
+                return
         if return_code != 0:
             code, message = build_failure_message(return_code, output_lines)
             update_task(task_manager, task_id, status="failed", error=message, error_code=code)
-            clean_job_dir(job_dir, keep_intermediate)
+            cleanup_failed()
             return
 
         config_path = find_nerfstudio_config(train_dir)
@@ -2022,7 +2430,7 @@ def run_video_reconstruction_task(task_manager, task_id, task):
                 error="Nerfstudio training finished but config.yml was not found.",
                 error_code=ERROR_OUTPUT_MISSING,
             )
-            clean_job_dir(job_dir, keep_intermediate)
+            cleanup_failed()
             return
 
         return_code, output_lines, cancelled = run_command(
@@ -2035,16 +2443,16 @@ def run_video_reconstruction_task(task_manager, task_id, task):
         )
         if cancelled:
             update_task(task_manager, task_id, status="cancelled", error=None)
-            clean_job_dir(job_dir, keep_intermediate)
+            cleanup_failed()
             return
         if is_task_cancelled(task_manager, task_id):
             update_task(task_manager, task_id, status="cancelled", error=None)
-            clean_job_dir(job_dir, keep_intermediate)
+            cleanup_failed()
             return
         if return_code != 0:
             code, message = build_failure_message(return_code, output_lines)
             update_task(task_manager, task_id, status="failed", error=message, error_code=code)
-            clean_job_dir(job_dir, keep_intermediate)
+            cleanup_failed()
             return
 
         exported_ply = find_exported_ply(export_dir)
@@ -2056,7 +2464,7 @@ def run_video_reconstruction_task(task_manager, task_id, task):
                 error="Nerfstudio export finished but no .ply file was found.",
                 error_code=ERROR_OUTPUT_MISSING,
             )
-            clean_job_dir(job_dir, keep_intermediate)
+            cleanup_failed()
             return
 
         output_ply = exported_ply
@@ -2146,4 +2554,4 @@ def run_video_reconstruction_task(task_manager, task_id, task):
             error_text = traceback.format_exc()
             runtime.log("ERROR", f"Video task {task_id} exception traceback:\n{error_text}")
             update_task(task_manager, task_id, status="failed", error=error_text)
-        clean_job_dir(job_dir, keep_intermediate)
+        cleanup_failed()

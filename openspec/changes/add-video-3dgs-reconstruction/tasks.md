@@ -155,7 +155,7 @@
 - 取消视频任务改为按进程树终止：`run_command` 以独立进程组/会话启动外部命令，`terminate_process_tree` 用 `taskkill /F /T`（Windows）或 `killpg`（POSIX）杀整棵树；`cancel_task` 对视频任务复用该逻辑并移出 `task_lock`，图片任务保持原单进程终止，避免误伤服务进程。
 - `video_optimize` 阶段解析 Nerfstudio 进度输出（优先百分比、回退 step/total），把进度在 58→86 之间真实推进，修复长训练进度条长期停在 58% 的问题。
 - 训练阶段抓取并暴露 Nerfstudio/viser 实时查看器链接：INFO 级别日志打印、任务详情安全暴露 `viewer_url`，前端任务队列以玻璃态圆角矩形标签展示可点击的实时进度入口。
-- COLMAP 特征匹配策略按质量档绑定：preview=sequential、high=exhaustive、extreme=vocab_tree，减少长视频 sequential 断链导致的只重建前半段/相机过少问题。
+- COLMAP 特征匹配策略按质量档绑定：preview=sequential、high=exhaustive、extreme=exhaustive，减少长视频 sequential 断链导致的只重建前半段/相机过少问题；词表检索不再作为极致档默认，也不保留隐藏回退分支，避免部分素材配准过少和实现路径不一致。
 - 相机注册过少时把 FPS 相机采样回退为 random，避免训练期 fpsample 断言崩溃，并记录降级与注册相机数。
 - 物品（object）模式新增相机环绕几何主体聚焦裁剪（C1）：仅 object 模式生效，auto/environment 不受影响；通过 `dataparser_transforms.json` 对齐坐标，带数据缺失/几何异常/裁剪过激的安全回退。
 - 任务进入处理即记录开始时间：前端任务卡片在处理中实时显示已用时长；视频任务后端日志在阶段切换/完成时记录各阶段耗时与总耗时。
