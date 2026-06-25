@@ -466,7 +466,7 @@
   "videoReconSubmitting": "Submitting...",
   "videoReconSettingsTitle": "Video Reconstruction",
   "videoReconSettingsDefaults": "Defaults and diagnostics",
-  "videoReconSettingsHint": "Controls the default preset used when turning a local video into a Gaussian Splat model.",
+  "videoReconSettingsHint": "Controls the default preset for local video reconstruction. Per-task custom parameters are available in the generation dialog.",
   "videoReconRefreshDiagnostics": "Refresh",
   "videoReconDefaultQuality": "Default quality",
   "videoReconDefaultQualityMeta": "Frames, resolution, iterations and runtime",
@@ -492,17 +492,63 @@
   "videoReconQuality": {
     "preview": "Preview",
     "high": "High",
-    "extreme": "Extreme"
+    "extreme": "Extreme",
+    "custom": "Custom"
   },
   "videoReconQualityMeta": {
     "preview": "90 frames / 7k",
     "high": "180 frames / 30k",
-    "extreme": "360 frames / 50k"
+    "extreme": "360 frames / 50k",
+    "custom": "Tune parameters"
   },
   "videoReconQualityHint": {
     "preview": "Fast sanity check for camera path and subject cleanup. Uses fewer splats and lower input detail.",
     "high": "Recommended for final-looking results on this machine: 2x input scale, focused cleanup and about 50 minutes for this 4K clip.",
-    "extreme": "Pushes frame count and training budget for long offline runs. Use when time and VRAM are less constrained."
+    "extreme": "Pushes frame count and training budget for long offline runs. Use when time and VRAM are less constrained.",
+    "custom": "Use when a preset does not fit the clip. Increase coverage, detail, or safety deliberately and watch the runtime and VRAM tradeoffs."
+  },
+  "videoReconCustomTitle": "Custom reconstruction parameters",
+  "videoReconCustomHint": "These values are applied directly to this task and are not saved as global defaults.",
+  "videoReconCustomFrameCount": "Target frames",
+  "videoReconCustomFrameCountHint": "More frames cover longer paths, but geometry and training take longer.",
+  "videoReconCustomIterations": "Training iterations",
+  "videoReconCustomIterationsHint": "More iterations can refine detail, but each extra step costs time.",
+  "videoReconCustomDownscale": "Input downscale",
+  "videoReconCustomDownscaleHint": "Lower downscale keeps more input detail; higher downscale reduces VRAM pressure and noise.",
+  "videoReconCustomMatching": "COLMAP matching",
+  "videoReconCustomMatchingHint": "Sequential scales to long walk-throughs. Exhaustive is more robust for fewer frames but grows quickly.",
+  "videoReconCustomCacheImages": "Image cache",
+  "videoReconCustomCacheImagesHint": "GPU cache can be faster; CPU cache saves VRAM for heavy frame counts or high input detail.",
+  "videoReconDownscale": {
+    "1": "1x",
+    "2": "2x",
+    "4": "4x"
+  },
+  "videoReconDownscaleMeta": {
+    "1": "Most detail",
+    "2": "Balanced",
+    "4": "Lower VRAM"
+  },
+  "videoReconMatching": {
+    "sequential": "Sequential",
+    "exhaustive": "Exhaustive"
+  },
+  "videoReconMatchingMeta": {
+    "sequential": "Long clips",
+    "exhaustive": "More robust"
+  },
+  "videoReconCacheImages": {
+    "gpu": "GPU",
+    "cpu": "CPU"
+  },
+  "videoReconCacheImagesMeta": {
+    "gpu": "Faster",
+    "cpu": "Saves VRAM"
+  },
+  "videoReconCustomValidation": {
+    "frameCount": "Target frames must be between 24 and 1200.",
+    "iterations": "Training iterations must be between 1k and 80k.",
+    "exhaustiveFrames": "Exhaustive matching is capped at 450 custom frames. Use Sequential for longer videos."
   },
   "videoReconEngine": {
     "auto": "Auto",

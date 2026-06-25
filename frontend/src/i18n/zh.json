@@ -466,7 +466,7 @@
   "videoReconSubmitting": "提交中...",
   "videoReconSettingsTitle": "视频重建",
   "videoReconSettingsDefaults": "默认值与诊断",
-  "videoReconSettingsHint": "控制本地视频生成 Gaussian Splat 模型时默认使用的预设。",
+  "videoReconSettingsHint": "控制本地视频重建的默认预设；单次任务的自定义参数可在生成弹窗里调整。",
   "videoReconRefreshDiagnostics": "刷新",
   "videoReconDefaultQuality": "默认质量",
   "videoReconDefaultQualityMeta": "影响帧数、分辨率、迭代与耗时",
@@ -492,17 +492,63 @@
   "videoReconQuality": {
     "preview": "快速预览",
     "high": "高质量",
-    "extreme": "极致"
+    "extreme": "极致",
+    "custom": "自定义"
   },
   "videoReconQualityMeta": {
     "preview": "90 帧 / 7k",
     "high": "180 帧 / 30k",
-    "extreme": "360 帧 / 50k"
+    "extreme": "360 帧 / 50k",
+    "custom": "手动调参"
   },
   "videoReconQualityHint": {
     "preview": "用于快速确认相机路径和主体清理效果，输入细节和 splat 数量较少。",
     "high": "当前推荐：2x 输入分辨率、focused 清理，这段 4K 视频约 50 分钟级。",
-    "extreme": "提高帧数和训练预算，适合长时间离线追求上限，显存和耗时压力更大。"
+    "extreme": "提高帧数和训练预算，适合长时间离线追求上限，显存和耗时压力更大。",
+    "custom": "当预设不适合当前视频时使用。可以有意识地提高覆盖、细节或稳定性，同时承担耗时和显存代价。"
+  },
+  "videoReconCustomTitle": "自定义重建参数",
+  "videoReconCustomHint": "这些参数只作用于本次任务，不会保存为全局默认值。",
+  "videoReconCustomFrameCount": "目标帧数",
+  "videoReconCustomFrameCountHint": "帧数越多，越能覆盖长路径；但几何阶段和训练都会更久。",
+  "videoReconCustomIterations": "训练迭代",
+  "videoReconCustomIterationsHint": "迭代越多，可能细化更多细节；但每一步都会增加训练时间。",
+  "videoReconCustomDownscale": "输入下采样",
+  "videoReconCustomDownscaleHint": "下采样越低越保留输入细节；下采样越高越省显存，也更能压住噪声。",
+  "videoReconCustomMatching": "COLMAP 匹配",
+  "videoReconCustomMatchingHint": "顺序匹配适合长时间走拍；完整匹配更稳，但帧数高时增长很快。",
+  "videoReconCustomCacheImages": "图像缓存",
+  "videoReconCustomCacheImagesHint": "GPU 缓存可能更快；CPU 缓存能把显存留给高帧数或高输入细节。",
+  "videoReconDownscale": {
+    "1": "1x",
+    "2": "2x",
+    "4": "4x"
+  },
+  "videoReconDownscaleMeta": {
+    "1": "细节最多",
+    "2": "均衡",
+    "4": "更省显存"
+  },
+  "videoReconMatching": {
+    "sequential": "顺序",
+    "exhaustive": "完整"
+  },
+  "videoReconMatchingMeta": {
+    "sequential": "长视频",
+    "exhaustive": "更稳"
+  },
+  "videoReconCacheImages": {
+    "gpu": "GPU",
+    "cpu": "CPU"
+  },
+  "videoReconCacheImagesMeta": {
+    "gpu": "更快",
+    "cpu": "省显存"
+  },
+  "videoReconCustomValidation": {
+    "frameCount": "目标帧数必须在 24 到 1200 之间。",
+    "iterations": "训练迭代必须在 1k 到 80k 之间。",
+    "exhaustiveFrames": "完整匹配的自定义帧数上限为 450。更长视频请使用顺序匹配。"
   },
   "videoReconEngine": {
     "auto": "自动",

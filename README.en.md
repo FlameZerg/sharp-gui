@@ -413,13 +413,14 @@ rm -rf sharp-gui/
 ### Generate 3D Models from Video
 
 1. **Choose a video** - Select one video in the local media gallery, or drop a single video onto the model view, model list, or "Generate New" entry
-2. **Pick settings** - Choose mode (Auto / Object / Environment), quality (Quick Preview / High Quality / Extreme), and engine (Auto / Stable)
+2. **Pick settings** - Choose mode (Auto / Object / Environment), quality (Quick Preview / High Quality / Extreme / Custom), and engine (Auto / Stable). Custom lets you set frame count, iterations, input downscale, matching method, and image cache
 3. **Wait for reconstruction** - The task queue reports stages such as frame extraction, pose estimation, Gaussian optimization, export, and SPZ compression
 4. **Open the result** - The model appears in the existing model gallery, uses the video poster as its thumbnail when available, and exposes source-video replay from the hover actions
 
 Current guidance:
 
 - **Default quality**: High Quality, tuned for RTX 5070 Ti Laptop 12GB-class machines, about 180 frames / 30k iterations / 2x input downscale
+- **Long-video guidance**: Select Custom and start from about 600 frames / 35k iterations / 2x input downscale / sequential matching / CPU image cache to prioritize walk-through coverage. If you switch to exhaustive matching, reduce frame count sharply to avoid COLMAP matching blowups
 - **Default engine**: Auto; currently equivalent to the verified stable Nerfstudio/Splatfacto route, with room for future strategy changes
 - **Default cleanup**: Auto / Object modes enable focused cleanup to remove distant loose splats; Environment mode keeps the full scene
 - **Current limits**: One video per task; dynamic 4D, mesh repair, manual trimming, and cloud training are out of scope
@@ -508,7 +509,7 @@ The system auto-creates:
 
 The Settings > Video Reconstruction area is for dependency diagnostics and defaults:
 
-- **Default quality**: Quick Preview / High Quality / Extreme, mapped to different frame, iteration, and input-resolution budgets
+- **Default quality**: Quick Preview / High Quality / Extreme, mapped to different frame, iteration, matching, and input-resolution budgets. Per-task custom parameters are available in the generation dialog
 - **Default engine**: Auto / Stable; Auto currently uses the verified stable Nerfstudio/Splatfacto route
 - **VRAM budget**: Auto / 8GB / 12GB / 16GB / 24GB, used to tighten or relax resource boundaries
 - **Keep intermediate files**: Useful for inspecting frames, poses, and Nerfstudio logs; when off, completed/cancelled jobs clean their job folders

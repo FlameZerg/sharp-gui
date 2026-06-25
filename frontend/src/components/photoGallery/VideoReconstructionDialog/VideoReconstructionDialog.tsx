@@ -15,7 +15,10 @@ import { ChevronDownIcon, SparklesIcon } from '@/components/common/Icons';
 import { Modal } from '@/components/common/Modal';
 import { useAppStore } from '@/store';
 import type {
+  VideoReconstructionCacheImages,
+  VideoReconstructionCustomOptions,
   VideoReconstructionEngine,
+  VideoReconstructionMatchingMethod,
   VideoReconstructionMode,
   VideoReconstructionQuality,
 } from '@/types';
@@ -25,8 +28,18 @@ import styles from './VideoReconstructionDialog.module.css';
 const MAX_OUTPUT_NAME_LENGTH = 120;
 
 const MODE_OPTIONS: VideoReconstructionMode[] = ['auto', 'object', 'environment'];
-const QUALITY_OPTIONS: VideoReconstructionQuality[] = ['preview', 'high', 'extreme'];
+const QUALITY_OPTIONS: VideoReconstructionQuality[] = ['preview', 'high', 'extreme', 'custom'];
 const ENGINE_OPTIONS: VideoReconstructionEngine[] = ['auto', 'stable'];
+const DOWNSCALE_OPTIONS = [1, 2, 4] as const;
+const MATCHING_OPTIONS: VideoReconstructionMatchingMethod[] = ['sequential', 'exhaustive'];
+const CACHE_OPTIONS: VideoReconstructionCacheImages[] = ['gpu', 'cpu'];
+const DEFAULT_CUSTOM_OPTIONS: VideoReconstructionCustomOptions = {
+  frame_count: 600,
+  max_num_iterations: 35000,
+  downscale_factor: 2,
+  matching_method: 'sequential',
+  cache_images: 'cpu',
+};
 
 function deriveOutputName(filename: string): string {
   const withoutExtension = filename.replace(/\.[^.]+$/, '');
@@ -67,6 +80,7 @@ export function VideoReconstructionDialog() {
   const [mode, setMode] = useState<VideoReconstructionMode>('auto');
   const [quality, setQuality] = useState<VideoReconstructionQuality>('high');
   const [engine, setEngine] = useState<VideoReconstructionEngine>('auto');
+  const [customOptions, setCustomOptions] = useState<VideoReconstructionCustomOptions>(DEFAULT_CUSTOM_OPTIONS);
   const [outputName, setOutputName] = useState('');
   const [keepIntermediateFiles, setKeepIntermediateFiles] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -82,6 +96,7 @@ export function VideoReconstructionDialog() {
     setMode('auto');
     setQuality(config.default_quality);
     setEngine(config.default_engine);
+    setCustomOptions(DEFAULT_CUSTOM_OPTIONS);
     setOutputName(deriveOutputName(targetName));
     setKeepIntermediateFiles(config.keep_intermediate_files);
     setAdvancedOpen(false);
@@ -134,12 +149,29 @@ export function VideoReconstructionDialog() {
     };
   }, [dependencies, isOpen, setStatus, t]);
 
+  const customValidationMessage = useMemo(() => {
+    if (quality !== 'custom') {
+      return null;
+    }
+    if (customOptions.frame_count < 24 || customOptions.frame_count > 1200) {
+      return t('videoReconCustomValidation.frameCount');
+    }
+    if (customOptions.max_num_iterations < 1000 || customOptions.max_num_iterations > 80000) {
+      return t('videoReconCustomValidation.iterations');
+    }
+    if (customOptions.matching_method === 'exhaustive' && customOptions.frame_count > 450) {
+      return t('videoReconCustomValidation.exhaustiveFrames');
+    }
+    return null;
+  }, [customOptions, quality, t]);
+
   const stableAvailable = Boolean(dependencies?.summary.stable_available);
   const dependenciesChecking = Boolean(dependencies?.summary.checking) || statusLoading;
   const canSubmit = (target?.media_type === 'video' || Boolean(fileTarget))
     && !submitting
     && !dependenciesChecking
     && stableAvailable
+    && !customValidationMessage
     && outputName.trim().length > 0
     && outputName.trim().length <= MAX_OUTPUT_NAME_LENGTH;
 
@@ -170,6 +202,7 @@ export function VideoReconstructionDialog() {
       const requestOptions = {
         mode,
         quality,
+        custom_options: quality === 'custom' ? customOptions : undefined,
         engine,
         output_name: outputName.trim(),
         keep_intermediate_files: keepIntermediateFiles,
@@ -196,6 +229,21 @@ export function VideoReconstructionDialog() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const updateCustomOption = <Key extends keyof VideoReconstructionCustomOptions>(
+    key: Key,
+    value: VideoReconstructionCustomOptions[Key],
+  ) => {
+    setCustomOptions((current) => ({ ...current, [key]: value }));
+  };
+
+  const updateCustomNumber = (
+    key: 'frame_count' | 'max_num_iterations',
+    value: string,
+  ) => {
+    const parsed = Number.parseInt(value, 10);
+    updateCustomOption(key, Number.isFinite(parsed) ? parsed : 0);
   };
 
   return (
@@ -251,6 +299,116 @@ export function VideoReconstructionDialog() {
             ))}
           </div>
         </fieldset>
+
+        {quality === 'custom' ? (
+          <div className={styles.customPanel}>
+            <div className={styles.customHeader}>
+              <strong>{t('videoReconCustomTitle')}</strong>
+              <span>{t('videoReconCustomHint')}</span>
+            </div>
+
+            <div className={styles.customGrid}>
+              <label className={styles.numberField}>
+                <span>{t('videoReconCustomFrameCount')}</span>
+                <input
+                  className={styles.numberInput}
+                  type="number"
+                  min={24}
+                  max={1200}
+                  step={12}
+                  value={customOptions.frame_count}
+                  disabled={submitting}
+                  onChange={(event) => updateCustomNumber('frame_count', event.target.value)}
+                />
+                <small>{t('videoReconCustomFrameCountHint')}</small>
+              </label>
+
+              <label className={styles.numberField}>
+                <span>{t('videoReconCustomIterations')}</span>
+                <input
+                  className={styles.numberInput}
+                  type="number"
+                  min={1000}
+                  max={80000}
+                  step={1000}
+                  value={customOptions.max_num_iterations}
+                  disabled={submitting}
+                  onChange={(event) => updateCustomNumber('max_num_iterations', event.target.value)}
+                />
+                <small>{t('videoReconCustomIterationsHint')}</small>
+              </label>
+            </div>
+
+            <fieldset className={styles.fieldset} disabled={submitting}>
+              <label className={styles.label}>{t('videoReconCustomDownscale')}</label>
+              <div className={styles.segmented}>
+                {DOWNSCALE_OPTIONS.map((option) => (
+                  <button
+                    key={option}
+                    className={[
+                      styles.segmentBtn,
+                      customOptions.downscale_factor === option ? styles.segmentActive : '',
+                    ].filter(Boolean).join(' ')}
+                    onClick={() => updateCustomOption('downscale_factor', option)}
+                    type="button"
+                  >
+                    <span>{t(`videoReconDownscale.${option}`)}</span>
+                    <small>{t(`videoReconDownscaleMeta.${option}`)}</small>
+                  </button>
+                ))}
+              </div>
+              <p className={styles.parameterHint}>{t('videoReconCustomDownscaleHint')}</p>
+            </fieldset>
+
+            <fieldset className={styles.fieldset} disabled={submitting}>
+              <label className={styles.label}>{t('videoReconCustomMatching')}</label>
+              <div className={styles.segmented}>
+                {MATCHING_OPTIONS.map((option) => (
+                  <button
+                    key={option}
+                    className={[
+                      styles.segmentBtn,
+                      customOptions.matching_method === option ? styles.segmentActive : '',
+                    ].filter(Boolean).join(' ')}
+                    onClick={() => updateCustomOption('matching_method', option)}
+                    type="button"
+                  >
+                    <span>{t(`videoReconMatching.${option}`)}</span>
+                    <small>{t(`videoReconMatchingMeta.${option}`)}</small>
+                  </button>
+                ))}
+              </div>
+              <p className={styles.parameterHint}>{t('videoReconCustomMatchingHint')}</p>
+            </fieldset>
+
+            <fieldset className={styles.fieldset} disabled={submitting}>
+              <label className={styles.label}>{t('videoReconCustomCacheImages')}</label>
+              <div className={styles.segmented}>
+                {CACHE_OPTIONS.map((option) => (
+                  <button
+                    key={option}
+                    className={[
+                      styles.segmentBtn,
+                      customOptions.cache_images === option ? styles.segmentActive : '',
+                    ].filter(Boolean).join(' ')}
+                    onClick={() => updateCustomOption('cache_images', option)}
+                    type="button"
+                  >
+                    <span>{t(`videoReconCacheImages.${option}`)}</span>
+                    <small>{t(`videoReconCacheImagesMeta.${option}`)}</small>
+                  </button>
+                ))}
+              </div>
+              <p className={styles.parameterHint}>{t('videoReconCustomCacheImagesHint')}</p>
+            </fieldset>
+
+            {customValidationMessage ? (
+              <div className={[styles.message, styles.warning].join(' ')}>
+                {customValidationMessage}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className={styles.fieldset}>
           <label className={styles.label} htmlFor="video-recon-output-name">

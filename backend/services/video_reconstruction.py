@@ -23,9 +23,14 @@ from backend.services.static_files import is_real_path_inside
 TASK_KIND_VIDEO_3DGS = "video_3dgs"
 
 VALID_RECONSTRUCTION_MODES = {"auto", "object", "environment"}
-VALID_RECONSTRUCTION_QUALITIES = {"preview", "high", "extreme"}
+PRESET_RECONSTRUCTION_QUALITIES = {"preview", "high", "extreme"}
+CUSTOM_RECONSTRUCTION_QUALITY = "custom"
+VALID_RECONSTRUCTION_QUALITIES = PRESET_RECONSTRUCTION_QUALITIES | {CUSTOM_RECONSTRUCTION_QUALITY}
 VALID_RECONSTRUCTION_ENGINES = {"auto", "stable"}
 VALID_VRAM_BUDGETS = {"auto", "8gb", "12gb", "16gb", "24gb"}
+VALID_MATCHING_METHODS = {"sequential", "exhaustive"}
+VALID_CACHE_IMAGE_MODES = {"gpu", "cpu"}
+VALID_DOWNSCALE_FACTORS = {1, 2, 4}
 
 ERROR_DEPENDENCY_MISSING = "video_reconstruction_dependency_missing"
 ERROR_DEPENDENCIES_CHECKING = "video_reconstruction_dependencies_checking"
@@ -45,6 +50,8 @@ ERROR_UNSUPPORTED_VIDEO = "video_reconstruction_unsupported_video"
 # - extreme: exhaustive，与高质量档保持同一匹配策略，宁可增加 COLMAP 匹配耗时，
 #   也优先保证注册完整性；词表检索在部分素材上可能配准过少，导致极致档反而
 #   只重建极少视角。
+# 自定义档由用户显式填写帧数、迭代、下采样、匹配方式和缓存位置；后端只做
+# 范围校验与危险组合限制，不再把长视频方案伪装成一个通用预设。
 QUALITY_PROFILES = {
     "preview": {
         "frame_count": 90,
@@ -97,6 +104,26 @@ QUALITY_PROFILES = {
         "cache_images": "cpu",
         "progress_weight": 0.72,
     },
+}
+
+CUSTOM_QUALITY_DEFAULTS = {
+    "frame_count": 600,
+    "max_num_iterations": 35000,
+    "downscale_factor": 2,
+    "matching_method": "sequential",
+    "cache_images": "cpu",
+}
+
+CUSTOM_QUALITY_LIMITS = {
+    "frame_count": (24, 1200),
+    "max_num_iterations": (1000, 80000),
+    "exhaustive_frame_count_max": 450,
+}
+
+CUSTOM_DOWNSCALE_MAX_RESOLUTION = {
+    1: 2160,
+    2: 1920,
+    4: 1280,
 }
 
 FOCUSED_CLEANUP_PROFILE = {
@@ -337,7 +364,7 @@ def normalize_video_reconstruction_settings(value):
     vram_budget = raw.get("vram_budget")
 
     return {
-        "default_quality": quality if quality in VALID_RECONSTRUCTION_QUALITIES else defaults["default_quality"],
+        "default_quality": quality if quality in PRESET_RECONSTRUCTION_QUALITIES else defaults["default_quality"],
         "default_engine": engine if engine in VALID_RECONSTRUCTION_ENGINES else defaults["default_engine"],
         "vram_budget": vram_budget if vram_budget in VALID_VRAM_BUDGETS else defaults["vram_budget"],
         "keep_intermediate_files": bool(raw.get("keep_intermediate_files")),
@@ -355,6 +382,121 @@ def coerce_form_bool(value, default=False):
     if normalized in {"0", "false", "no", "off"}:
         return False
     return default
+
+
+def parse_custom_options_value(value):
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except ValueError:
+            return None
+        return parsed if isinstance(parsed, dict) else None
+    return None
+
+
+def coerce_custom_int(options, key, default, minimum, maximum):
+    raw_value = options.get(key, default)
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError):
+        return None, {
+            "error": f"{key} must be an integer",
+            "code": ERROR_INVALID_REQUEST,
+            "field": f"custom_options.{key}",
+        }
+    if value < minimum or value > maximum:
+        return None, {
+            "error": f"{key} must be between {minimum} and {maximum}",
+            "code": ERROR_INVALID_REQUEST,
+            "field": f"custom_options.{key}",
+        }
+    return value, None
+
+
+def normalize_custom_quality_options(value):
+    options = parse_custom_options_value(value)
+    if options is None:
+        return None, {
+            "error": "custom_options must be an object",
+            "code": ERROR_INVALID_REQUEST,
+            "field": "custom_options",
+        }
+
+    frame_min, frame_max = CUSTOM_QUALITY_LIMITS["frame_count"]
+    frame_count, error = coerce_custom_int(
+        options,
+        "frame_count",
+        CUSTOM_QUALITY_DEFAULTS["frame_count"],
+        frame_min,
+        frame_max,
+    )
+    if error:
+        return None, error
+
+    iter_min, iter_max = CUSTOM_QUALITY_LIMITS["max_num_iterations"]
+    max_num_iterations, error = coerce_custom_int(
+        options,
+        "max_num_iterations",
+        CUSTOM_QUALITY_DEFAULTS["max_num_iterations"],
+        iter_min,
+        iter_max,
+    )
+    if error:
+        return None, error
+
+    downscale_factor, error = coerce_custom_int(
+        options,
+        "downscale_factor",
+        CUSTOM_QUALITY_DEFAULTS["downscale_factor"],
+        min(VALID_DOWNSCALE_FACTORS),
+        max(VALID_DOWNSCALE_FACTORS),
+    )
+    if error:
+        return None, error
+    if downscale_factor not in VALID_DOWNSCALE_FACTORS:
+        return None, {
+            "error": "downscale_factor must be 1, 2, or 4",
+            "code": ERROR_INVALID_REQUEST,
+            "field": "custom_options.downscale_factor",
+        }
+
+    matching_method = str(options.get("matching_method", CUSTOM_QUALITY_DEFAULTS["matching_method"])).strip().lower()
+    if matching_method not in VALID_MATCHING_METHODS:
+        return None, {
+            "error": "matching_method must be sequential or exhaustive",
+            "code": ERROR_INVALID_REQUEST,
+            "field": "custom_options.matching_method",
+        }
+
+    if (
+        matching_method == "exhaustive"
+        and frame_count > CUSTOM_QUALITY_LIMITS["exhaustive_frame_count_max"]
+    ):
+        return None, {
+            "error": "exhaustive matching is limited to 450 custom frames",
+            "code": ERROR_INVALID_REQUEST,
+            "field": "custom_options.frame_count",
+        }
+
+    cache_images = str(options.get("cache_images", CUSTOM_QUALITY_DEFAULTS["cache_images"])).strip().lower()
+    if cache_images not in VALID_CACHE_IMAGE_MODES:
+        return None, {
+            "error": "cache_images must be gpu or cpu",
+            "code": ERROR_INVALID_REQUEST,
+            "field": "custom_options.cache_images",
+        }
+
+    return {
+        "frame_count": frame_count,
+        "max_num_iterations": max_num_iterations,
+        "downscale_factor": downscale_factor,
+        "matching_method": matching_method,
+        "cache_images": cache_images,
+    }, None
 
 
 def validate_reconstruction_options(data):
@@ -379,6 +521,13 @@ def validate_reconstruction_options(data):
             "code": ERROR_INVALID_REQUEST,
             "field": "quality",
         }, 400
+
+    custom_options = None
+    if quality == CUSTOM_RECONSTRUCTION_QUALITY:
+        custom_options, custom_error = normalize_custom_quality_options(data.get("custom_options"))
+        if custom_error:
+            return None, custom_error, 400
+
     if engine not in VALID_RECONSTRUCTION_ENGINES:
         return None, {
             "error": "Unsupported reconstruction engine",
@@ -411,6 +560,7 @@ def validate_reconstruction_options(data):
         "engine": engine,
         "vram_budget": config["vram_budget"],
         "output_name": output_name or None,
+        "custom_options": custom_options,
         "keep_intermediate_files": coerce_form_bool(keep_intermediate_files, config["keep_intermediate_files"]),
     }, None, 200
 
@@ -461,7 +611,40 @@ def validate_upload_request(form_data, uploaded_file):
     }, None, 200
 
 
-def resolve_quality_profile(quality, vram_budget):
+def build_custom_quality_profile(custom_options, vram_budget):
+    options, error = normalize_custom_quality_options(custom_options)
+    if error:
+        options = dict(CUSTOM_QUALITY_DEFAULTS)
+
+    downscale_factor = options["downscale_factor"]
+    max_resolution = CUSTOM_DOWNSCALE_MAX_RESOLUTION[downscale_factor]
+    num_random = 120000 if downscale_factor == 1 else 90000 if options["frame_count"] >= 360 else 80000
+
+    return {
+        "frame_count": options["frame_count"],
+        "max_resolution": max_resolution,
+        "max_num_iterations": options["max_num_iterations"],
+        "num_downscales": downscale_factor_to_num_downscales(downscale_factor),
+        "downscale_factor": downscale_factor,
+        "matching_method": options["matching_method"],
+        "train_cameras_sampling_strategy": "fps",
+        "camera_optimizer_mode": "SO3xR3",
+        "num_random": num_random,
+        "densify_grad_thresh": 0.00055,
+        "cull_alpha_thresh": 0.04,
+        "use_scale_regularization": True,
+        "use_bilateral_grid": True,
+        "cache_images": options["cache_images"],
+        "progress_weight": 0.58,
+        "vram_budget": vram_budget if vram_budget in VRAM_PROFILE_LIMITS else "auto",
+        "custom_options": options,
+    }
+
+
+def resolve_quality_profile(quality, vram_budget, custom_options=None):
+    if quality == CUSTOM_RECONSTRUCTION_QUALITY:
+        return build_custom_quality_profile(custom_options, vram_budget)
+
     base = QUALITY_PROFILES.get(quality, QUALITY_PROFILES["high"])
     limits = VRAM_PROFILE_LIMITS.get(vram_budget, VRAM_PROFILE_LIMITS["auto"])
 
@@ -750,6 +933,7 @@ def build_video_task(paths, request_data):
         "source_video_path": full_path,
         "mode": request_data["mode"],
         "quality": request_data["quality"],
+        "custom_options": request_data.get("custom_options"),
         "engine": request_data["engine"],
         "resolved_engine": engine,
         "vram_budget": request_data["vram_budget"],
@@ -819,6 +1003,7 @@ def build_uploaded_video_task(paths, request_data, uploaded_file):
         "source_mime_type": uploaded_file.mimetype,
         "mode": request_data["mode"],
         "quality": request_data["quality"],
+        "custom_options": request_data.get("custom_options"),
         "engine": request_data["engine"],
         "resolved_engine": engine,
         "vram_budget": request_data["vram_budget"],
@@ -926,6 +1111,7 @@ def build_video_model_metadata(task):
         "generator": TASK_KIND_VIDEO_3DGS,
         "mode": task.get("mode"),
         "quality": task.get("quality"),
+        "custom_options": task.get("custom_options"),
         "engine": task.get("engine"),
         "resolved_engine": task.get("resolved_engine"),
     }
@@ -2063,7 +2249,11 @@ def run_video_reconstruction_task(task_manager, task_id, task):
     export_dir = os.path.join(job_dir, "export")
     logs_dir = os.path.join(job_dir, "logs")
     keep_intermediate = bool(task.get("keep_intermediate_files"))
-    profile = resolve_quality_profile(task.get("quality"), task.get("vram_budget"))
+    profile = resolve_quality_profile(
+        task.get("quality"),
+        task.get("vram_budget"),
+        task.get("custom_options"),
+    )
     task.setdefault("details", {})["resource_profile"] = profile
 
     def cleanup_failed():

@@ -25,7 +25,7 @@ import type {
     VideoReconstructionConfig,
     VideoReconstructionDependencies,
     VideoReconstructionEngine,
-    VideoReconstructionQuality,
+    VideoReconstructionPresetQuality,
     VideoReconstructionVramBudget,
 } from '@/types';
 import {
@@ -812,7 +812,7 @@ export const Settings: React.FC = () => {
                                     <small>{t('videoReconDefaultQualityMeta')}</small>
                                 </label>
                                 <div className={styles.segmentedControl}>
-                                    {(['preview', 'high', 'extreme'] as VideoReconstructionQuality[]).map((quality) => (
+                                    {(['preview', 'high', 'extreme'] as VideoReconstructionPresetQuality[]).map((quality) => (
                                         <button
                                             key={quality}
                                             type="button"

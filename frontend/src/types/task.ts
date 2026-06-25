@@ -16,6 +16,13 @@ export interface Task {
   source_name?: string;
   mode?: string;
   quality?: string;
+  custom_options?: {
+    frame_count?: number;
+    max_num_iterations?: number;
+    downscale_factor?: number;
+    matching_method?: string;
+    cache_images?: string;
+  };
   engine?: string;
   resolved_engine?: string;
   vram_budget?: string;

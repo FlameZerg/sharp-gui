@@ -290,6 +290,7 @@ class TaskManager:
             "source_name",
             "mode",
             "quality",
+            "custom_options",
             "engine",
             "resolved_engine",
             "vram_budget",

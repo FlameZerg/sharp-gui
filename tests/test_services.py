@@ -103,6 +103,13 @@ def test_video_reconstruction_config_and_paths_are_normalized(workspace):
         os.path.normpath(".video-reconstruction/jobs")
     )
 
+    config["video_reconstruction"]["default_quality"] = "custom"
+    video_config, changed = normalize_video_reconstruction_config(config)
+    assert video_config["default_quality"] == "high"
+    config["video_reconstruction"]["default_quality"] = "extreme"
+    video_config, changed = normalize_video_reconstruction_config(config)
+    assert video_config["default_quality"] == "extreme"
+
 
 def test_real_path_inside_handles_escape(tmp_path):
     root = tmp_path / "root"
@@ -265,6 +272,13 @@ def test_video_reconstruction_quality_profile_uses_vram_budget():
     default_profile = video_reconstruction.resolve_quality_profile("high", "12gb")
     low_vram_profile = video_reconstruction.resolve_quality_profile("high", "8gb")
     large_vram_profile = video_reconstruction.resolve_quality_profile("extreme", "24gb")
+    custom_profile = video_reconstruction.resolve_quality_profile("custom", "8gb", {
+        "frame_count": 720,
+        "max_num_iterations": 42000,
+        "downscale_factor": 2,
+        "matching_method": "sequential",
+        "cache_images": "cpu",
+    })
 
     assert default_profile["frame_count"] == 180
     assert default_profile["max_num_iterations"] == 30000
@@ -276,13 +290,27 @@ def test_video_reconstruction_quality_profile_uses_vram_budget():
     assert large_vram_profile["frame_count"] > video_reconstruction.QUALITY_PROFILES["extreme"]["frame_count"]
     assert large_vram_profile["max_resolution"] == 2160
     assert large_vram_profile["downscale_factor"] == 1
+    assert custom_profile["frame_count"] == 720
+    assert custom_profile["max_num_iterations"] == 42000
+    assert custom_profile["downscale_factor"] == 2
+    assert custom_profile["matching_method"] == "sequential"
+    assert custom_profile["cache_images"] == "cpu"
 
 
 def test_video_reconstruction_commands_use_quality_profile():
     profile = video_reconstruction.resolve_quality_profile("high", "12gb")
+    custom_profile = video_reconstruction.resolve_quality_profile("custom", "12gb", {
+        "frame_count": 600,
+        "max_num_iterations": 35000,
+        "downscale_factor": 2,
+        "matching_method": "sequential",
+        "cache_images": "cpu",
+    })
 
     process_cmd = video_reconstruction.build_process_data_command("clip.mp4", "data", profile)
     train_cmd = video_reconstruction.build_train_command("data", "train", profile)
+    custom_process_cmd = video_reconstruction.build_process_data_command("clip.mp4", "data", custom_profile)
+    custom_train_cmd = video_reconstruction.build_train_command("data", "train", custom_profile)
 
     assert process_cmd[process_cmd.index("--num-frames-target") + 1] == "180"
     assert process_cmd[process_cmd.index("--num-downscales") + 1] == "2"
@@ -293,6 +321,34 @@ def test_video_reconstruction_commands_use_quality_profile():
     assert train_cmd[train_cmd.index("--pipeline.model.camera-optimizer.mode") + 1] == "SO3xR3"
     assert train_cmd[train_cmd.index("--pipeline.model.num-random") + 1] == "80000"
     assert train_cmd[-4:] == ["--data", "data", "--downscale-factor", "2"]
+    assert custom_process_cmd[custom_process_cmd.index("--num-frames-target") + 1] == "600"
+    assert custom_process_cmd[custom_process_cmd.index("--num-downscales") + 1] == "1"
+    assert custom_process_cmd[custom_process_cmd.index("--matching-method") + 1] == "sequential"
+    assert custom_train_cmd[custom_train_cmd.index("--max-num-iterations") + 1] == "35000"
+    assert custom_train_cmd[custom_train_cmd.index("--pipeline.datamanager.cache-images") + 1] == "cpu"
+    assert custom_train_cmd[-4:] == ["--data", "data", "--downscale-factor", "2"]
+
+
+def test_video_reconstruction_custom_options_are_validated():
+    valid, error = video_reconstruction.normalize_custom_quality_options({
+        "frame_count": "600",
+        "max_num_iterations": "35000",
+        "downscale_factor": "2",
+        "matching_method": "sequential",
+        "cache_images": "cpu",
+    })
+    assert error is None
+    assert valid["frame_count"] == 600
+
+    invalid, error = video_reconstruction.normalize_custom_quality_options({
+        "frame_count": 600,
+        "max_num_iterations": 35000,
+        "downscale_factor": 2,
+        "matching_method": "exhaustive",
+        "cache_images": "cpu",
+    })
+    assert invalid is None
+    assert error["field"] == "custom_options.frame_count"
 
 
 def test_video_reconstruction_train_command_can_disable_viewer():
@@ -1635,6 +1691,11 @@ def test_quality_profiles_bind_matching_method_per_tier():
     assert video_reconstruction.resolve_quality_profile("preview", "12gb")["matching_method"] == "sequential"
     assert video_reconstruction.resolve_quality_profile("high", "12gb")["matching_method"] == "exhaustive"
     assert video_reconstruction.resolve_quality_profile("extreme", "24gb")["matching_method"] == "exhaustive"
+    assert video_reconstruction.resolve_quality_profile(
+        "custom",
+        "12gb",
+        {"matching_method": "sequential"},
+    )["matching_method"] == "sequential"
 
 
 def test_estimate_object_focus_from_orbit_geometry(tmp_path):

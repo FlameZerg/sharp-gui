@@ -224,7 +224,14 @@ def test_video_reconstruction_api_queues_without_exposing_paths(client, app, con
     response = client.post("/api/video-reconstructions", json={
         "video_id": video_meta["id"],
         "mode": "object",
-        "quality": "preview",
+        "quality": "custom",
+        "custom_options": {
+            "frame_count": 600,
+            "max_num_iterations": 35000,
+            "downscale_factor": 2,
+            "matching_method": "sequential",
+            "cache_images": "cpu",
+        },
         "engine": "auto",
         "output_name": "clip",
     })
@@ -234,7 +241,9 @@ def test_video_reconstruction_api_queues_without_exposing_paths(client, app, con
     assert task["kind"] == "video_3dgs"
     assert task["source_media_id"] == video_meta["id"]
     assert task["mode"] == "object"
-    assert task["quality"] == "preview"
+    assert task["quality"] == "custom"
+    assert task["custom_options"]["frame_count"] == 600
+    assert task["custom_options"]["matching_method"] == "sequential"
     assert task["resolved_engine"] == "stable"
     assert task["vram_budget"] == "8gb"
     assert "source_video_path" not in task

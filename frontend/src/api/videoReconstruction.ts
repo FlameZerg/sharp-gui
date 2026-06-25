@@ -34,6 +34,9 @@ export async function createVideoReconstructionFromFile(
   if (options?.quality) {
     formData.append('quality', options.quality);
   }
+  if (options?.custom_options) {
+    formData.append('custom_options', JSON.stringify(options.custom_options));
+  }
   if (options?.engine) {
     formData.append('engine', options.engine);
   }

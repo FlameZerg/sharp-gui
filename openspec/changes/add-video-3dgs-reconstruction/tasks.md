@@ -60,7 +60,7 @@
 
 - [x] 7.1 新建视频重建弹窗组件，遵循三件套结构：`ComponentName.tsx`、`ComponentName.module.css`、`index.ts`。
 - [x] 7.2 弹窗提供模式选择：自动、物品、环境，并用分段控制样式呈现。
-- [x] 7.3 弹窗提供质量选择：快速预览、高质量、极致，并清晰显示推荐默认值。
+- [x] 7.3 弹窗提供质量选择：快速预览、高质量、极致、自定义，并清晰显示推荐默认值和自定义参数说明。
 - [x] 7.4 弹窗提供输出名称输入，默认从视频名派生，提交前处理空值和过长值。
 - [x] 7.5 弹窗提供折叠高级项：引擎策略、保留中间文件、帧预算或显存提示。
 - [x] 7.6 弹窗在依赖缺失或权限不足时显示玻璃态错误/禁用状态，不使用原生 `alert`。
@@ -155,7 +155,7 @@
 - 取消视频任务改为按进程树终止：`run_command` 以独立进程组/会话启动外部命令，`terminate_process_tree` 用 `taskkill /F /T`（Windows）或 `killpg`（POSIX）杀整棵树；`cancel_task` 对视频任务复用该逻辑并移出 `task_lock`，图片任务保持原单进程终止，避免误伤服务进程。
 - `video_optimize` 阶段解析 Nerfstudio 进度输出（优先百分比、回退 step/total），把进度在 58→86 之间真实推进，修复长训练进度条长期停在 58% 的问题。
 - 训练阶段抓取并暴露 Nerfstudio/viser 实时查看器链接：INFO 级别日志打印、任务详情安全暴露 `viewer_url`，前端任务队列以玻璃态圆角矩形标签展示可点击的实时进度入口。
-- COLMAP 特征匹配策略按质量档绑定：preview=sequential、high=exhaustive、extreme=exhaustive，减少长视频 sequential 断链导致的只重建前半段/相机过少问题；词表检索不再作为极致档默认，也不保留隐藏回退分支，避免部分素材配准过少和实现路径不一致。
+- COLMAP 特征匹配策略按质量档绑定：preview=sequential、high=exhaustive、extreme=exhaustive；自定义模式显式暴露 sequential/exhaustive 选择，并限制高帧数 exhaustive 这类危险组合。high/extreme 减少 sequential 断链导致的只重建前半段/相机过少问题；长视频通过自定义 sequential 和更高帧数提高覆盖，避免 600 帧 exhaustive 平方级匹配压力。词表检索不再作为极致档默认，也不保留隐藏回退分支，避免部分素材配准过少和实现路径不一致。
 - 相机注册过少时把 FPS 相机采样回退为 random，避免训练期 fpsample 断言崩溃，并记录降级与注册相机数。
 - 物品（object）模式新增相机环绕几何主体聚焦裁剪（C1）：仅 object 模式生效，auto/environment 不受影响；通过 `dataparser_transforms.json` 对齐坐标，带数据缺失/几何异常/裁剪过激的安全回退。
 - 任务进入处理即记录开始时间：前端任务卡片在处理中实时显示已用时长；视频任务后端日志在阶段切换/完成时记录各阶段耗时与总耗时。
@@ -171,3 +171,8 @@
 - 用户已确认视频模型预览交互“初步看下来没什么大问题”：后续应保持模型侧 orientation 适配，不再通过相机侧极角或 up 向量硬修画面，避免重新引入左右拖拽 roll。
 - 文档同步范围：OpenSpec proposal/design/spec/tasks、`.agents/rules`、中文/英文 README。README 中视频推理已验证平台仅记录 Windows + NVIDIA RTX 5070 Ti Laptop GPU 12GB。
 - 日志策略已在规则中沉淀：默认 INFO 只显示关键阶段和失败摘要，HTTP 请求日志与外部工具逐行输出仅在 `SHARP_HTTP_LOGS=1`、`SHARP_LOG_LEVEL=DEBUG` 或 verbose 模式启用。
+
+### 2026-06-25 自定义参数记录
+
+- 撤回固定 `long` 质量档，改为 `custom` 单次任务入口：用户可填写目标帧数、训练迭代、1x/2x/4x 输入下采样、sequential/exhaustive 匹配和 GPU/CPU 图像缓存。
+- 长视频可从约 600 帧、35k 迭代、2x 输入下采样、sequential 匹配和 CPU 图像缓存起步，优先时间覆盖；后端限制高帧数 exhaustive，避免 600 帧完整匹配约 18 万对带来的 COLMAP 压力爆炸。
