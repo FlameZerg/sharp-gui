@@ -28,9 +28,9 @@ def create_app(start_background_workers=False):
 
     config = load_config()
     _, access_config_changed = normalize_access_control_config(config)
-    _, video_config_changed = normalize_video_reconstruction_config(config)
     roots_migrated = migrate_photo_gallery_roots_config(config)
-    if access_config_changed or video_config_changed or roots_migrated:
+    _, video_config_changed = normalize_video_reconstruction_config(config)
+    if access_config_changed or roots_migrated or video_config_changed:
         save_config(config)
 
     paths = build_path_context(config)

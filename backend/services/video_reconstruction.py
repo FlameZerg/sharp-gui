@@ -17,20 +17,19 @@ from werkzeug.utils import secure_filename
 
 from backend import runtime
 from backend.config import get_video_reconstruction_config
-from backend.services import feedforward_reconstruction, model_gallery, photo_gallery
+from backend.services import model_gallery, photo_gallery
 from backend.services.static_files import is_real_path_inside
 
 TASK_KIND_VIDEO_3DGS = "video_3dgs"
 
 VALID_RECONSTRUCTION_MODES = {"auto", "object", "environment"}
 VALID_RECONSTRUCTION_QUALITIES = {"preview", "high", "extreme"}
-VALID_RECONSTRUCTION_ENGINES = {"auto", "stable", "experimental"}
+VALID_RECONSTRUCTION_ENGINES = {"auto", "stable"}
 VALID_VRAM_BUDGETS = {"auto", "8gb", "12gb", "16gb", "24gb"}
 
 ERROR_DEPENDENCY_MISSING = "video_reconstruction_dependency_missing"
 ERROR_DEPENDENCIES_CHECKING = "video_reconstruction_dependencies_checking"
 ERROR_STABLE_UNAVAILABLE = "video_reconstruction_stable_unavailable"
-ERROR_EXPERIMENTAL_UNAVAILABLE = "video_reconstruction_experimental_unavailable"
 ERROR_INVALID_REQUEST = "video_reconstruction_invalid_request"
 ERROR_SOURCE_UNAVAILABLE = "video_reconstruction_source_unavailable"
 ERROR_CANCELLED = "video_reconstruction_cancelled"
@@ -561,25 +560,6 @@ def resolve_video_python():
     return which("python") or which("python3") or "python"
 
 
-def python_module_available(module_name, python_executable=None):
-    executable = python_executable or resolve_video_python()
-    try:
-        env = os.environ.copy()
-        env.setdefault("PYTHONUTF8", "1")
-        env.setdefault("PYTHONIOENCODING", "utf-8")
-        result = subprocess.run(
-            [executable, "-c", f"import {module_name}"],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=8,
-            env=env,
-        )
-        return result.returncode == 0
-    except Exception:
-        return False
-
-
 def _decorate_dependency_status(dependencies, *, checked_at, refreshing, cached):
     result = copy.deepcopy(dependencies)
     summary = result.setdefault("summary", {})
@@ -602,16 +582,9 @@ def _pending_dependency_status():
             "tools": [],
             "message": message,
         },
-        "experimental": {
-            "available": False,
-            "tools": [],
-            "message": "Experimental initialization status is pending.",
-        },
         "summary": {
             "available": False,
             "stable_available": False,
-            "experimental_available": False,
-            "training_available": False,
             "checking": True,
             "checked_at": None,
             "cached": False,
@@ -632,16 +605,9 @@ def _dependency_error_status(exc):
             "tools": [],
             "message": message,
         },
-        "experimental": {
-            "available": False,
-            "tools": [],
-            "message": "Experimental initialization status could not be checked.",
-        },
         "summary": {
             "available": False,
             "stable_available": False,
-            "experimental_available": False,
-            "training_available": False,
         },
     }
 
@@ -661,15 +627,9 @@ def _scan_dependencies():
         tool["category"] = "stable"
         tool["required"] = True
 
-    feedforward_status = feedforward_reconstruction.detect_feedforward_status(resolve_video_python())
-
     required_tools = [ffmpeg, ffprobe]
     stable_available = all(tool["available"] for tool in stable_tools)
     required_available = all(tool["available"] for tool in required_tools)
-    experimental_available = bool(feedforward_status["available"])
-    # 前馈路线复用 Nerfstudio 训练/导出（不需要 COLMAP / ns-process-data），
-    # 因此单独评估“训练核心”是否就绪，供前馈策略判断与 auto 回退使用。
-    training_available = required_available and ns_train["available"] and ns_export["available"]
 
     return {
         "required": {
@@ -682,53 +642,23 @@ def _scan_dependencies():
             "tools": stable_tools,
             "message": None if stable_available else "Nerfstudio CLI tools and COLMAP are required for the stable Splatfacto route.",
         },
-        "experimental": {
-            "available": experimental_available,
-            "tools": feedforward_status["tools"],
-            "message": feedforward_status["message"],
-            "engine_available": feedforward_status["engine_available"],
-            "weights_available": feedforward_status["weights_available"],
-            "weights_path": feedforward_status["weights_path"],
-            "weights_dir": feedforward_status["weights_dir"],
-        },
         "summary": {
             "available": required_available and stable_available,
             "stable_available": required_available and stable_available,
-            "experimental_available": experimental_available,
-            "training_available": training_available,
         },
     }
 
 
 def resolve_engine_strategy(engine, dependencies=None):
     dependencies = dependencies or check_dependencies()
-    summary = dependencies.get("summary", {})
     stable_available = bool(dependencies["stable"]["available"])
-    feedforward_available = bool(dependencies["experimental"]["available"])
-    training_available = bool(summary.get("training_available", stable_available))
 
-    if engine == "stable":
+    if engine in {"auto", "stable"}:
         if not stable_available:
-            return None, ERROR_STABLE_UNAVAILABLE
+            return None, ERROR_DEPENDENCY_MISSING
         return "stable", None
 
-    if engine == "experimental":
-        # 强制前馈：前馈不可用则拒绝，不静默回退。
-        if not feedforward_available:
-            return None, ERROR_EXPERIMENTAL_UNAVAILABLE
-        if not training_available:
-            # 前馈就绪但缺少训练后段（ns-train/ns-export/ffmpeg），无法完成重建。
-            return None, ERROR_STABLE_UNAVAILABLE
-        return "feedforward", None
-
-    # auto：前馈优先（需训练后段就绪），否则走稳定 COLMAP 路线。
-    if feedforward_available and training_available:
-        return "feedforward", None
-    if stable_available:
-        return "stable", None
-    if feedforward_available and not training_available:
-        return None, ERROR_STABLE_UNAVAILABLE
-    return None, ERROR_DEPENDENCY_MISSING
+    return None, ERROR_INVALID_REQUEST
 
 
 def sanitize_output_stem(name):
@@ -1971,53 +1901,6 @@ def build_process_data_command(source_video_path, data_dir, profile):
     ]
 
 
-def _reset_directory(path):
-    if os.path.isdir(path):
-        shutil.rmtree(path, ignore_errors=True)
-    os.makedirs(path, exist_ok=True)
-
-
-def probe_video_duration(source_video_path):
-    """用 ffprobe 读取视频时长（秒）；失败返回 None。"""
-    try:
-        result = subprocess.run(
-            [
-                "ffprobe",
-                "-v",
-                "error",
-                "-show_entries",
-                "format=duration",
-                "-of",
-                "default=nokey=1:noprint_wrappers=1",
-                source_video_path,
-            ],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=30,
-            env=build_video_process_env(),
-        )
-        value = (result.stdout or "").strip()
-        duration = float(value)
-        return duration if duration > 0 else None
-    except Exception:
-        return None
-
-
-def build_extract_frames_command(source_video_path, images_dir, frame_count, duration):
-    """均匀抽取约 ``frame_count`` 帧到 ``images_dir``（不依赖 COLMAP）。"""
-    cmd = ["ffmpeg", "-y", "-i", source_video_path]
-    if duration and duration > 0:
-        rate = max(frame_count / duration, 0.05)
-        cmd += ["-vf", f"fps={rate:.6f}"]
-    cmd += [
-        "-frames:v",
-        str(int(frame_count)),
-        os.path.join(images_dir, "frame_%05d.png"),
-    ]
-    return cmd
-
-
 def run_colmap_geometry_stage(task_manager, task_id, task, job_dir, data_dir, profile):
     """运行现有 COLMAP 几何阶段（ns-process-data）。返回 (status, code, message)。"""
     process_cmd = build_process_data_command(task["source_video_path"], data_dir, profile)
@@ -2037,122 +1920,11 @@ def run_colmap_geometry_stage(task_manager, task_id, task, job_dir, data_dir, pr
     return "ok", None, None
 
 
-def run_feedforward_geometry_stage(task_manager, task_id, task, job_dir, data_dir, profile, dependencies):
-    """前馈（π³）几何阶段：抽帧 → 前馈推理 → 写 transforms.json。
-
-    成功写出 ``data_dir/transforms.json`` 返回 None；任务被取消返回字符串
-    ``"cancelled"``；推理失败抛 ``FeedforwardError``（带可本地化错误码）供 auto
-    回退或 experimental 拒绝判断。
-    """
-    images_dir = os.path.join(data_dir, "images")
-    _reset_directory(images_dir)
-
-    duration = probe_video_duration(task["source_video_path"])
-    extract_cmd = build_extract_frames_command(
-        task["source_video_path"], images_dir, profile["frame_count"], duration
-    )
-    return_code, output_lines, cancelled = run_command(
-        task_manager,
-        task_id,
-        extract_cmd,
-        cwd=job_dir,
-        stage="video_extract_frames",
-        progress=STAGE_PROGRESS["video_extract_frames"],
-    )
-    if cancelled or is_task_cancelled(task_manager, task_id):
-        return "cancelled"
-    if return_code != 0:
-        _, message = build_failure_message(return_code, output_lines)
-        raise feedforward_reconstruction.FeedforwardError(
-            feedforward_reconstruction.ERROR_FEEDFORWARD_INFERENCE_FAILED,
-            f"Frame extraction for the feed-forward route failed: {message}",
-        )
-
-    weights_path = (dependencies.get("experimental", {}) or {}).get("weights_path")
-    max_frames = feedforward_reconstruction.max_frames_for_budget(task.get("vram_budget"))
-    output_json = os.path.join(job_dir, "feedforward_poses.json")
-    inference_cmd = feedforward_reconstruction.build_inference_command(
-        resolve_video_python(),
-        images_dir,
-        output_json,
-        weights_path,
-        max_frames=max_frames,
-        device="cuda",
-    )
-    return_code, output_lines, cancelled = run_command(
-        task_manager,
-        task_id,
-        inference_cmd,
-        cwd=job_dir,
-        stage="video_geometry",
-        progress=STAGE_PROGRESS["video_geometry"],
-    )
-    if cancelled or is_task_cancelled(task_manager, task_id):
-        return "cancelled"
-    if return_code != 0:
-        joined = "".join(output_lines or [])
-        code = (
-            feedforward_reconstruction.ERROR_FEEDFORWARD_OOM
-            if contains_oom(joined)
-            else feedforward_reconstruction.ERROR_FEEDFORWARD_INFERENCE_FAILED
-        )
-        tail = "\n".join(joined.splitlines()[-12:])
-        raise feedforward_reconstruction.FeedforwardError(
-            code, tail or "Feed-forward inference failed."
-        )
-
-    inference_data = feedforward_reconstruction.parse_inference_output(output_json)
-    frame_count = feedforward_reconstruction.write_nerfstudio_transforms(
-        inference_data, os.path.join(data_dir, "transforms.json")
-    )
-    append_task_log(
-        task_manager,
-        task_id,
-        f"Feed-forward (π³) estimated camera poses for {frame_count} frames; skipping COLMAP.",
-    )
-    return None
-
-
 def run_geometry_stage(task_manager, task_id, task, job_dir, data_dir, profile):
-    """根据解析后的引擎分发几何阶段，并实现 auto 的前馈→COLMAP 回退。
-
-    返回 ``(status, error_code, message)``，status 为 "ok"/"cancelled"/"failed"。
-    成功时 ``data_dir/transforms.json`` 已就绪。
-    """
+    """Run the stable COLMAP geometry stage and return (status, code, message)."""
     details = task.setdefault("details", {})
-    dependencies = details.get("dependencies") or check_dependencies()
-
-    if task.get("resolved_engine") != "feedforward":
-        details["geometry_engine"] = "colmap"
-        return run_colmap_geometry_stage(task_manager, task_id, task, job_dir, data_dir, profile)
-
-    try:
-        cancelled = run_feedforward_geometry_stage(
-            task_manager, task_id, task, job_dir, data_dir, profile, dependencies
-        )
-        if cancelled == "cancelled":
-            return "cancelled", None, None
-        details["geometry_engine"] = "feedforward"
-        return "ok", None, None
-    except feedforward_reconstruction.FeedforwardError as exc:
-        stable_available = bool(dependencies.get("stable", {}).get("available"))
-        if task.get("engine") == "auto" and stable_available:
-            append_task_log(
-                task_manager,
-                task_id,
-                f"Feed-forward route failed ({exc.code}); falling back to the stable COLMAP route.",
-            )
-            details["geometry_fallback"] = {
-                "from": "feedforward",
-                "to": "colmap",
-                "reason": exc.code,
-            }
-            details["geometry_engine"] = "colmap"
-            _reset_directory(data_dir)
-            return run_colmap_geometry_stage(task_manager, task_id, task, job_dir, data_dir, profile)
-        # experimental（或无稳定路线可回退）：以可本地化错误失败，不删除已有产物。
-        details["geometry_engine"] = "feedforward"
-        return "failed", exc.code, exc.message
+    details["geometry_engine"] = "colmap"
+    return run_colmap_geometry_stage(task_manager, task_id, task, job_dir, data_dir, profile)
 
 
 def build_train_command(data_dir, output_dir, profile, visualizer=TRAIN_VISUALIZER_VIEWER):

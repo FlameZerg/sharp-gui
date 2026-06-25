@@ -8,7 +8,6 @@ __pycache__/
 .Python
 venv/
 .video-reconstruction-env/
-.feedforward-weights/
 ENV/
 *.egg-info/
 .eggs/

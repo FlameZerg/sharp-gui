@@ -170,11 +170,9 @@ def test_video_reconstruction_api_rejects_invalid_and_missing_dependencies(clien
     monkeypatch.setattr("backend.services.video_reconstruction.check_dependencies", lambda: {
         "required": {"available": False, "tools": [], "message": "missing"},
         "stable": {"available": False, "tools": [], "message": "missing"},
-        "experimental": {"available": False, "tools": [], "message": "missing"},
         "summary": {
             "available": False,
             "stable_available": False,
-            "experimental_available": False,
         },
     })
     missing_response = client.post("/api/video-reconstructions", json={"video_id": video_meta["id"]})
@@ -217,11 +215,9 @@ def test_video_reconstruction_api_queues_without_exposing_paths(client, app, con
     monkeypatch.setattr("backend.services.video_reconstruction.check_dependencies", lambda: {
         "required": {"available": True, "tools": [], "message": None},
         "stable": {"available": True, "tools": [], "message": None},
-        "experimental": {"available": False, "tools": [], "message": "missing"},
         "summary": {
             "available": True,
             "stable_available": True,
-            "experimental_available": False,
         },
     })
 
@@ -253,11 +249,9 @@ def test_video_reconstruction_upload_queues_same_name_without_exposing_paths(cli
     monkeypatch.setattr("backend.services.video_reconstruction.check_dependencies", lambda: {
         "required": {"available": True, "tools": [], "message": None},
         "stable": {"available": True, "tools": [], "message": None},
-        "experimental": {"available": False, "tools": [], "message": "missing"},
         "summary": {
             "available": True,
             "stable_available": True,
-            "experimental_available": False,
         },
     })
 

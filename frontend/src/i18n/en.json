@@ -449,7 +449,6 @@
   "videoReconCheckingDependencies": "Checking local reconstruction tools...",
   "videoReconRequiredMissing": "ffmpeg or ffprobe is missing. Video reconstruction cannot start.",
   "videoReconStableMissing": "Nerfstudio / Splatfacto CLI tools are missing. Install them before starting a reconstruction.",
-  "videoReconExperimentalUnavailableStableOk": "The π³ feed-forward engine is unavailable; Auto will use the stable COLMAP route.",
   "videoReconDependenciesReady": "Stable reconstruction route is ready.",
   "videoReconQueued": "Video reconstruction task queued.",
   "videoReconCreateFailed": "Failed to create video reconstruction task.",
@@ -507,18 +506,15 @@
   },
   "videoReconEngine": {
     "auto": "Auto",
-    "stable": "Stable",
-    "experimental": "Experimental"
+    "stable": "Stable"
   },
   "videoReconEngineMeta": {
     "auto": "Recommended",
-    "stable": "Nerfstudio",
-    "experimental": "π³ feed-forward"
+    "stable": "Nerfstudio"
   },
   "videoReconEngineHint": {
-    "auto": "Uses the best configured route. When the π³ feed-forward engine is ready it runs first for a much faster geometry stage, otherwise it falls back to the stable COLMAP route.",
-    "stable": "Always uses COLMAP + Nerfstudio Splatfacto. This is the route that produced the current clean high-detail result.",
-    "experimental": "Uses the π³ feed-forward engine to estimate camera poses in a single pass, replacing the slow COLMAP step. It needs the π³ package and its non-commercial (CC BY-NC) weights configured locally; unavailable setups cannot run it."
+    "auto": "Uses the currently verified stable 3DGS route while leaving room for future strategy changes.",
+    "stable": "Always uses COLMAP + Nerfstudio Splatfacto. This is the route that produced the current clean high-detail result."
   },
   "videoReconVram": {
     "auto": "Auto",
@@ -529,32 +525,23 @@
   },
   "videoReconDependency": {
     "required": "Video tools",
-    "stable": "Stable 3DGS route",
-    "experimental": "π³ feed-forward engine"
+    "stable": "Stable 3DGS route"
   },
   "videoReconDependencyHint": {
     "required": "ffmpeg and ffprobe decode metadata and extract frames.",
-    "stable": "Nerfstudio Splatfacto trains and exports the Gaussian Splat model.",
-    "experimental": "The π³ feed-forward engine is optional. Its weights are non-commercial (CC BY-NC) and are never bundled or downloaded automatically."
+    "stable": "Nerfstudio Splatfacto trains and exports the Gaussian Splat model."
   },
-  "videoReconDependencyExperimentalMissingHint": "The π³ feed-forward engine is not configured. This optional experimental route is not required for Auto or Stable reconstruction.",
   "videoReconError": {
     "video_reconstruction_dependency_missing": "Required video reconstruction dependencies are missing.",
     "video_reconstruction_dependencies_checking": "Local reconstruction tools are still being checked. Please try again in a moment.",
     "video_reconstruction_stable_unavailable": "The stable Nerfstudio / Splatfacto route is unavailable.",
-    "video_reconstruction_experimental_unavailable": "The π³ feed-forward engine is not configured locally. Install the package and download its weights to use it.",
     "video_reconstruction_invalid_request": "The video reconstruction request contains invalid options.",
     "video_reconstruction_source_unavailable": "The source video is unavailable or no longer in the configured album.",
     "video_reconstruction_cancelled": "Video reconstruction was cancelled.",
     "video_reconstruction_oom": "GPU memory ran out. Try a lower quality preset or fewer frames.",
     "video_reconstruction_output_missing": "The reconstruction finished without a usable PLY output.",
     "video_reconstruction_spz_failed": "SPZ compression failed, but the PLY output was kept.",
-    "video_reconstruction_unsupported_video": "Unsupported video format. Please use MP4, MOV, M4V, or WebM.",
-    "video_reconstruction_feedforward_unavailable": "The π³ feed-forward engine is not configured locally. Install the package and download its weights to use it.",
-    "video_reconstruction_feedforward_weights_missing": "The π³ model weights are not configured. Download them yourself and place them in the configured folder.",
-    "video_reconstruction_feedforward_inference_failed": "Feed-forward pose estimation failed. Auto falls back to the COLMAP route; the experimental route reports the failure.",
-    "video_reconstruction_feedforward_invalid_poses": "Feed-forward pose estimation returned invalid camera poses.",
-    "video_reconstruction_feedforward_oom": "GPU memory ran out during feed-forward inference. Try fewer frames or a lower resolution."
+    "video_reconstruction_unsupported_video": "Unsupported video format. Please use MP4, MOV, M4V, or WebM."
   },
   "taskStatus": {
     "pending": "Pending",

@@ -83,7 +83,7 @@ def test_video_reconstruction_config_and_paths_are_normalized(workspace):
         "workspace_folder": str(workspace),
         "video_reconstruction": {
             "default_quality": "bad",
-            "default_engine": "experimental",
+            "default_engine": "unsupported",
             "vram_budget": "invalid",
             "keep_intermediate_files": "yes",
         },
@@ -94,7 +94,7 @@ def test_video_reconstruction_config_and_paths_are_normalized(workspace):
 
     assert video_config == {
         "default_quality": "high",
-        "default_engine": "experimental",
+        "default_engine": "auto",
         "vram_budget": "12gb",
         "keep_intermediate_files": True,
     }
@@ -1124,11 +1124,9 @@ def test_video_task_creation_writes_source_metadata(config_file, workspace, monk
     monkeypatch.setattr("backend.services.video_reconstruction.check_dependencies", lambda: {
         "required": {"available": True, "tools": [], "message": None},
         "stable": {"available": True, "tools": [], "message": None},
-        "experimental": {"available": False, "tools": [], "message": "missing"},
         "summary": {
             "available": True,
             "stable_available": True,
-            "experimental_available": False,
         },
     })
 
@@ -1514,55 +1512,18 @@ def test_contains_oom_matches_known_patterns():
 
 
 def test_resolve_engine_strategy_covers_fallbacks():
-    both = {
-        "stable": {"available": True},
-        "experimental": {"available": True},
-        "summary": {"training_available": True},
-    }
     stable_only = {
         "stable": {"available": True},
-        "experimental": {"available": False},
-        "summary": {"training_available": True},
-    }
-    feedforward_only = {
-        "stable": {"available": False},
-        "experimental": {"available": True},
-        "summary": {"training_available": True},
-    }
-    feedforward_without_training = {
-        "stable": {"available": False},
-        "experimental": {"available": True},
-        "summary": {"training_available": False},
     }
     none_available = {
         "stable": {"available": False},
-        "experimental": {"available": False},
-        "summary": {"training_available": False},
     }
 
-    # auto prefers feed-forward when both it and the training core are ready.
-    assert video_reconstruction.resolve_engine_strategy("auto", both) == ("feedforward", None)
-    # auto falls back to stable COLMAP when feed-forward is missing.
     assert video_reconstruction.resolve_engine_strategy("auto", stable_only) == ("stable", None)
     assert video_reconstruction.resolve_engine_strategy("stable", stable_only) == ("stable", None)
-    # experimental forces feed-forward and resolves to the feedforward engine.
-    assert video_reconstruction.resolve_engine_strategy("experimental", both) == ("feedforward", None)
-    assert video_reconstruction.resolve_engine_strategy("experimental", stable_only) == (
+    assert video_reconstruction.resolve_engine_strategy("unsupported", stable_only) == (
         None,
-        video_reconstruction.ERROR_EXPERIMENTAL_UNAVAILABLE,
-    )
-    assert video_reconstruction.resolve_engine_strategy("stable", feedforward_only) == (
-        None,
-        video_reconstruction.ERROR_STABLE_UNAVAILABLE,
-    )
-    # feed-forward ready but the training core (ns-train/export) is missing.
-    assert video_reconstruction.resolve_engine_strategy("experimental", feedforward_without_training) == (
-        None,
-        video_reconstruction.ERROR_STABLE_UNAVAILABLE,
-    )
-    assert video_reconstruction.resolve_engine_strategy("auto", feedforward_without_training) == (
-        None,
-        video_reconstruction.ERROR_STABLE_UNAVAILABLE,
+        video_reconstruction.ERROR_INVALID_REQUEST,
     )
     assert video_reconstruction.resolve_engine_strategy("auto", none_available) == (
         None,

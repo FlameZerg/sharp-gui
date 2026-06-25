@@ -238,7 +238,7 @@ video_reconstruction_jobs_folder = os.path.join(video_reconstruction_folder, 'jo
 - 默认输出名使用源视频文件名 stem；只在冲突时追加唯一后缀，不自动追加质量、帧数或 cleanup 标记。
 - 依赖检测使用进程级缓存：`app_factory.create_app()` 调用后台 warmup；`/api/video-reconstructions/status?refresh=1` 可触发后台重扫；普通任务创建读取缓存，检测中时返回 `video_reconstruction_dependencies_checking`，不得同步阻塞页面。
 - 子进程命令必须使用列表参数，不拼接 shell 字符串；日志默认只输出关键阶段、命令名、return code 和失败摘要，完整外部工具输出只在 `SHARP_LOG_LEVEL=DEBUG` 或 verbose 模式下显示。
-- OOM、缺依赖、实验引擎不可用、输出缺失、SPZ 失败、取消等错误应转换为稳定错误码，前端用 i18n 展示，不把原始堆栈作为主 UI 文案。
+- OOM、缺依赖、非法选项、输出缺失、SPZ 失败、取消等错误应转换为稳定错误码，前端用 i18n 展示，不把原始堆栈作为主 UI 文案。
 - `auto` / `object` 模式默认尝试 focused cleanup；如果清理会删除过多几何，必须回退原始导出并记录原因；`environment` 模式不做主体裁剪。
 - 成功后调用现有模型图库逻辑生成视频封面缩略图、写 sidecar 元数据并刷新模型列表；源视频预览通过 `/api/gallery/<item_id>/source-video` 解析 sidecar，不能直接把绝对路径传给前端。
 

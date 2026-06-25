@@ -19,12 +19,12 @@
 
 ## 3. 依赖检测与引擎策略
 
-- [x] 3.1 实现视频重建依赖检测结构，区分 `required`、`stable`、`experimental`、`available`、`missing`、`message` 等状态。
+- [x] 3.1 实现视频重建依赖检测结构，区分 `required`、`stable`、`available`、`missing`、`message` 等状态。
 - [x] 3.2 检测视频基础工具可用性，例如 `ffmpeg` 和 `ffprobe`，并返回版本或缺失原因。
 - [x] 3.3 检测稳定路线依赖，例如 COLMAP/hloc 或 Nerfstudio/Splatfacto/gsplat，先选择一个首版稳定实现目标并在设计备注中确认。
-- [x] 3.4 检测实验路线依赖，例如 VGGT/VGGT-Omega 的本地配置状态，但不得默认下载 gated 或许可受限 checkpoint。
-- [x] 3.5 实现引擎策略解析：`auto` 缺实验依赖时回退稳定路线，`stable` 只走稳定路线，`experimental` 缺依赖时拒绝创建任务。
-- [x] 3.6 为依赖缺失、实验路线不可用、稳定路线不可用分别提供可本地化的错误码或错误类型。
+- [x] 3.4 将未验证重建路线移出当前有效方案，只保留稳定路线依赖检测。
+- [x] 3.5 实现引擎策略解析：`auto` 和 `stable` 当前均走稳定路线，非法引擎选项拒绝创建任务。
+- [x] 3.6 为依赖缺失、非法选项、稳定路线不可用分别提供可本地化的错误码或错误类型。
 
 ## 4. 视频重建后端服务
 
@@ -79,7 +79,7 @@
 
 - [x] 9.1 在 Settings 中新增“视频重建”区域，视觉上延续现有设置页玻璃态和密度。
 - [x] 9.2 显示默认质量、默认引擎策略、显存预算、保留中间文件等配置项。
-- [x] 9.3 显示依赖诊断：基础视频工具、稳定重建工具、实验初始化工具。
+- [x] 9.3 显示依赖诊断：基础视频工具、稳定重建工具。
 - [x] 9.4 缺依赖时显示本地化说明和建议，不把原始堆栈作为主要 UI 文案。
 - [x] 9.5 本机 owner 可以保存默认配置；非本机用户按现有权限规则禁用或隐藏保存能力。
 
@@ -103,7 +103,7 @@
 - [ ] 11.8 手动验证缺依赖、无权限、非法 video id、非法选项、输出名冲突、OOM 文本等失败路径。
 - [ ] 11.9 在 375px、768px、1024px、1440px 视口检查选择栏、视频预览操作、重建弹窗和设置诊断无溢出或遮挡。
 - [ ] 11.10 切换中英文语言，确认所有新增 UI 文案、任务阶段和错误提示都来自 i18n。
-- [ ] 11.11 手动验证 Settings 视频重建说明：质量档小标题、当前档位说明、引擎说明、实验未就绪禁用/提示在中英文下可读且无溢出。
+- [ ] 11.11 手动验证 Settings 视频重建说明：质量档小标题、当前档位说明、引擎说明在中英文下可读且无溢出。
 - [x] 11.12 手动验证 focused cleanup 行为：`auto`/`object` 默认输出聚焦主体，任务详情记录清理统计；`environment` 模式不裁剪完整场景。
 - [ ] 11.13 在干净或半干净 Windows 环境验证一键安装脚本：可安装/复用 `.video-reconstruction-env`、CUDA/VS Build Tools、Nerfstudio/gsplat 和 COLMAP wrapper。
 
@@ -144,7 +144,7 @@
 - `VID_20260612_091523_high180_focused.ply`：约 135.39 MB、572,457 splats；`.spz`：约 8.58 MB。用户截图确认细节明显提升且保持纯净。
 - 高质量档本机端到端耗时约 52 分 17 秒：COLMAP/抽帧约 8 分多，30k 训练约 42 分多，导出和 SPZ 压缩约 1 分。
 - 已完成设置页说明增强的静态验证：`npm run lint`、`npm run build` 通过；`git diff --check` 通过。
-- 已部分覆盖失败路径：缺 `video_id` 请求返回 `video_reconstruction_invalid_request`；依赖诊断 API 显示稳定路线可用、实验初始化未配置。完整无权限、输出名冲突、OOM 等路径仍待 11.8 验证。
+- 已部分覆盖失败路径：缺 `video_id` 请求返回 `video_reconstruction_invalid_request`；依赖诊断 API 显示稳定路线可用。完整无权限、输出名冲突、OOM 等路径仍待 11.8 验证。
 - 已完成 Viewer 相机修复的代码级验证：`frontend/src/hooks/useViewer.ts` 会在模型包围盒明显离轴时按 bounds center 重置 camera/target；`npm run lint`、`npm run build` 和 `git diff --check` 均通过。后续人工反馈显示仅靠 bounds center 不足以修复视频模型轴向问题，因此继续推进到模型侧 orientation 适配。
 - 已完成临时 Viewer 调试读数：Quick Controls 可实时显示并复制相机、OrbitControls、模型姿态轴和包围盒偏差数据；`npm run lint`、`npm run build` 和 `git diff --check` 通过。用户确认调试面板位置和内容适合长期保留。
 - 根据用户反馈读数确认 `targetDelta=0`，pivot 已正确居中；真正问题来自视频重建模型正面接近世界 `+Y/-Y` 方向，而 OrbitControls 默认 `Y-up` 轨道在该方向附近会接近极点。已放弃相机侧 `+Y/+Z` reset 方案，改为仅对视频形态 Y-front 模型在模型侧隐藏预乘 `RotX(+90°)` orientation quaternion，使画面正向和相机初始读数同时保持干净。用户已确认视角和左右拖拽手感恢复正常，且不会影响旧 ml-sharp 单图模型预览。
@@ -160,7 +160,6 @@
 - 物品（object）模式新增相机环绕几何主体聚焦裁剪（C1）：仅 object 模式生效，auto/environment 不受影响；通过 `dataparser_transforms.json` 对齐坐标，带数据缺失/几何异常/裁剪过激的安全回退。
 - 任务进入处理即记录开始时间：前端任务卡片在处理中实时显示已用时长；视频任务后端日志在阶段切换/完成时记录各阶段耗时与总耗时。
 - 抽帧/COLMAP 等长时间静默步骤增加后台心跳日志：持续无输出时按间隔打印 INFO 提示仍在运行及已用时长，避免被误判为卡死。
-- VGGT 实验依赖探测改用视频重建环境的 Python 解释器。
 - 模型删除复用 `ALLOWED_IMAGE_EXTENSIONS`，修复大写 `.JPEG/.WEBP` 原图残留。
 - `legacy_video_match_stems` 兼容回填逻辑补充注释，明确只服务旧本机命名产物。
 - 新增后端单测：OOM 文案、引擎回退分支、训练进度映射、viewer 链接解析、上传缓存清理、相机采样回退、各档匹配策略。`venv/bin/python -m pytest tests/test_api_contract.py tests/test_services.py tests/test_security.py tests/test_route_map.py` 共 60 项通过；`npm run lint`、`npm run build`、`python -m compileall backend tests` 通过。

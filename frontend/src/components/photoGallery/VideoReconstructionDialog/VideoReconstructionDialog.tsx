@@ -26,7 +26,7 @@ const MAX_OUTPUT_NAME_LENGTH = 120;
 
 const MODE_OPTIONS: VideoReconstructionMode[] = ['auto', 'object', 'environment'];
 const QUALITY_OPTIONS: VideoReconstructionQuality[] = ['preview', 'high', 'extreme'];
-const ENGINE_OPTIONS: VideoReconstructionEngine[] = ['auto', 'stable', 'experimental'];
+const ENGINE_OPTIONS: VideoReconstructionEngine[] = ['auto', 'stable'];
 
 function deriveOutputName(filename: string): string {
   const withoutExtension = filename.replace(/\.[^.]+$/, '');
@@ -135,15 +135,13 @@ export function VideoReconstructionDialog() {
   }, [dependencies, isOpen, setStatus, t]);
 
   const stableAvailable = Boolean(dependencies?.summary.stable_available);
-  const experimentalAvailable = Boolean(dependencies?.summary.experimental_available);
   const dependenciesChecking = Boolean(dependencies?.summary.checking) || statusLoading;
   const canSubmit = (target?.media_type === 'video' || Boolean(fileTarget))
     && !submitting
     && !dependenciesChecking
     && stableAvailable
     && outputName.trim().length > 0
-    && outputName.trim().length <= MAX_OUTPUT_NAME_LENGTH
-    && !(engine === 'experimental' && !experimentalAvailable);
+    && outputName.trim().length <= MAX_OUTPUT_NAME_LENGTH;
 
   const dependencyMessage = useMemo(() => {
     if (dependencies?.summary.checking) {
@@ -157,9 +155,6 @@ export function VideoReconstructionDialog() {
     }
     if (!dependencies.stable.available) {
       return t('videoReconStableMissing');
-    }
-    if (!dependencies.experimental.available) {
-      return t('videoReconExperimentalUnavailableStableOk');
     }
     return t('videoReconDependenciesReady');
   }, [dependencies, statusLoading, t]);
@@ -297,9 +292,7 @@ export function VideoReconstructionDialog() {
                     className={[
                       styles.segmentBtn,
                       engine === option ? styles.segmentActive : '',
-                      option === 'experimental' && !experimentalAvailable ? styles.segmentDisabled : '',
                     ].filter(Boolean).join(' ')}
-                    disabled={option === 'experimental' && !experimentalAvailable}
                     onClick={() => setEngine(option)}
                     type="button"
                   >

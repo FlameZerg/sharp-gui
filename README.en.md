@@ -123,7 +123,7 @@ Built on [Apple ml-sharp](https://github.com/apple/ml-sharp). No cloud uploads n
 
 **🗂️ Local Media Gallery** — Configure local, external-drive, or NAS folders as albums. Browse, filter, preview, and download photos and videos together; photos can be converted to 3D one by one or in batches, while videos can be played, scrubbed, and viewed fullscreen.
 
-**🎥 Video 3DGS Reconstruction (Experimental)** — On Windows with an NVIDIA RTX 5070 Ti Laptop GPU, local videos have been verified end-to-end through the Nerfstudio/Splatfacto stable route, producing `.ply/.spz` models with quality presets, focused cleanup, video-poster thumbnails, source-video replay, and viewer orientation adaptation.
+**🎥 Video 3DGS Reconstruction (Stable Route)** — On Windows with an NVIDIA RTX 5070 Ti Laptop GPU, local videos have been verified end-to-end through the Nerfstudio/Splatfacto stable route, producing `.ply/.spz` models with quality presets, focused cleanup, video-poster thumbnails, source-video replay, and viewer orientation adaptation.
 
 **📥 Upload Into Current Album** — Add photos directly to the current album with file picker or drag-and-drop; the album refreshes automatically after upload.
 
@@ -349,7 +349,7 @@ The install script automatically handles all setup steps, no manual configuratio
 - 📦 **Detect/Install Git** - Auto-installs if missing (Windows)
 - 🎮 **Detect NVIDIA GPU** - Auto-installs the CUDA-enabled PyTorch that matches your driver (cu118 / cu126 / cu128)
 - 🧩 **Install Dependencies** - Creates virtual environment, installs ml-sharp core and GUI deps
-- 🎥 **Install video reconstruction environment (Windows NVIDIA, experimental)** - Installs or reuses `.video-reconstruction-env`, CUDA/PyTorch, Nerfstudio/Splatfacto, gsplat, COLMAP, and `ffmpeg/ffprobe`
+- 🎥 **Install video reconstruction environment (Windows NVIDIA)** - Installs or reuses `.video-reconstruction-env`, CUDA/PyTorch, Nerfstudio/Splatfacto, gsplat, COLMAP, and `ffmpeg/ffprobe`
 - 📥 **Pre-download Model** - Downloads inference model (~500MB) during install, no wait on first run
 - 🔐 **Generate HTTPS Certificate** - Auto-generates self-signed certificate for secure LAN access
 
@@ -410,17 +410,17 @@ rm -rf sharp-gui/
 4. **Upload to Album** - Pick or drag photos into the current album; the album refreshes automatically
 5. **Convert to 3D** - Convert photos from cards or the preview layer, or multi-select and queue a batch into the existing workflow
 
-### Generate 3D Models from Video (Experimental)
+### Generate 3D Models from Video
 
 1. **Choose a video** - Select one video in the local media gallery, or drop a single video onto the model view, model list, or "Generate New" entry
-2. **Pick settings** - Choose mode (Auto / Object / Environment), quality (Quick Preview / High Quality / Extreme), and engine (Auto / Stable / Experimental)
+2. **Pick settings** - Choose mode (Auto / Object / Environment), quality (Quick Preview / High Quality / Extreme), and engine (Auto / Stable)
 3. **Wait for reconstruction** - The task queue reports stages such as frame extraction, pose estimation, Gaussian optimization, export, and SPZ compression
 4. **Open the result** - The model appears in the existing model gallery, uses the video poster as its thumbnail when available, and exposes source-video replay from the hover actions
 
 Current guidance:
 
 - **Default quality**: High Quality, tuned for RTX 5070 Ti Laptop 12GB-class machines, about 180 frames / 30k iterations / 2x input downscale
-- **Default engine**: Auto. When the π³ feed-forward engine is ready it runs first to estimate camera poses in a single pass (replacing the slowest COLMAP geometry stage, down to minutes); if it is missing or fails, Auto falls back to the stable Nerfstudio/Splatfacto route
+- **Default engine**: Auto; currently equivalent to the verified stable Nerfstudio/Splatfacto route, with room for future strategy changes
 - **Default cleanup**: Auto / Object modes enable focused cleanup to remove distant loose splats; Environment mode keeps the full scene
 - **Current limits**: One video per task; dynamic 4D, mesh repair, manual trimming, and cloud training are out of scope
 
@@ -504,13 +504,12 @@ The system auto-creates:
 >
 > ⚠️ Older versions stored albums in a top-level `photo_gallery_roots` array. On the first launch after upgrading, it is automatically migrated into the bucket for the current workspace — no manual action needed.
 
-### Video Reconstruction Settings (Experimental)
+### Video Reconstruction Settings
 
 The Settings > Video Reconstruction area is for dependency diagnostics and defaults:
 
 - **Default quality**: Quick Preview / High Quality / Extreme, mapped to different frame, iteration, and input-resolution budgets
-- **Default engine**: Auto / Stable / Experimental; the experimental engine is the π³ (Pi3) feed-forward engine, an optional enhancement, and missing it does not block Auto or Stable
-- **π³ feed-forward engine (experimental, optional)**: Estimates camera poses with a single network pass, replacing the slowest COLMAP geometry stage. **π³ code is BSD-3, but its model weights are CC BY-NC 4.0 (non-commercial research/education only)**, and the DINOv2 backbone is Apache 2.0. To respect these licenses, **the project never bundles or auto-downloads the weights**; you must download them yourself, accept their license, and place them in the configured folder (default `.feedforward-weights/`, overridable via `SHARP_GUI_FEEDFORWARD_WEIGHTS_DIR`). First validation platform: **Windows + NVIDIA RTX 5070 Ti Laptop GPU 12GB**
+- **Default engine**: Auto / Stable; Auto currently uses the verified stable Nerfstudio/Splatfacto route
 - **VRAM budget**: Auto / 8GB / 12GB / 16GB / 24GB, used to tighten or relax resource boundaries
 - **Keep intermediate files**: Useful for inspecting frames, poses, and Nerfstudio logs; when off, completed/cancelled jobs clean their job folders
 
@@ -518,7 +517,7 @@ The backend starts an asynchronous dependency warmup once per process. Opening t
 
 ### Video Reconstruction Manual Environment Setup
 
-This guide covers setting up all video reconstruction routes (stable COLMAP + experimental feed-forward) from scratch. The only verified platform so far is **Windows + NVIDIA GPU (RTX 5070 Ti Laptop 12GB)**.
+This guide covers setting up the stable video reconstruction route (COLMAP + Nerfstudio/Splatfacto) from scratch. The only verified platform so far is **Windows + NVIDIA GPU (RTX 5070 Ti Laptop 12GB)**.
 
 #### Prerequisites
 
@@ -585,57 +584,7 @@ pip install nerfstudio
 
 > Verify: `ffmpeg -version` and `ffprobe -version` produce output.
 
-#### 4. Install experimental route dependencies (π³ feed-forward engine, optional)
-
-This step is entirely optional — without it, `auto` and `stable` engines work normally; you just cannot use the feed-forward acceleration.
-
-##### 4a. Install the π³ inference package
-
-```bash
-# Inside the activated .video-reconstruction-env
-git clone https://github.com/yyfz/Pi3.git /path/to/Pi3
-cd /path/to/Pi3
-pip install -r requirements.txt
-# Ensure the pi3 package is importable (the repo installs as a local package)
-pip install -e .
-```
-
-> Verify: `python -c "from pi3.models.pi3x import Pi3X; print('ok')"`
-
-##### 4b. Download π³ model weights
-
-> ⚠️ **License notice**: π³ model weights are licensed under **CC BY-NC 4.0** (non-commercial research/education only). By downloading you accept those terms. This project never auto-downloads or distributes these weights.
-
-```bash
-# Create the default weights directory (at the sharp-gui project root)
-mkdir -p .feedforward-weights/pi3x
-
-# Download Pi3X weights (recommended, ~2.1 GB)
-wget -O .feedforward-weights/pi3x/model.safetensors \
-  https://huggingface.co/yyfz233/Pi3X/resolve/main/model.safetensors
-
-# Or download original Pi3 weights (~2.1 GB)
-# mkdir -p .feedforward-weights/pi3
-# wget -O .feedforward-weights/pi3/model.safetensors \
-#   https://huggingface.co/yyfz233/Pi3/resolve/main/model.safetensors
-```
-
-Custom weights directory via environment variable:
-```bash
-export SHARP_GUI_FEEDFORWARD_WEIGHTS_DIR=/your/custom/path
-```
-
-##### 4c. Other inference dependencies
-
-```bash
-# safetensors (for loading .safetensors checkpoints)
-pip install safetensors
-
-# Pillow (image loading, usually already installed by torchvision)
-pip install Pillow
-```
-
-#### 5. Verify the environment
+#### 4. Verify the environment
 
 After starting Sharp GUI, open Settings > Video Reconstruction, or query the diagnostics API directly:
 
@@ -649,7 +598,6 @@ When correctly configured, each group should report:
 |-------|--------|--------------|
 | **Video tools** (required) | ✅ Available | ffmpeg, ffprobe |
 | **Stable 3DGS route** (stable) | ✅ Available | ns-process-data, ns-train, ns-export, colmap |
-| **π³ feed-forward engine** (experimental) | ✅ Available (or ⚠️ Missing if not installed) | pi3-engine (package importable), pi3-weights (checkpoint present) |
 
 #### Verified dependency versions
 
@@ -661,8 +609,6 @@ When correctly configured, each group should report:
 | gsplat | 1.4+ | Nerfstudio's Gaussian Splatting CUDA backend |
 | COLMAP | 3.9+ | Prebuilt binaries are fine, no source build needed |
 | ffmpeg / ffprobe | 6.x+ | Must support `-vf fps=` filter |
-| Pi3 (π³) | main branch | `pi3.models.pi3x.Pi3X` importable |
-| safetensors | 0.4+ | For loading .safetensors weights |
 
 #### Directory layout
 
@@ -670,17 +616,14 @@ When correctly configured, each group should report:
 sharp-gui/
 ├── .video-reconstruction-env/    # Video reconstruction venv (gitignored)
 │   ├── Scripts/ or bin/          #   → python, ns-train, ns-export, colmap, etc.
-│   └── Lib/ or lib/             #   → torch, nerfstudio, gsplat, pi3, etc.
-├── .feedforward-weights/          # π³ weights directory (gitignored, user-managed)
-│   └── pi3x/
-│       └── model.safetensors     #   Pi3X weights (~2.1 GB, CC BY-NC 4.0)
+│   └── Lib/ or lib/             #   → torch, nerfstudio, gsplat, etc.
 ├── .video-reconstruction/         # Runtime intermediate files (inside workspace, auto-created)
 │   ├── jobs/                     #   Per-task working directory (cleaned after completion)
 │   └── uploads/                  #   Drag-and-drop video upload cache
 └── outputs/                       # Final outputs: *.ply + *.spz + *.meta.json
 ```
 
-> 💡 Both `.video-reconstruction-env` and `.feedforward-weights` are excluded in `.gitignore` and will not be committed to the repository.
+> 💡 `.video-reconstruction-env` is excluded in `.gitignore` and will not be committed to the repository.
 
 ### Enable HTTPS (Recommended)
 
@@ -808,7 +751,7 @@ frontend/
 | **i18n**         | i18next + react-i18next                                |
 | **Styling**      | CSS Modules + Apple Glass Morphism                     |
 | **Backend**      | Python 3.10+, Flask app factory + Blueprints, TaskManager |
-| **AI Engine**    | Apple ML-Sharp (PyTorch, gsplat); experimental video reconstruction uses Nerfstudio/Splatfacto + COLMAP/ffmpeg |
+| **AI Engine**    | Apple ML-Sharp (PyTorch, gsplat); stable video reconstruction uses Nerfstudio/Splatfacto + COLMAP/ffmpeg |
 | **3D Rendering** | Three.js + Spark 2.0 (WASM-accelerated Gaussian Splatting) |
 
 ### Performance Optimizations

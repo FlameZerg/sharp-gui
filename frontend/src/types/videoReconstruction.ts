@@ -2,7 +2,7 @@ import type { Task } from './task';
 
 export type VideoReconstructionMode = 'auto' | 'object' | 'environment';
 export type VideoReconstructionQuality = 'preview' | 'high' | 'extreme';
-export type VideoReconstructionEngine = 'auto' | 'stable' | 'experimental';
+export type VideoReconstructionEngine = 'auto' | 'stable';
 export type VideoReconstructionVramBudget = 'auto' | '8gb' | '12gb' | '16gb' | '24gb';
 
 export interface VideoReconstructionConfig {
@@ -14,7 +14,7 @@ export interface VideoReconstructionConfig {
 
 export interface VideoReconstructionToolStatus {
   name: string;
-  category: 'required' | 'stable' | 'experimental' | string;
+  category: 'required' | 'stable' | string;
   required: boolean;
   available: boolean;
   version?: string | null;
@@ -27,22 +27,12 @@ export interface VideoReconstructionDependencyGroup {
   message?: string | null;
 }
 
-export interface VideoReconstructionFeedforwardGroup extends VideoReconstructionDependencyGroup {
-  engine_available?: boolean;
-  weights_available?: boolean;
-  weights_path?: string | null;
-  weights_dir?: string | null;
-}
-
 export interface VideoReconstructionDependencies {
   required: VideoReconstructionDependencyGroup;
   stable: VideoReconstructionDependencyGroup;
-  experimental: VideoReconstructionFeedforwardGroup;
   summary: {
     available: boolean;
     stable_available: boolean;
-    experimental_available: boolean;
-    training_available?: boolean;
     checking?: boolean;
     checked_at?: number | null;
     cached?: boolean;

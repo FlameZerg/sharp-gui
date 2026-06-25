@@ -136,7 +136,7 @@ sharp-gui/
 | plyfile | PLY 文件解析 |
 | ml-sharp (sharp CLI) | AI 推理引擎 |
 | ffmpeg / ffprobe | 视频重建抽帧、元数据、poster 和源视频缩略图 |
-| Nerfstudio / Splatfacto / gsplat | 视频 3DGS 稳定重建路线（当前 Windows NVIDIA 实验能力） |
+| Nerfstudio / Splatfacto / gsplat | 视频 3DGS 稳定重建路线 |
 | COLMAP | Nerfstudio 视频数据处理中的位姿/稀疏几何估计 |
 | pytest | 后端开发/重构验证（仅开发依赖，见 `requirements-dev.txt`） |
 
@@ -180,7 +180,7 @@ sharp-gui/
 - 生成完成后自动转换 `.spz` 紧凑模型；用户设置可在 PLY / SPZ 之间选择默认查看和下载格式。
 - 视频重建生成的模型也写入 `outputs/`，并额外写入同名 `.meta.json` 记录来源视频、模式、质量、引擎和受控源视频引用；前端不得看到绝对磁盘路径。
 - 视频生成模型应复用现有模型图库：缩略图优先使用源视频封面帧；hover 操作中可提供原视频预览入口；删除拖入视频生成的模型时可清理受控上传缓存，但不得删除本地相册原视频。
-- 视频 3DGS 重建当前属于 Windows NVIDIA 实验能力，已验证平台为 Windows + NVIDIA RTX 5070 Ti Laptop GPU 12GB；其他平台或显卡需要单独验证后再写入已支持矩阵。
+- 视频 3DGS 重建稳定路线已在 Windows + NVIDIA RTX 5070 Ti Laptop GPU 12GB 验证；其他平台或显卡需要单独验证后再写入已支持矩阵。
 - 图库响应包含原图 URL、缩略图 URL、PLY/SPZ 大小与版本戳；缺失缩略图会在请求时限量修复。
 - React 图库使用虚拟滚动和缩略图加载状态，避免大量模型时滚动卡顿。
 - 本地媒体图库通过 `photo_gallery_roots_by_workspace` 配置多个目录，并**按工作目录分桶记忆**（键为归一化后的工作目录路径）；每个目录作为一个相册展示，图片缩略图或视频 poster 可作为封面。切换工作目录时只展示对应桶的相册，切回原目录即可恢复，与模型列表绑定 `{workspace}/outputs` 的行为一致；旧的顶层 `photo_gallery_roots` 会在启动或切换工作目录前自动迁移到对应桶。
@@ -195,7 +195,7 @@ sharp-gui/
 - 远程生成/照片转 3D 默认 owner-only；只有门禁开启且 `allow_remote_generation=true` 时，已解锁远程设备才可提交。
 - 视频重建 API 与拖入视频上传 API 同样走生成权限矩阵：owner 默认可用；远程仅在门禁开启且允许远程生成时可提交。
 
-## 视频 3DGS 重建（实验）
+## 视频 3DGS 重建
 
 当前稳定路线：
 
@@ -217,13 +217,6 @@ sharp-gui/
 - 依赖检测使用进程级异步缓存：后端启动后后台预热一次，Settings 可用 `refresh=1` 手动重扫；首页、模型页、普通弹窗和任务创建不得同步重复扫描外部工具。
 - Viewer 对视频重建模型的坐标适配应优先保持 camera/OrbitControls 的干净默认状态；当前策略是在模型侧隐藏预乘 orientation 修正视频形态 Y-front 模型，避免相机落入极点导致拖拽 roll。旧 ml-sharp 单图模型不得被该适配改变预览手感。
 - Quick Controls 中的相机/模型调试读数可保留，便于后续排查新模型的坐标系、包围盒和交互问题。
-
-### π³ 前馈引擎（实验，可选增强）
-
-- 实验引擎落地为 π³（Pi3）前馈重建：只替换最慢的 COLMAP 几何阶段（抽帧 → π³ 一次推理估计相机内外参 → 写 Nerfstudio `transforms.json`，跳过 COLMAP），训练/导出/cleanup/SPZ/图库后段完全复用稳定路线。集成代码在 `backend/services/feedforward_reconstruction.py`，GPU 推理在独立 worker `backend/services/feedforward_inference_worker.py`（在 `.video-reconstruction-env` 的 Python 下作为子进程运行，后端模块本身不导入 torch）。
-- 引擎策略：`auto` 前馈优先、失败/不可用自动回退 COLMAP；`stable` 仅 COLMAP；`experimental` 强制前馈、不可用以可本地化错误拒绝且不静默回退。
-- **合规红线**：π³ 代码为 BSD-3，但**模型权重为 CC BY-NC 4.0（非商业）**，DINOv2 backbone 为 Apache 2.0。权重**默认不打包、不自动下载**，由用户自行下载并接受许可后放置到约定目录（默认 `.feedforward-weights/`，可用 `SHARP_GUI_FEEDFORWARD_WEIGHTS_DIR` 覆盖）；项目只分发集成代码。
-- 第一验证平台为 Windows + NVIDIA RTX 5070 Ti Laptop GPU 12GB；π³ 推理跑通、位姿/内参精度、显存上限与耗时对比需在真实 GPU 上验证后再写入支持矩阵。
 
 ## WebXR 支持
 

@@ -449,7 +449,6 @@
   "videoReconCheckingDependencies": "正在检查本机重建工具...",
   "videoReconRequiredMissing": "缺少 ffmpeg 或 ffprobe，无法启动视频重建。",
   "videoReconStableMissing": "缺少 Nerfstudio / Splatfacto 命令行工具，请安装后再开始重建。",
-  "videoReconExperimentalUnavailableStableOk": "π³ 前馈引擎不可用；自动模式将使用稳定 COLMAP 路线。",
   "videoReconDependenciesReady": "稳定重建路线已就绪。",
   "videoReconQueued": "视频重建任务已加入队列。",
   "videoReconCreateFailed": "创建视频重建任务失败。",
@@ -507,18 +506,15 @@
   },
   "videoReconEngine": {
     "auto": "自动",
-    "stable": "稳定",
-    "experimental": "实验"
+    "stable": "稳定"
   },
   "videoReconEngineMeta": {
     "auto": "推荐",
-    "stable": "Nerfstudio",
-    "experimental": "π³ 前馈"
+    "stable": "Nerfstudio"
   },
   "videoReconEngineHint": {
-    "auto": "使用当前已就绪的最佳路线；π³ 前馈引擎就绪时优先运行以大幅加速几何阶段，否则自动回退到稳定 COLMAP 路线。",
-    "stable": "固定使用 COLMAP + Nerfstudio Splatfacto，也是当前跑出干净高细节结果的路线。",
-    "experimental": "使用 π³ 前馈引擎一次推理估计相机位姿，替换最慢的 COLMAP 步骤。需本机配置 π³ 包及其非商业（CC BY-NC）权重；未就绪时不能运行。"
+    "auto": "使用当前已验证的稳定 3DGS 路线，并保留后续策略切换空间。",
+    "stable": "固定使用 COLMAP + Nerfstudio Splatfacto，也是当前跑出干净高细节结果的路线。"
   },
   "videoReconVram": {
     "auto": "自动",
@@ -529,32 +525,23 @@
   },
   "videoReconDependency": {
     "required": "视频基础工具",
-    "stable": "稳定 3DGS 路线",
-    "experimental": "π³ 前馈引擎"
+    "stable": "稳定 3DGS 路线"
   },
   "videoReconDependencyHint": {
     "required": "ffmpeg 和 ffprobe 用于读取元数据与抽帧。",
-    "stable": "Nerfstudio Splatfacto 用于训练并导出 Gaussian Splat 模型。",
-    "experimental": "π³ 前馈引擎为可选增强，其权重为非商业（CC BY-NC）许可，系统不会打包或自动下载。"
+    "stable": "Nerfstudio Splatfacto 用于训练并导出 Gaussian Splat 模型。"
   },
-  "videoReconDependencyExperimentalMissingHint": "本机未配置 π³ 前馈引擎。这是可选实验路线，不影响自动或稳定路线重建。",
   "videoReconError": {
     "video_reconstruction_dependency_missing": "缺少视频重建必需依赖。",
     "video_reconstruction_dependencies_checking": "本机重建工具仍在后台检测中，请稍后再试。",
     "video_reconstruction_stable_unavailable": "稳定 Nerfstudio / Splatfacto 路线不可用。",
-    "video_reconstruction_experimental_unavailable": "本机尚未配置 π³ 前馈引擎，请安装其包并下载权重后再使用。",
     "video_reconstruction_invalid_request": "视频重建请求包含非法选项。",
     "video_reconstruction_source_unavailable": "源视频不可用，或已不在配置的相册中。",
     "video_reconstruction_cancelled": "视频重建已取消。",
     "video_reconstruction_oom": "GPU 显存不足。请降低质量档位或减少帧数。",
     "video_reconstruction_output_missing": "重建完成但没有得到可用的 PLY 输出。",
     "video_reconstruction_spz_failed": "SPZ 压缩失败，但已保留 PLY 输出。",
-    "video_reconstruction_unsupported_video": "不支持的视频格式。请使用 MP4、MOV、M4V 或 WebM。",
-    "video_reconstruction_feedforward_unavailable": "本机尚未配置 π³ 前馈引擎，请安装其包并下载权重后再使用。",
-    "video_reconstruction_feedforward_weights_missing": "尚未配置 π³ 模型权重。请自行下载并放置到约定目录。",
-    "video_reconstruction_feedforward_inference_failed": "前馈位姿估计失败。自动模式会回退到 COLMAP 路线；实验模式将直接报告失败。",
-    "video_reconstruction_feedforward_invalid_poses": "前馈位姿估计返回了无效的相机位姿。",
-    "video_reconstruction_feedforward_oom": "前馈推理时 GPU 显存不足。请减少帧数或降低分辨率。"
+    "video_reconstruction_unsupported_video": "不支持的视频格式。请使用 MP4、MOV、M4V 或 WebM。"
   },
   "taskStatus": {
     "pending": "等待中",

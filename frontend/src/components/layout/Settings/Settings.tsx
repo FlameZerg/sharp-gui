@@ -395,16 +395,14 @@ export const Settings: React.FC = () => {
     };
 
     const renderDependencyGroup = (
-        groupKey: 'required' | 'stable' | 'experimental',
+        groupKey: 'required' | 'stable',
         group?: VideoReconstructionDependencies['required'],
     ) => {
         const checking = Boolean(videoDependencies?.summary.checking && !group?.tools.length);
         const available = Boolean(group?.available);
         const dependencyMessage = checking
             ? t('videoReconCheckingDependencies')
-            : groupKey === 'experimental' && !available
-                ? t('videoReconDependencyExperimentalMissingHint')
-                : group?.message || t(`videoReconDependencyHint.${groupKey}`);
+            : group?.message || t(`videoReconDependencyHint.${groupKey}`);
         return (
             <div className={styles.dependencyRow}>
                 <div>
@@ -445,7 +443,6 @@ export const Settings: React.FC = () => {
         videoConfig.default_engine !== savedVideoConfig.default_engine ||
         videoConfig.vram_budget !== savedVideoConfig.vram_budget ||
         videoConfig.keep_intermediate_files !== savedVideoConfig.keep_intermediate_files;
-    const isExperimentalEngineAvailable = Boolean(videoDependencies?.summary.experimental_available);
 
     const accessSettingsStateText = (() => {
         if (hasAccessSettingsChanges) {
@@ -837,8 +834,8 @@ export const Settings: React.FC = () => {
                                     <small>{t('videoReconDefaultEngineMeta')}</small>
                                 </label>
                                 <div className={styles.segmentedControl}>
-                                    {(['auto', 'stable', 'experimental'] as VideoReconstructionEngine[]).map((engine) => {
-                                        const engineDisabled = !isLocalAccess || (engine === 'experimental' && !isExperimentalEngineAvailable);
+                                    {(['auto', 'stable'] as VideoReconstructionEngine[]).map((engine) => {
+                                        const engineDisabled = !isLocalAccess;
                                         return (
                                             <button
                                                 key={engine}
@@ -898,7 +895,6 @@ export const Settings: React.FC = () => {
                         <div className={styles.dependencyList}>
                             {renderDependencyGroup('required', videoDependencies?.required)}
                             {renderDependencyGroup('stable', videoDependencies?.stable)}
-                            {renderDependencyGroup('experimental', videoDependencies?.experimental)}
                         </div>
 
                         <p className={`${styles.settingState} ${hasVideoSettingsChanges ? styles.settingStatePending : styles.settingStateSaved}`}>

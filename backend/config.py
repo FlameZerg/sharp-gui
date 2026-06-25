@@ -133,7 +133,7 @@ def normalize_video_reconstruction_config(current_config):
         default_quality = defaults["default_quality"]
 
     default_engine = raw.get("default_engine")
-    if default_engine not in {"auto", "stable", "experimental"}:
+    if default_engine not in {"auto", "stable"}:
         default_engine = defaults["default_engine"]
 
     vram_budget = raw.get("vram_budget")
