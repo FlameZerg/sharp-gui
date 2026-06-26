@@ -207,6 +207,20 @@ Built with Apple Human Interface Guidelines for a premium feel:
 
 <p align="center"><i>Multi-folder albums, mixed photo/video browsing, media preview, multi-select to 3D</i></p>
 
+### Video 3DGS Reconstruction
+
+<p align="center">
+  <img src="docs/images/video-reconstruction-dialog.png" width="800" alt="Video reconstruction settings dialog">
+</p>
+
+<p align="center"><i>Open the reconstruction dialog from an album video or dropped video, then choose mode, quality, custom parameters, and dependency status</i></p>
+
+<p align="center">
+  <img src="docs/images/demo-video-reconstruction.gif" width="800" alt="Video reconstruction workflow demo">
+</p>
+
+<p align="center"><i>Choose a video → configure settings → watch task progress / live preview → open the model result and source-video replay</i></p>
+
 ### Mobile Adaptation
 
 <p align="center">
