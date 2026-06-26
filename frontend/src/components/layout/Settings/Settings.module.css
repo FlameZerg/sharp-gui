@@ -387,7 +387,7 @@
     min-height: 24px;
     margin: 16px 0 0;
     padding: 4px 10px;
-    border-radius: 999px;
+    border-radius: var(--radius-sm);
     font-size: 11px;
     font-weight: 600;
 }
@@ -446,6 +446,15 @@
     align-items: center;
     justify-content: space-between;
     gap: 12px;
+}
+
+.cacheActions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-self: flex-start;
 }
 
 .cacheHeader p,
@@ -567,6 +576,18 @@
     margin-top: 14px;
 }
 
+.dependencyFooter {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 10px;
+}
+
+.dependencyFooter .settingState {
+    margin: 0;
+}
+
 .dependencyRow {
     display: flex;
     align-items: center;
@@ -613,6 +634,18 @@
     .cacheHeader,
     .cacheFooter,
     .dependencyRow {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .cacheActions,
+    .cacheActions .browseBtn,
+    .dependencyFooter,
+    .dependencyFooter .browseBtn {
+        width: 100%;
+    }
+
+    .dependencyFooter {
         align-items: stretch;
         flex-direction: column;
     }

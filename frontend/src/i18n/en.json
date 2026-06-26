@@ -476,6 +476,112 @@
   "videoReconSettingsSaved": "Video reconstruction settings saved.",
   "videoReconSettingsUnsaved": "Unsaved video reconstruction changes",
   "videoReconSettingsCurrent": "Saved: video reconstruction defaults are current",
+  "videoReconOpenGuide": "Guide",
+  "videoReconGuideTitle": "Video Reconstruction Guide",
+  "videoReconGuideBadge": "Local 3DGS route",
+  "videoReconGuideHeroTitle": "Shoot well, then tune",
+  "videoReconGuideHeroText": "Video reconstruction extracts key frames from the full clip, estimates camera poses with COLMAP, then trains a Gaussian Splat model with Splatfacto. Think of it as static scene scanning, not video effects.",
+  "videoReconGuideFact": {
+    "preview": "Quick check",
+    "high": "Common final",
+    "extreme": "Offline ceiling"
+  },
+  "videoReconGuideBasicsTitle": "What it actually does",
+  "videoReconGuideBasicsText": "Once the route, sampling behavior and target scenes are clear, the quality presets and custom parameters are much easier to choose.",
+  "videoReconGuideOverview": {
+    "route": {
+      "title": "Reconstruction route",
+      "text": "The stable route reads the video with ffmpeg/ffprobe, estimates camera poses with COLMAP, then trains and exports PLY/SPZ through Nerfstudio Splatfacto."
+    },
+    "sampling": {
+      "title": "Frame sampling",
+      "text": "Preset frames are the target sampling size. The system samples sparsely across the clip; longer videos do not automatically receive more detail coverage."
+    },
+    "scene": {
+      "title": "Best scenes",
+      "text": "Static rooms, objects, exhibits and tabletop spaces work best. Crowds, screens, mirrors, transparent objects and blank walls reduce stability."
+    },
+    "result": {
+      "title": "Output",
+      "text": "Completed tasks appear in the model gallery for preview or PLY/SPZ download. Keeping intermediate files helps debug failures."
+    }
+  },
+  "videoReconGuideShootTitle": "Shooting advice",
+  "videoReconGuideShootText": "Source quality sets the ceiling. Reconstruction prefers slow, stable, continuous footage with visible texture.",
+  "videoReconGuideTips": {
+    "path": {
+      "title": "Move slowly, avoid sudden turns",
+      "text": "Keep a steady walking speed and a continuous path so camera poses have enough overlap to track."
+    },
+    "overlap": {
+      "title": "Keep viewpoints overlapping",
+      "text": "Orbit objects by at least half a circle to a full circle. For rooms, make sure each area is seen from multiple angles."
+    },
+    "light": {
+      "title": "Use stable lighting",
+      "text": "Avoid exposure jumps, strong reflections and flicker. Even lighting is usually more reliable than dramatic contrast."
+    },
+    "blur": {
+      "title": "Reduce motion and blur",
+      "text": "People, pets, moving plants, screen content and fast motion become noise and may produce floating fragments."
+    },
+    "long": {
+      "title": "Split or customize long videos",
+      "text": "Scanning a whole home is normal, but a 10-minute clip is better split by room, or run with custom frames and Sequential matching."
+    }
+  },
+  "videoReconGuideParametersTitle": "How to choose parameters",
+  "videoReconGuideParametersText": "High quality is a good default for most clips. Use Custom when the video is long, detail is lacking, or VRAM is tight.",
+  "videoReconGuideParameters": {
+    "frames": {
+      "title": "Target frames",
+      "text": "Controls how many images are sampled from the full clip. Raise it for longer paths and broader coverage; COLMAP and training will take longer."
+    },
+    "iterations": {
+      "title": "Training iterations",
+      "text": "Controls how long Splatfacto optimizes. More iterations can refine detail, but they cannot fix a missing camera path."
+    },
+    "downscale": {
+      "title": "Input downscale",
+      "text": "1x keeps the most detail and uses the most VRAM. 2x is the balanced default. 4x saves resources for path checks."
+    },
+    "matching": {
+      "title": "COLMAP matching",
+      "text": "Sequential is designed for long walk-throughs. Exhaustive is more robust but slows down quickly as frame count grows."
+    },
+    "cache": {
+      "title": "Image cache",
+      "text": "GPU cache can be faster. CPU cache saves VRAM for high frame counts, high input detail, or tighter GPUs."
+    }
+  },
+  "videoReconGuideDependencyTitle": "Environment dependencies",
+  "videoReconGuideDependencyText": "Video reconstruction uses a separate environment. Refresh diagnostics in Settings, and follow the README when dependencies are missing.",
+  "videoReconGuideDependencies": {
+    "ffmpeg": {
+      "title": "ffmpeg / ffprobe",
+      "text": "Reads video metadata, extracts frames and builds thumbnails. These are required before any video task can start."
+    },
+    "colmap": {
+      "title": "COLMAP",
+      "text": "Handles feature matching and camera pose estimation. Failures here often point to poor overlap, blur or low texture."
+    },
+    "nerfstudio": {
+      "title": "Nerfstudio / Splatfacto",
+      "text": "Trains the 3D Gaussian Splatting model and exports the PLY used by the model gallery."
+    },
+    "gpu": {
+      "title": "NVIDIA GPU / CUDA / PyTorch",
+      "text": "The currently verified end-to-end platform is Windows + NVIDIA GPU. More VRAM supports more frames and input detail."
+    },
+    "storage": {
+      "title": "Disk space",
+      "text": "Frames, the COLMAP database, training logs and temporary models use disk space. Long videos need extra cache room."
+    }
+  },
+  "videoReconGuideInstallTitle": "Installation is covered in the README",
+  "videoReconGuideInstallText": "The README includes the manual video reconstruction setup for .video-reconstruction-env, CUDA/PyTorch, COLMAP, Nerfstudio and ffmpeg/ffprobe.",
+  "videoReconGuideReadReadme": "Open Chinese README",
+  "videoReconGuideReadReadmeEn": "English README",
   "videoReconDependencyAvailable": "Available",
   "videoReconDependencyChecking": "Checking",
   "videoReconDependencyMissing": "Missing",

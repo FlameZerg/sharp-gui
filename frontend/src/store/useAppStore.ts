@@ -390,6 +390,7 @@ interface AppState {
   controlsCollapsed: boolean;
   helpPanelVisible: boolean;
   settingsModalOpen: boolean;
+  videoReconstructionGuideOpen: boolean;
 
   // Loading State
   isLoading: boolean;
@@ -480,6 +481,8 @@ interface AppState {
   toggleControlsCollapsed: () => void;
   toggleHelpPanel: () => void;
   setSettingsModalOpen: (open: boolean) => void;
+  openVideoReconstructionGuide: () => void;
+  closeVideoReconstructionGuide: () => void;
 
   setLoading: (loading: boolean, text?: string) => void;
   setLoadingProgress: (progress: number) => void;
@@ -568,6 +571,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   controlsCollapsed: false,
   helpPanelVisible: false,
   settingsModalOpen: false,
+  videoReconstructionGuideOpen: false,
 
   isLoading: false,
   loadingText: '',
@@ -653,6 +657,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   toggleControlsCollapsed: () => set((state) => ({ controlsCollapsed: !state.controlsCollapsed })),
   toggleHelpPanel: () => set((state) => ({ helpPanelVisible: !state.helpPanelVisible })),
   setSettingsModalOpen: (open) => set({ settingsModalOpen: open }),
+  openVideoReconstructionGuide: () => set({ videoReconstructionGuideOpen: true }),
+  closeVideoReconstructionGuide: () => set({ videoReconstructionGuideOpen: false }),
 
   setLoading: (loading, text = '') => set((state) => ({
     isLoading: loading,

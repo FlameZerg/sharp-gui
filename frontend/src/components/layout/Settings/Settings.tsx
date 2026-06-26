@@ -86,6 +86,7 @@ export const Settings: React.FC = () => {
         authStatus,
         setAuthStatus,
         setVideoReconstructionStatus,
+        openVideoReconstructionGuide,
     } = useAppStore();
     const [workspaceFolder, setWorkspaceFolder] = useState('');
     const [modelFormat, setModelFormat] = useState<ModelFormat>('spz');
@@ -795,14 +796,15 @@ export const Settings: React.FC = () => {
                                 <span className={styles.cacheTitle}>{t('videoReconSettingsDefaults')}</span>
                                 <p>{t('videoReconSettingsHint')}</p>
                             </div>
-                            <button
-                                type="button"
-                                className={styles.browseBtn}
-                                onClick={() => loadVideoReconstructionStatus(true)}
-                                disabled={videoStatusLoading}
-                            >
-                                {videoStatusLoading ? t('loading') : t('videoReconRefreshDiagnostics')}
-                            </button>
+                            <div className={styles.cacheActions}>
+                                <button
+                                    type="button"
+                                    className={styles.browseBtn}
+                                    onClick={openVideoReconstructionGuide}
+                                >
+                                    {t('videoReconOpenGuide')}
+                                </button>
+                            </div>
                         </div>
 
                         <div className={styles.videoSettingsGrid}>
@@ -897,9 +899,19 @@ export const Settings: React.FC = () => {
                             {renderDependencyGroup('stable', videoDependencies?.stable)}
                         </div>
 
-                        <p className={`${styles.settingState} ${hasVideoSettingsChanges ? styles.settingStatePending : styles.settingStateSaved}`}>
-                            {hasVideoSettingsChanges ? t('videoReconSettingsUnsaved') : t('videoReconSettingsCurrent')}
-                        </p>
+                        <div className={styles.dependencyFooter}>
+                            <p className={`${styles.settingState} ${hasVideoSettingsChanges ? styles.settingStatePending : styles.settingStateSaved}`}>
+                                {hasVideoSettingsChanges ? t('videoReconSettingsUnsaved') : t('videoReconSettingsCurrent')}
+                            </p>
+                            <button
+                                type="button"
+                                className={styles.browseBtn}
+                                onClick={() => loadVideoReconstructionStatus(true)}
+                                disabled={videoStatusLoading}
+                            >
+                                {videoStatusLoading ? t('loading') : t('videoReconRefreshDiagnostics')}
+                            </button>
+                        </div>
                         {videoMessage ? <p className={styles.message}>{videoMessage}</p> : null}
                     </div>
                 </div>

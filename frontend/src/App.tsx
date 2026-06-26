@@ -18,7 +18,12 @@ import { ParticleBackground } from '@/components/common/ParticleBackground';
 import { GlobalTooltip } from '@/components/common/Tooltip';
 import { Settings, Sidebar } from '@/components/layout';
 import { Help } from '@/components/layout/Help/Help';
-import { PhotoAlbumList, PhotoGalleryView, VideoReconstructionDialog } from '@/components/photoGallery';
+import {
+  PhotoAlbumList,
+  PhotoGalleryView,
+  VideoReconstructionDialog,
+  VideoReconstructionGuide,
+} from '@/components/photoGallery';
 import { useTaskQueue } from '@/hooks/useTaskQueue';
 import { useAppStore } from '@/store';
 import { ViewerCanvas } from '@/components/viewer/ViewerCanvas/ViewerCanvas';
@@ -368,6 +373,8 @@ function App() {
       <ImageViewer />
 
       <VideoReconstructionDialog />
+
+      <VideoReconstructionGuide />
 
       <GlobalTooltip />
     </div>

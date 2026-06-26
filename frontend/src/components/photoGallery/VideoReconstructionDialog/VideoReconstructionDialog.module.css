@@ -378,9 +378,17 @@
 
 .actions {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
   gap: 10px;
   padding-top: 2px;
+}
+
+.actionGroup {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-left: auto;
 }
 
 @media (max-width: 520px) {
@@ -395,6 +403,13 @@
 
   .actions {
     flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .actionGroup {
+    width: 100%;
+    flex-direction: column-reverse;
+    margin-left: 0;
   }
 
   .actions button {

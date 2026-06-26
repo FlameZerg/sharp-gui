@@ -476,6 +476,112 @@
   "videoReconSettingsSaved": "视频重建设置已保存。",
   "videoReconSettingsUnsaved": "视频重建设置有未保存更改",
   "videoReconSettingsCurrent": "已保存：视频重建默认值为最新",
+  "videoReconOpenGuide": "重建指南",
+  "videoReconGuideTitle": "视频重建指南",
+  "videoReconGuideBadge": "本地 3DGS 流程",
+  "videoReconGuideHeroTitle": "先拍对，再调参",
+  "videoReconGuideHeroText": "视频重建会从整段视频抽取关键帧，先用 COLMAP 估计相机位姿，再用 Splatfacto 训练 Gaussian Splat 模型。它更像静态场景扫描，不是视频特效。",
+  "videoReconGuideFact": {
+    "preview": "快速确认",
+    "high": "常用成品",
+    "extreme": "离线上限"
+  },
+  "videoReconGuideBasicsTitle": "它到底在做什么",
+  "videoReconGuideBasicsText": "理解路线、取帧和适用场景后，质量档和自定义参数会更容易选择。",
+  "videoReconGuideOverview": {
+    "route": {
+      "title": "重建路线",
+      "text": "当前稳定路线是 ffmpeg/ffprobe 读取视频，COLMAP 求相机位姿，Nerfstudio Splatfacto 训练并导出 PLY/SPZ。"
+    },
+    "sampling": {
+      "title": "取帧方式",
+      "text": "预设里的帧数是目标抽帧规模；系统会按视频长度稀疏采样，不会因为视频更长就自动覆盖更多细节。"
+    },
+    "scene": {
+      "title": "适合场景",
+      "text": "静态房间、物体、展品和桌面空间更适合；人群、屏幕、镜面、透明物和大面积白墙会降低稳定性。"
+    },
+    "result": {
+      "title": "输出结果",
+      "text": "任务完成后会进入模型图库，可预览或下载 PLY/SPZ；开启保留中间文件能帮助排查失败。"
+    }
+  },
+  "videoReconGuideShootTitle": "拍摄建议",
+  "videoReconGuideShootText": "素材质量决定上限。重建更喜欢慢、稳、连续、有纹理的镜头。",
+  "videoReconGuideTips": {
+    "path": {
+      "title": "缓慢移动，避免急转",
+      "text": "保持稳定步速和连续路径，让相机位姿有足够重叠可追踪。"
+    },
+    "overlap": {
+      "title": "保证视角重叠",
+      "text": "围绕物体多拍半圈到一圈；房间走拍时每个区域都要从多个角度看到。"
+    },
+    "light": {
+      "title": "光线要稳定",
+      "text": "避免明显曝光跳变、强反光和频闪；均匀光照通常比高对比灯光更稳。"
+    },
+    "blur": {
+      "title": "减少动态和运动模糊",
+      "text": "人、宠物、摇晃植物、屏幕内容和快速运动会被当成噪声，可能生成漂浮碎片。"
+    },
+    "long": {
+      "title": "长视频优先拆段或自定义",
+      "text": "录完整个家很正常，但 10 分钟素材建议按房间拆任务，或用自定义提高帧数并选择顺序匹配。"
+    }
+  },
+  "videoReconGuideParametersTitle": "参数怎么选",
+  "videoReconGuideParametersText": "默认高质量适合多数素材；当视频很长、细节不足或显存吃紧时再进入自定义。",
+  "videoReconGuideParameters": {
+    "frames": {
+      "title": "目标帧数",
+      "text": "决定从整段视频里取多少张图。长路径想覆盖更多区域，就提高帧数；代价是 COLMAP 和训练更久。"
+    },
+    "iterations": {
+      "title": "训练迭代",
+      "text": "决定 Splatfacto 优化多久。更多迭代可能提升细节，但不会弥补拍摄路径缺失。"
+    },
+    "downscale": {
+      "title": "输入下采样",
+      "text": "1x 保留最多细节也最吃显存；2x 是均衡默认；4x 更省资源，适合先确认路线。"
+    },
+    "matching": {
+      "title": "COLMAP 匹配",
+      "text": "顺序匹配适合长走拍；完整匹配更稳但会随帧数快速变慢，所以高帧数会被限制。"
+    },
+    "cache": {
+      "title": "图像缓存",
+      "text": "GPU 缓存可能更快；CPU 缓存更省显存，适合高帧数、高分辨率或显存紧张时使用。"
+    }
+  },
+  "videoReconGuideDependencyTitle": "环境依赖",
+  "videoReconGuideDependencyText": "视频重建使用独立环境。Settings 可刷新诊断，缺依赖时请按 README 安装。",
+  "videoReconGuideDependencies": {
+    "ffmpeg": {
+      "title": "ffmpeg / ffprobe",
+      "text": "读取视频元数据、抽帧和生成封面，是启动视频任务的基础依赖。"
+    },
+    "colmap": {
+      "title": "COLMAP",
+      "text": "负责特征匹配和相机位姿估计；这一步失败通常和素材重叠、模糊或纹理不足有关。"
+    },
+    "nerfstudio": {
+      "title": "Nerfstudio / Splatfacto",
+      "text": "负责训练 3D Gaussian Splatting 并导出可进入模型图库的 PLY。"
+    },
+    "gpu": {
+      "title": "NVIDIA GPU / CUDA / PyTorch",
+      "text": "当前端到端验证平台是 Windows + NVIDIA GPU；显存越大，可承受的帧数和输入细节越高。"
+    },
+    "storage": {
+      "title": "磁盘空间",
+      "text": "抽帧、COLMAP 数据库、训练日志和临时模型会占用空间；长视频建议预留更多缓存。"
+    }
+  },
+  "videoReconGuideInstallTitle": "安装方式参考 README",
+  "videoReconGuideInstallText": "项目 README 包含视频重建环境手动搭建指南，覆盖 .video-reconstruction-env、CUDA/PyTorch、COLMAP、Nerfstudio 和 ffmpeg/ffprobe。",
+  "videoReconGuideReadReadme": "打开中文 README",
+  "videoReconGuideReadReadmeEn": "English README",
   "videoReconDependencyAvailable": "可用",
   "videoReconDependencyChecking": "检测中",
   "videoReconDependencyMissing": "缺失",

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import { CircleHelp } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
 
@@ -60,6 +61,7 @@ export function VideoReconstructionDialog() {
     config,
     submitting,
     closeDialog,
+    openGuide,
     setStatus,
     setSubmitting,
     setTasks,
@@ -72,6 +74,7 @@ export function VideoReconstructionDialog() {
       config: state.videoReconstructionConfig,
       submitting: state.videoReconstructionSubmitting,
       closeDialog: state.closeVideoReconstructionDialog,
+      openGuide: state.openVideoReconstructionGuide,
       setStatus: state.setVideoReconstructionStatus,
       setSubmitting: state.setVideoReconstructionSubmitting,
       setTasks: state.setTasks,
@@ -492,18 +495,28 @@ export function VideoReconstructionDialog() {
         ) : null}
 
         <div className={styles.actions}>
-          <Button variant="secondary" type="button" onClick={closeDialog} disabled={submitting}>
-            {t('cancel')}
-          </Button>
           <Button
-            variant="primary"
+            variant="ghost"
             type="button"
-            onClick={handleSubmit}
-            disabled={!canSubmit}
-            icon={<SparklesIcon width={16} height={16} />}
+            onClick={openGuide}
+            icon={<CircleHelp width={16} height={16} />}
           >
-            {submitting ? t('videoReconSubmitting') : t('videoReconStart')}
+            {t('videoReconOpenGuide')}
           </Button>
+          <div className={styles.actionGroup}>
+            <Button variant="secondary" type="button" onClick={closeDialog} disabled={submitting}>
+              {t('cancel')}
+            </Button>
+            <Button
+              variant="primary"
+              type="button"
+              onClick={handleSubmit}
+              disabled={!canSubmit}
+              icon={<SparklesIcon width={16} height={16} />}
+            >
+              {submitting ? t('videoReconSubmitting') : t('videoReconStart')}
+            </Button>
+          </div>
         </div>
       </div>
     </Modal>
