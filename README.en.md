@@ -520,6 +520,12 @@ The backend starts an asynchronous dependency warmup once per process. Opening t
 
 This guide covers setting up the stable video reconstruction route (COLMAP + Nerfstudio/Splatfacto) from scratch. The only verified platform so far is **Windows + NVIDIA GPU (RTX 5070 Ti Laptop 12GB)**.
 
+#### Use an AI Agent to Help
+
+If you do not want to configure everything manually, you can let a local AI coding agent read the project, install the environment from this README, and verify it. Suggested prompt:
+
+> First understand the current Sharp GUI project and video reconstruction flow. Check the OS, GPU/driver, Python and PATH, then follow the README to install or reuse .video-reconstruction-env, CUDA/PyTorch, COLMAP, Nerfstudio/Splatfacto and ffmpeg/ffprobe. Do not change unrelated application code. Finally run the diagnostics API and basic commands to confirm the dependencies are available.
+
 #### Prerequisites
 
 | Dependency | Purpose | How to get |

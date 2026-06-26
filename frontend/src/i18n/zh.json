@@ -555,7 +555,7 @@
     }
   },
   "videoReconGuideDependencyTitle": "环境依赖",
-  "videoReconGuideDependencyText": "视频重建使用独立环境。Settings 可刷新诊断，缺依赖时请按 README 安装。",
+  "videoReconGuideDependencyText": "开始前先确认这些基础要求；Settings 里可以刷新本机诊断结果。",
   "videoReconGuideDependencies": {
     "ffmpeg": {
       "title": "ffmpeg / ffprobe",
@@ -578,8 +578,13 @@
       "text": "抽帧、COLMAP 数据库、训练日志和临时模型会占用空间；长视频建议预留更多缓存。"
     }
   },
+  "videoReconGuideSetupTitle": "配置指南",
+  "videoReconGuideSetupText": "依赖要求确认后，可以按 README 手动配置，也可以让本机 AI Agent 代劳。",
   "videoReconGuideInstallTitle": "安装方式参考 README",
   "videoReconGuideInstallText": "项目 README 包含视频重建环境手动搭建指南，覆盖 .video-reconstruction-env、CUDA/PyTorch、COLMAP、Nerfstudio 和 ffmpeg/ffprobe。",
+  "videoReconGuideAgentTitle": "也可以交给 AI Agent 配置",
+  "videoReconGuideAgentText": "适合不想逐步排查 PATH、CUDA、Python 和外部命令的情况；把下面这句话交给本机 AI coding agent 即可。",
+  "videoReconGuideAgentPrompt": "请先了解当前 Sharp GUI 项目和视频重建流程，检查系统、GPU/驱动、Python 与 PATH；按 README 安装或复用 .video-reconstruction-env、CUDA/PyTorch、COLMAP、Nerfstudio/Splatfacto、ffmpeg/ffprobe。不要修改无关业务代码。最后运行诊断 API 和基础命令，确认依赖可用。",
   "videoReconGuideReadReadme": "打开中文 README",
   "videoReconGuideReadReadmeEn": "English README",
   "videoReconDependencyAvailable": "可用",

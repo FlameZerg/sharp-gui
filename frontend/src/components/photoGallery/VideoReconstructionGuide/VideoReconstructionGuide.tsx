@@ -1,5 +1,6 @@
 import {
   BadgeInfo,
+  Bot,
   BookOpen,
   Camera,
   CircleHelp,
@@ -175,21 +176,46 @@ export function VideoReconstructionGuide() {
           </div>
         </section>
 
-        <section className={styles.installPanel}>
-          <CircleHelp size={18} strokeWidth={1.8} />
-          <div>
-            <strong>{t('videoReconGuideInstallTitle')}</strong>
-            <p>{t('videoReconGuideInstallText')}</p>
-            <div className={styles.linkRow}>
-              <a href={README_ZH_URL} target="_blank" rel="noreferrer">
-                {t('videoReconGuideReadReadme')}
-                <ExternalLink size={13} strokeWidth={1.8} />
-              </a>
-              <a href={README_EN_URL} target="_blank" rel="noreferrer">
-                {t('videoReconGuideReadReadmeEn')}
-                <ExternalLink size={13} strokeWidth={1.8} />
-              </a>
+        <section className={styles.section}>
+          <div className={styles.sectionHeader}>
+            <span className={styles.sectionIcon}>
+              <CircleHelp size={17} strokeWidth={1.8} />
+            </span>
+            <div>
+              <h3>{t('videoReconGuideSetupTitle')}</h3>
+              <p>{t('videoReconGuideSetupText')}</p>
             </div>
+          </div>
+
+          <div className={styles.setupPanel}>
+            <article className={styles.setupItem}>
+              <BookOpen size={17} strokeWidth={1.8} />
+              <div>
+                <strong>{t('videoReconGuideInstallTitle')}</strong>
+                <p>{t('videoReconGuideInstallText')}</p>
+                <div className={styles.linkRow}>
+                  <a href={README_ZH_URL} target="_blank" rel="noreferrer">
+                    {t('videoReconGuideReadReadme')}
+                    <ExternalLink size={13} strokeWidth={1.8} />
+                  </a>
+                  <a href={README_EN_URL} target="_blank" rel="noreferrer">
+                    {t('videoReconGuideReadReadmeEn')}
+                    <ExternalLink size={13} strokeWidth={1.8} />
+                  </a>
+                </div>
+              </div>
+            </article>
+
+            <article className={styles.setupItem}>
+              <Bot size={17} strokeWidth={1.8} />
+              <div>
+                <strong>{t('videoReconGuideAgentTitle')}</strong>
+                <p>{t('videoReconGuideAgentText')}</p>
+                <pre className={styles.promptBlock}>
+                  <code>{t('videoReconGuideAgentPrompt')}</code>
+                </pre>
+              </div>
+            </article>
           </div>
         </section>
       </div>

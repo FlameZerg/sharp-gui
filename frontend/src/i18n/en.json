@@ -555,7 +555,7 @@
     }
   },
   "videoReconGuideDependencyTitle": "Environment dependencies",
-  "videoReconGuideDependencyText": "Video reconstruction uses a separate environment. Refresh diagnostics in Settings, and follow the README when dependencies are missing.",
+  "videoReconGuideDependencyText": "Check these baseline requirements first. Settings can refresh the local diagnostics result.",
   "videoReconGuideDependencies": {
     "ffmpeg": {
       "title": "ffmpeg / ffprobe",
@@ -578,8 +578,13 @@
       "text": "Frames, the COLMAP database, training logs and temporary models use disk space. Long videos need extra cache room."
     }
   },
+  "videoReconGuideSetupTitle": "Setup guide",
+  "videoReconGuideSetupText": "Once the requirements are clear, configure it manually from the README or let a local AI agent handle it.",
   "videoReconGuideInstallTitle": "Installation is covered in the README",
   "videoReconGuideInstallText": "The README includes the manual video reconstruction setup for .video-reconstruction-env, CUDA/PyTorch, COLMAP, Nerfstudio and ffmpeg/ffprobe.",
+  "videoReconGuideAgentTitle": "You can also ask an AI agent",
+  "videoReconGuideAgentText": "Useful when you do not want to debug PATH, CUDA, Python and external commands step by step. Give this prompt to a local AI coding agent.",
+  "videoReconGuideAgentPrompt": "First understand the current Sharp GUI project and video reconstruction flow. Check the OS, GPU/driver, Python and PATH, then follow the README to install or reuse .video-reconstruction-env, CUDA/PyTorch, COLMAP, Nerfstudio/Splatfacto and ffmpeg/ffprobe. Do not change unrelated application code. Finally run the diagnostics API and basic commands to confirm the dependencies are available.",
   "videoReconGuideReadReadme": "Open Chinese README",
   "videoReconGuideReadReadmeEn": "English README",
   "videoReconDependencyAvailable": "Available",
