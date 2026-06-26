@@ -90,30 +90,14 @@ def resolve_sharp_command():
 
 
 def select_sharp_device():
-    """Return a device that can actually execute kernels."""
+    """Return a device that can actually execute kernels.
+
+    Defaults to CPU so the frontend 3D generation is deterministic and avoids
+    GPU/autodetection surprises. Set SHARP_DEVICE to cpu/cuda/mps to override.
+    """
     configured = os.environ.get("SHARP_DEVICE", "").strip().lower()
     if configured in {"cpu", "cuda", "mps"}:
         return configured
-
-    try:
-        import torch
-    except Exception as exc:
-        print(f"[WARN] Unable to import torch, falling back to CPU: {exc}")
-        return "cpu"
-
-    if torch.cuda.is_available():
-        try:
-            x = torch.ones((4, 4), device="cuda")
-            _ = (x @ x).sum().cpu()
-            torch.cuda.synchronize()
-            return "cuda"
-        except Exception as exc:
-            msg = str(exc).splitlines()[0] if str(exc) else repr(exc)
-            print(f"[WARN] CUDA is visible but unusable, falling back to CPU: {msg}")
-            return "cpu"
-
-    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        return "mps"
 
     return "cpu"
 

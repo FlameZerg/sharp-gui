@@ -8,7 +8,6 @@ from backend.config import (
     save_config,
 )
 from backend.services.folder_picker import browse_folder_native
-from backend.services.photo_gallery import migrate_photo_gallery_roots_config
 from backend.server import restart_process_later
 
 bp = Blueprint("settings", __name__)
@@ -39,9 +38,6 @@ def settings():
     new_config = load_config()
 
     if "workspace_folder" in data:
-        # 切换工作目录前，先把可能残留的旧全局相册配置归档到“当前”工作目录的分桶，
-        # 避免切换后旧相册泄漏到新工作目录。相册按工作目录分桶记忆，切回旧目录可恢复。
-        migrate_photo_gallery_roots_config(new_config)
         new_config["workspace_folder"] = data["workspace_folder"]
         new_config.pop("input_folder", None)
         new_config.pop("output_folder", None)

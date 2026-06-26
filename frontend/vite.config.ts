@@ -23,6 +23,13 @@ export default defineConfig({
   server: {
     host: true, // Listen on all addresses (0.0.0.0)
     port: 3000,
+    // DSW 实例号每次重启变化，域名不固定，放行所有 Host
+    allowedHosts: true,
+    // 兜底允许跨域，避免部分网关场景下缺失 CORS 头
+    cors: true,
+    // DSW 网关不支持 WebSocket 代理，禁用 HMR WebSocket 避免 Chrome PNA 拦截
+    ws: false,
+
     // HTTPS 仅在证书存在时启用
     ...(hasHttpsCerts ? {
       https: {

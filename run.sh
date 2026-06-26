@@ -2,25 +2,32 @@
 # ============================================================
 # Sharp GUI - 一键启动脚本 (Linux/macOS)
 # 
-# 用法: ./run.sh [--legacy] [--verbose]
+# 用法: ./run.sh [--legacy] [--dev] [--verbose]
 #   --legacy   使用原始单文件版本
+#   --dev      开发模式：前端自动构建 (vite build --watch)
 #   --verbose  输出更多诊断日志，用于反馈问题
 # ============================================================
 
 set -e
 
+export PYTHONPATH="$SCRIPT_DIR:$PYTHONPATH"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # 默认使用 React 版本
 USE_LEGACY=false
 SHARP_VERBOSE="${SHARP_VERBOSE:-}"
+USE_DEV=false
 
 # 解析参数
 while [[ $# -gt 0 ]]; do
     case $1 in
         --legacy)
             USE_LEGACY=true
+            shift
+            ;;
+        --dev)
+            USE_DEV=true
             shift
             ;;
         --verbose)
@@ -31,10 +38,11 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -h|--help)
-            echo "用法 (Usage): ./run.sh [--legacy] [--verbose]"
+            echo "用法 (Usage): ./run.sh [--legacy] [--dev] [--verbose]"
             echo ""
             echo "选项 (Options):"
             echo "  --legacy    使用原始单文件前端"
+            echo "  --dev       开发模式：前端自动构建 (vite build --watch)"
             echo "  --verbose   输出更多诊断日志，用于反馈问题"
             echo "  -h, --help  显示帮助信息"
             exit 0
@@ -46,13 +54,19 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# 检查虚拟环境
-if [ ! -d "$SCRIPT_DIR/venv" ]; then
+# 检查虚拟环境：优先使用已激活的 venv，否则尝试 ./venv
+if [ -n "${VIRTUAL_ENV:-}" ] && [ -f "$VIRTUAL_ENV/bin/activate" ]; then
+    echo "✅ 使用已激活的虚拟环境: $VIRTUAL_ENV"
+elif [ -d "$SCRIPT_DIR/venv" ]; then
+    echo "✅ 激活虚拟环境: $SCRIPT_DIR/venv"
+    source "$SCRIPT_DIR/venv/bin/activate"
+else
     echo "╔══════════════════════════════════════════════════════════════╗"
     echo "║  错误: 虚拟环境不存在 (Virtual environment not found)        ║"
     echo "╠══════════════════════════════════════════════════════════════╣"
-    echo "║  请先运行安装脚本:                                            ║"
-    echo "║    ./install.sh                                              ║"
+    echo "║  请先激活虚拟环境，或运行安装脚本:                            ║"
+    echo "║    source <venv>/bin/activate                                ║"
+    echo "║    或 ./install.sh                                           ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
     exit 1
 fi
@@ -67,9 +81,6 @@ if [ ! -d "$SCRIPT_DIR/ml-sharp" ]; then
     echo "╚══════════════════════════════════════════════════════════════╝"
     exit 1
 fi
-
-# 激活虚拟环境
-source "$SCRIPT_DIR/venv/bin/activate"
 
 # 检查 sharp 命令
 if ! command -v sharp &> /dev/null; then
@@ -139,5 +150,31 @@ else
     fi
 fi
 echo ""
+
+# 开发模式：后台启动前端自动构建，保存源码时增量构建到 frontend/dist/
+if [ "$USE_DEV" == "true" ]; then
+    if [ ! -d "$SCRIPT_DIR/frontend/node_modules" ]; then
+        echo "⚠️  前端依赖未安装，尝试安装..."
+        (cd "$SCRIPT_DIR/frontend" && npm install)
+    fi
+    # 开发模式强制使用 React，并确保构建产物已存在
+    export SHARP_FRONTEND_MODE="react"
+    if [ ! -d "$SCRIPT_DIR/frontend/dist" ]; then
+        echo "📦 首次构建 React 前端..."
+        (cd "$SCRIPT_DIR/frontend" && npm run build)
+    fi
+    echo "🛠️  开发模式：启动前端自动构建 (vite build --watch)"
+    (cd "$SCRIPT_DIR/frontend" && npm run watch) &
+    WATCH_PID=$!
+    cleanup() {
+        echo ""
+        echo "🛑 停止前端 watch 构建 (PID: $WATCH_PID)..."
+        kill $WATCH_PID 2>/dev/null || true
+        wait $WATCH_PID 2>/dev/null || true
+    }
+    trap cleanup EXIT INT TERM
+    echo "   watch PID: $WATCH_PID"
+    echo ""
+fi
 
 python app.py

@@ -11,7 +11,7 @@ bp = Blueprint("export", __name__)
 def export_model(model_id):
     """导出模型为独立 HTML 文件。"""
     fmt = request.args.get("format", "spz").lower()
-    if fmt not in ("spz", "ply"):
+    if fmt not in ("spz", "ply", "splat", "rad"):
         fmt = "spz"
 
     try:

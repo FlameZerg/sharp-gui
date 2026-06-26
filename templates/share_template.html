@@ -538,6 +538,7 @@
           "three": "{{THREE_DATA_URL}}",
           "three-core": "{{THREE_CORE_DATA_URL}}",
           "three/addons/controls/OrbitControls.js": "{{ORBIT_CONTROLS_DATA_URL}}",
+          "three/addons/postprocessing/Pass.js": "{{PASS_DATA_URL}}",
           "@sparkjsdev/spark": "{{SPARK_DATA_URL}}"
         }
       }
@@ -755,15 +756,14 @@
     </div>
 
     <script>
-      // 兼容某些 file:// 环境不支持 fetch(blob:...) 的情况。
-      // Spark 内部可能会对 blob URL 调用 fetch，这里兜底转为 XHR。
-      (function patchBlobFetch() {
+      // 增强型 file:// 协议兼容补丁：同时劫持主线程与 Worker 线程的 fetch 行为
+      (function patchBlobFetchAndWorker() {
         if (typeof window.fetch !== "function") return;
+        
+        // 1. 劫持主线程的 fetch
         const nativeFetch = window.fetch.bind(window);
-
         window.fetch = function patchedFetch(input, init) {
           const url = typeof input === "string" ? input : input && input.url;
-
           if (typeof url === "string" && url.startsWith("blob:")) {
             return new Promise((resolve, reject) => {
               const xhr = new XMLHttpRequest();
@@ -772,24 +772,76 @@
               xhr.onload = () => {
                 const headers = new Headers();
                 const contentType = xhr.getResponseHeader("Content-Type");
-                if (contentType) {
-                  headers.set("Content-Type", contentType);
-                }
-                resolve(
-                  new Response(xhr.response, {
-                    status: xhr.status || 200,
-                    statusText: xhr.statusText || "OK",
-                    headers,
-                  }),
-                );
+                if (contentType) headers.set("Content-Type", contentType);
+                resolve(new Response(xhr.response, {
+                  status: xhr.status || 200,
+                  statusText: xhr.statusText || "OK",
+                  headers,
+                }));
               };
               xhr.onerror = () => reject(new TypeError("Failed to fetch blob URL"));
               xhr.send();
             });
           }
-
           return nativeFetch(input, init);
         };
+
+        // 2. 劫持 Worker 构造函数，将 fetch 补丁动态注入到 Worker 线程头部
+        if (typeof window.Worker !== "function") return;
+        const NativeWorker = window.Worker;
+
+        window.Worker = function PatchedWorker(stringOrUrl, options) {
+          let url = stringOrUrl;
+          if (typeof url === "string" && url.startsWith("blob:")) {
+            try {
+              // 同步拉取原 Worker 的 Blob 脚本内容
+              const xhr = new XMLHttpRequest();
+              xhr.open("GET", url, false); // 同步读取
+              xhr.send();
+              const workerCode = xhr.responseText;
+
+              // 拼接注入到 Worker 内部的劫持代码
+              const workerPatch = `
+                (function() {
+                  if (typeof self.fetch === 'function') {
+                    const workerNativeFetch = self.fetch.bind(self);
+                    self.fetch = function(input, init) {
+                      const fetchUrl = typeof input === 'string' ? input : (input && input.url);
+                      if (typeof fetchUrl === 'string' && fetchUrl.startsWith('blob:')) {
+                        return new Promise((resolve, reject) => {
+                          const xhr = new XMLHttpRequest();
+                          xhr.open('GET', fetchUrl, true);
+                          xhr.responseType = 'arraybuffer';
+                          xhr.onload = () => {
+                            const headers = new Headers();
+                            const contentType = xhr.getResponseHeader('Content-Type');
+                            if (contentType) headers.set('Content-Type', contentType);
+                            resolve(new Response(xhr.response, {
+                              status: xhr.status || 200,
+                              statusText: xhr.statusText || 'OK',
+                              headers
+                            }));
+                          };
+                          xhr.onerror = () => reject(new TypeError('Failed to fetch blob inside worker'));
+                          xhr.send();
+                        });
+                      }
+                      return workerNativeFetch(input, init);
+                    };
+                  }
+                })();
+              `;
+
+              const patchedBlob = new Blob([workerPatch + "\n" + workerCode], { type: "text/javascript" });
+              url = URL.createObjectURL(patchedBlob);
+            } catch (e) {
+              console.warn("Failed to patch worker script:", e);
+            }
+          }
+          return new NativeWorker(url, options);
+        };
+
+        window.Worker.prototype = NativeWorker.prototype;
       })();
     </script>
 
@@ -798,8 +850,6 @@
       import { OrbitControls } from "three/addons/controls/OrbitControls.js";
       import { SparkRenderer, SplatMesh, SplatFileType } from "@sparkjsdev/spark";
 
-      // 模型数据 (Base64)
-      const MODEL_DATA = "{{MODEL_DATA}}";
       const SCENE_FORMAT = "{{SCENE_FORMAT}}".toLowerCase();
       let viewer = null;
 
@@ -1042,21 +1092,48 @@
 
       // Base64 转 ArrayBuffer (带进度)
       function base64ToArrayBuffer(base64, onProgress) {
-        const binaryString = atob(base64);
-        const len = binaryString.length;
-        const bytes = new Uint8Array(len);
+        let len = base64.length;
+        let padding = 0;
+        if (base64.endsWith('==')) padding = 2;
+        else if (base64.endsWith('=')) padding = 1;
 
-        // 分块处理以便报告进度
-        const chunkSize = 100000;
-        for (let i = 0; i < len; i += chunkSize) {
-          const end = Math.min(i + chunkSize, len);
-          for (let j = i; j < end; j++) {
-            bytes[j] = binaryString.charCodeAt(j);
+        const bytesLen = (len * 3) / 4 - padding;
+        const bytes = new Uint8Array(bytesLen);
+
+        // 初始化 Base64 lookup 表
+        const lookup = new Uint8Array(256);
+        const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        for (let i = 0; i < 64; i++) {
+          lookup[chars.charCodeAt(i)] = i;
+        }
+
+        let p = 0;
+        // 分块大小
+        const chunkSize = 200000;
+
+        for (let i = 0; i < len - padding; i += 4) {
+          const c1 = lookup[base64.charCodeAt(i)];
+          const c2 = lookup[base64.charCodeAt(i + 1)];
+          const c3 = lookup[base64.charCodeAt(i + 2)];
+          const c4 = lookup[base64.charCodeAt(i + 3)];
+
+          bytes[p++] = (c1 << 2) | (c2 >> 4);
+          if (p < bytesLen) {
+            bytes[p++] = ((c2 & 15) << 4) | (c3 >> 2);
           }
-          if (onProgress) {
-            onProgress(Math.min(end / len, 1));
+          if (p < bytesLen) {
+            bytes[p++] = ((c3 & 3) << 6) | (c4 & 63);
+          }
+
+          if (onProgress && i % chunkSize === 0) {
+            onProgress(i / len);
           }
         }
+
+        if (onProgress) {
+          onProgress(1);
+        }
+
         return bytes.buffer;
       }
 
@@ -1182,16 +1259,40 @@
           renderer.domElement.addEventListener("pointerdown", onPointerDown);
           renderer.domElement.addEventListener("pointerup", onPointerUp);
 
+          const isFileProtocol = window.location.protocol === 'file:';
+          let url;
+
           updateProgress(10, "Decoding model data...");
 
-          // 单文件离线场景下，直接使用 data URL，避免 blob:null 在部分环境被禁止 fetch。
-          updateProgress(45, "Preparing model data...");
-          const url = `data:application/octet-stream;base64,${MODEL_DATA}`;
+          const rawEl = document.getElementById("model-data-raw");
+          let MODEL_DATA = rawEl ? rawEl.textContent : "";
+
+          if (isFileProtocol) {
+            // 本地双击 file:// 协议运行下：使用 data URL 方案，以确保 Web Worker 可以成功 fetch 并加载模型
+            updateProgress(45, "Preparing model data...");
+            url = `data:application/octet-stream;base64,${MODEL_DATA}`;
+            if (rawEl) rawEl.remove();
+            MODEL_DATA = null;
+          } else {
+            // 端口 http:// 访问下：使用优化解码器 + Blob URL，极致减少内存占用并提供真实进度反馈
+            let arrayBuffer = base64ToArrayBuffer(MODEL_DATA, (ratio) => {
+              updateProgress(Math.round(10 + ratio * 35), "Decoding model data...");
+            });
+            MODEL_DATA = null;
+            if (rawEl) rawEl.remove();
+
+            updateProgress(45, "Preparing model data...");
+            const blob = new Blob([arrayBuffer], { type: "application/octet-stream" });
+            url = URL.createObjectURL(blob);
+            arrayBuffer = null;
+          }
 
           updateProgress(50, "Loading 3D model...");
 
           let fileType;
           if (SCENE_FORMAT === "spz") fileType = SplatFileType.SPZ;
+          else if (SCENE_FORMAT === "rad") fileType = SplatFileType.RAD;
+          else if (SCENE_FORMAT === "ply") fileType = SplatFileType.PLY;
           else fileType = SplatFileType.SPLAT;
 
           // 模拟加载进度 (库不提供进度回调)
@@ -1206,7 +1307,7 @@
           const splatMesh = new SplatMesh({
             url,
             fileType,
-            lod: true,
+            lod: false,
           });
           await splatMesh.initialized;
           splatMesh.scale.setScalar(2.0);
@@ -1220,6 +1321,15 @@
 
           clearInterval(progressInterval);
           updateProgress(100, "Complete!");
+
+          // 释放临时数据资源
+          if (isFileProtocol) {
+            url = null;
+            MODEL_DATA = null;
+          } else {
+            URL.revokeObjectURL(url);
+            url = null;
+          }
 
           setTimeout(() => {
             loading.classList.add("hidden");
@@ -1329,5 +1439,7 @@
 
       init();
     </script>
+    <!-- 隔离存放 Base64 数据，防止污染 JS 常量池 -->
+    <script type="text/plain" id="model-data-raw">{{MODEL_DATA}}</script>
   </body>
 </html>

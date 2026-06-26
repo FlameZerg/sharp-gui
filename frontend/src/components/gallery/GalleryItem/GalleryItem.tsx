@@ -21,7 +21,7 @@ interface GalleryItemProps {
 
 export const GalleryItem = memo(function GalleryItem({
   item,
-  preferredFormat,
+  preferredFormat: _preferredFormat,
   isActive,
   onSelect,
   onPreview,
@@ -34,8 +34,10 @@ export const GalleryItem = memo(function GalleryItem({
   const sourceVideoUrl = getGallerySourceVideoUrl(item);
   const hasOriginalPreview = Boolean(item.image_url || sourceVideoUrl);
   const thumbnailState = useGalleryThumbnail(thumbnailSrc, Boolean(thumbnailSrc));
-  const displaySize = preferredFormat === 'spz' && item.spz_size ? item.spz_size : item.size;
-  const formatLabel = preferredFormat === 'spz' && item.spz_url ? 'SPZ' : 'PLY';
+  // 根据实际 model_url 后缀决定展示格式和大小，避免受保存的默认模型格式影响
+  const isModelSpz = item.model_url.toLowerCase().endsWith('.spz');
+  const displaySize = isModelSpz && item.spz_size ? item.spz_size : item.size;
+  const formatLabel = isModelSpz ? 'SPZ' : 'PLY';
   const thumbnailStatusText =
     thumbnailState === 'loading'
       ? t('galleryThumbLoading')

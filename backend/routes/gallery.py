@@ -164,6 +164,7 @@ def convert_all_to_spz():
             ply_to_spz(ply_path, spz_path)
             ply_size = os.path.getsize(ply_path)
             spz_size = os.path.getsize(spz_path)
+            os.remove(ply_path)
             ratio = 100 - spz_size * 100 // ply_size if ply_size > 0 else 0
             print(f"📦 Converted {name_without_ext}: {ply_size/1024:.0f}KB → {spz_size/1024:.0f}KB ({ratio}% smaller)")
             converted += 1

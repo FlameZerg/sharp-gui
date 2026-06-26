@@ -107,17 +107,20 @@ export function getGallerySourceVideoUrl(item: GalleryItem): string | null {
 
 export function getGalleryModelSource(
   item: GalleryItem,
-  preferredFormat: ModelFormat,
+  _preferredFormat: ModelFormat,
 ): { url: string; format: ViewerModelFormat } {
-  if (preferredFormat === 'spz' && item.spz_url) {
-    return {
-      url: item.spz_url,
-      format: 'spz',
-    };
+  // 格式由真实 URL 后缀决定，避免受默认模型格式切换影响
+  const urlLower = item.model_url.toLowerCase();
+  let format: ViewerModelFormat = 'ply';
+  if (urlLower.endsWith('.spz')) {
+    format = 'spz';
+  } else if (urlLower.endsWith('.splat')) {
+    format = 'splat';
+  } else if (urlLower.endsWith('.rad')) {
+    format = 'rad';
   }
-
   return {
     url: item.model_url,
-    format: 'ply',
+    format,
   };
 }

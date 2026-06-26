@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import * as Icons from '@/components/common/Icons';
+import { useAppStore } from '@/store/useAppStore';
 import styles from './Help.module.css';
 
 interface HelpEntry {
@@ -19,6 +20,7 @@ export const Help: React.FC = () => {
     const { t } = useTranslation();
     const [isOpen, setIsOpen] = useState(false);
     const panelRef = useRef<HTMLDivElement>(null);
+    const { currentModelUrl, setCurrentModel } = useAppStore();
 
     const categories: HelpCategory[] = [
         {
@@ -59,6 +61,15 @@ export const Help: React.FC = () => {
 
     return (
         <>
+            {currentModelUrl && (
+                <button
+                    className={styles.closeBtn}
+                    onClick={() => setCurrentModel(null, null)}
+                    title={t('closeModel') || '关闭模型'}
+                >
+                    <Icons.CloseIcon />
+                </button>
+            )}
             <button
                 className={styles.helpBtn}
                 onClick={() => setIsOpen(!isOpen)}
