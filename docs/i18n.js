@@ -49,6 +49,24 @@ const i18n = {
     "photoGallery.point3": "原图预览下载",
     "photoGallery.point4": "批量转 3D",
 
+    // === Video Reconstruction Section ===
+    "videoRecon.tag": "视频 3DGS 重建",
+    "videoRecon.title": "从视频重建<br>可漫游 3D 场景",
+    "videoRecon.desc":
+      "从本地相册视频或拖拽视频出发，配置质量档和自定义参数，经过抽帧、位姿估计、Gaussian 训练与导出，最终回到现有模型图库中预览和分享。",
+    "videoRecon.point1.title": "质量档与自定义参数",
+    "videoRecon.point1.desc": "标准、高质量或自定义帧数 / 迭代 / 匹配策略",
+    "videoRecon.point2.title": "任务阶段与实时预览",
+    "videoRecon.point2.desc": "队列中同步显示进度，训练过程中可打开预览",
+    "videoRecon.point3.title": "输出 PLY / SPZ 模型",
+    "videoRecon.point3.desc": "结果复用模型图库、缩略图和原视频回看入口",
+    "videoRecon.flow1": "选择视频",
+    "videoRecon.flow2": "配置参数",
+    "videoRecon.flow3": "预览训练",
+    "videoRecon.flow4": "查看结果",
+    "videoRecon.badge.input": "本地视频",
+    "videoRecon.badge.output": ".ply / .spz",
+
     // === Platform Section ===
     "platform.badge": "🌐 无界互联",
     "platform.title": "一次部署，全屋触手可及",
@@ -164,6 +182,24 @@ const i18n = {
     "photoGallery.point2": "Adjustable masonry",
     "photoGallery.point3": "Original preview/download",
     "photoGallery.point4": "Batch 3D conversion",
+
+    // === Video Reconstruction Section ===
+    "videoRecon.tag": "Video 3DGS Reconstruction",
+    "videoRecon.title": "Video to 3D,<br>ready to explore",
+    "videoRecon.desc":
+      "Start from an album video or a dropped file, choose a quality preset or custom parameters, then move through frame extraction, pose estimation, Gaussian training, export, and final preview in the existing model gallery.",
+    "videoRecon.point1.title": "Presets and custom tuning",
+    "videoRecon.point1.desc": "Standard, high quality, or custom frames / iterations / matching",
+    "videoRecon.point2.title": "Task stages and live preview",
+    "videoRecon.point2.desc": "Track queue progress and open a preview while training runs",
+    "videoRecon.point3.title": "PLY / SPZ model output",
+    "videoRecon.point3.desc": "Reuse the model gallery, thumbnails, and source-video replay",
+    "videoRecon.flow1": "Choose video",
+    "videoRecon.flow2": "Tune settings",
+    "videoRecon.flow3": "Preview training",
+    "videoRecon.flow4": "Open result",
+    "videoRecon.badge.input": "Local video",
+    "videoRecon.badge.output": ".ply / .spz",
 
     // === Platform Section ===
     "platform.badge": "🌐 Seamless Access",
