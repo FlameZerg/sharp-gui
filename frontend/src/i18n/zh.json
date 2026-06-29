@@ -452,6 +452,7 @@
   "videoReconDependenciesReady": "稳定重建路线已就绪。",
   "videoReconQueued": "视频重建任务已加入队列。",
   "videoReconCreateFailed": "创建视频重建任务失败。",
+  "videoReconUploadingFile": "正在上传视频...",
   "videoReconRecommended": "默认",
   "videoReconModeLabel": "模式",
   "videoReconQualityLabel": "质量",

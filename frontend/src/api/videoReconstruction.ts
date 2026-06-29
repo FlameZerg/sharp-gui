@@ -1,9 +1,16 @@
-import { apiGet, apiPost, apiPostFormData } from './client';
+import { apiGet, apiPost, apiPostFormDataWithProgress } from './client';
 import type {
   VideoReconstructionRequest,
   VideoReconstructionResponse,
   VideoReconstructionStatusResponse,
 } from '@/types';
+
+interface UploadProgress {
+  loaded: number;
+  total: number | null;
+  percent: number;
+  lengthComputable: boolean;
+}
 
 export async function fetchVideoReconstructionStatus(options?: {
   refresh?: boolean;
@@ -25,6 +32,9 @@ export async function createVideoReconstruction(
 export async function createVideoReconstructionFromFile(
   file: File,
   options?: Omit<VideoReconstructionRequest, 'video_id'>,
+  uploadOptions?: {
+    onUploadProgress?: (progress: UploadProgress) => void;
+  },
 ): Promise<VideoReconstructionResponse> {
   const formData = new FormData();
   formData.append('file', file);
@@ -47,9 +57,12 @@ export async function createVideoReconstructionFromFile(
     formData.append('keep_intermediate_files', String(options.keep_intermediate_files));
   }
 
-  return apiPostFormData<VideoReconstructionResponse>(
+  return apiPostFormDataWithProgress<VideoReconstructionResponse>(
     '/api/video-reconstructions/upload',
     formData,
-    { timeout: 300000 },
+    {
+      timeout: 300000,
+      onUploadProgress: uploadOptions?.onUploadProgress,
+    },
   );
 }

@@ -86,6 +86,100 @@ def test_remote_generate_requires_explicit_gate_setting(config_file, workspace):
         assert response.get_json()["code"] == "OWNER_REQUIRED"
 
 
+def test_remote_generate_accepts_unlocked_client_when_enabled(config_file, workspace):
+    config = {
+        "workspace_folder": str(workspace),
+        "access_control": make_access_config(
+            enabled=True,
+            password_hash=generate_password_hash("password123"),
+            allow_remote_generation=True,
+        ),
+        "photo_gallery_roots": [],
+    }
+    write_config(config_file, config)
+    app = create_app()
+    app.config["TESTING"] = True
+
+    with app.test_client() as client:
+        login = remote_post(client, "/api/auth/login", json={"password": "password123"})
+        assert login.status_code == 200
+        response = remote_post(
+            client,
+            "/api/generate",
+            data={"file": (make_png_bytes(), "dragged.png")},
+            content_type="multipart/form-data",
+        )
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload["success"] is True
+        assert payload["tasks"][0]["filename"] == "dragged.png"
+
+
+def test_remote_task_cancel_requires_generation_gate(config_file, workspace):
+    config = {
+        "workspace_folder": str(workspace),
+        "access_control": make_access_config(
+            enabled=True,
+            password_hash=generate_password_hash("password123"),
+            allow_remote_generation=False,
+        ),
+        "photo_gallery_roots": [],
+    }
+    write_config(config_file, config)
+    app = create_app()
+    app.config["TESTING"] = True
+
+    with app.test_client() as client:
+        login = remote_post(client, "/api/auth/login", json={"password": "password123"})
+        assert login.status_code == 200
+        response = remote_post(client, "/api/task/task-id/cancel")
+        assert response.status_code == 403
+        assert response.get_json()["code"] == "OWNER_REQUIRED"
+
+
+def test_remote_task_cancel_accepts_image_and_video_when_generation_enabled(
+    config_file,
+    workspace,
+):
+    config = {
+        "workspace_folder": str(workspace),
+        "access_control": make_access_config(
+            enabled=True,
+            password_hash=generate_password_hash("password123"),
+            allow_remote_generation=True,
+        ),
+        "photo_gallery_roots": [],
+    }
+    write_config(config_file, config)
+    app = create_app()
+    app.config["TESTING"] = True
+
+    with app.test_client() as client:
+        login = remote_post(client, "/api/auth/login", json={"password": "password123"})
+        assert login.status_code == 200
+
+        generate_response = remote_post(
+            client,
+            "/api/generate",
+            data={"file": (make_png_bytes(), "dragged.png")},
+            content_type="multipart/form-data",
+        )
+        assert generate_response.status_code == 200
+        image_task_id = generate_response.get_json()["tasks"][0]["id"]
+
+        image_cancel = remote_post(client, f"/api/task/{image_task_id}/cancel")
+        assert image_cancel.status_code == 200
+        assert image_cancel.get_json()["success"] is True
+
+        video_task = app.config["TASK_MANAGER"].enqueue_video_reconstruction({
+            "filename": "clip.mp4",
+            "source_video_path": str(workspace / "clip.mp4"),
+        })
+        video_cancel = remote_post(client, f"/api/task/{video_task['id']}/cancel")
+        assert video_cancel.status_code == 200
+        assert video_cancel.get_json()["success"] is True
+
+
 def test_remote_video_reconstruction_uses_generation_gate(config_file, workspace):
     config = {
         "workspace_folder": str(workspace),

@@ -452,6 +452,7 @@
   "videoReconDependenciesReady": "Stable reconstruction route is ready.",
   "videoReconQueued": "Video reconstruction task queued.",
   "videoReconCreateFailed": "Failed to create video reconstruction task.",
+  "videoReconUploadingFile": "Uploading video...",
   "videoReconRecommended": "Default",
   "videoReconModeLabel": "Mode",
   "videoReconQualityLabel": "Quality",

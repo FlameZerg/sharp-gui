@@ -97,6 +97,7 @@ function App() {
     setAuthPermissionError,
     setSettingsModalOpen,
     setVideoReconstructionStatus,
+    setLoadingProgress,
     openVideoReconstructionFileDialog,
   } = useAppStore(
     useShallow((state) => ({
@@ -124,9 +125,11 @@ function App() {
       setAuthPermissionError: state.setAuthPermissionError,
       setSettingsModalOpen: state.setSettingsModalOpen,
       setVideoReconstructionStatus: state.setVideoReconstructionStatus,
+      setLoadingProgress: state.setLoadingProgress,
       openVideoReconstructionFileDialog: state.openVideoReconstructionFileDialog,
     })),
   );
+  const canGenerateModels = isOwnerAccess || Boolean(authStatus?.allow_remote_generation);
 
   const loadPrivateData = useCallback(async () => {
     const gallery = await fetchGallery();
@@ -195,6 +198,12 @@ function App() {
     setCurrentModel(file.name, blobUrl, format);
   }, [setCurrentModel]);
 
+  const showGenerationPermissionError = useCallback(() => {
+    const message = t('ownerOnlyAction');
+    setAuthPermissionError(message);
+    alert(message);
+  }, [t, setAuthPermissionError]);
+
   // Handle image/video upload or direct model preview
   const handleUpload = useCallback(async (files: FileList | File[]) => {
     const fileArray = toFileArray(files);
@@ -218,6 +227,10 @@ function App() {
         alert(t('videoReconSingleVideoOnly'));
         return;
       }
+      if (!canGenerateModels) {
+        showGenerationPermissionError();
+        return;
+      }
       openVideoReconstructionFileDialog(videoFiles[0]);
       return;
     }
@@ -227,9 +240,16 @@ function App() {
       return;
     }
 
+    if (!canGenerateModels) {
+      showGenerationPermissionError();
+      return;
+    }
+
     try {
       setLoading(true, t('uploadingFiles', { count: imageFiles.length }));
-      const result = await generateFromImages(imageFiles);
+      const result = await generateFromImages(imageFiles, {
+        onUploadProgress: ({ percent }) => setLoadingProgress(percent),
+      });
       setLoading(false);
       
       if (result.success && result.tasks) {
@@ -239,13 +259,21 @@ function App() {
       setLoading(false);
       const message = error instanceof Error ? error.message : 'Unknown error';
       if (error instanceof ApiError && error.status === 403) {
-        setAuthPermissionError(t('ownerOnlyAction'));
-        alert(t('ownerOnlyAction'));
+        showGenerationPermissionError();
         return;
       }
       alert(`${t('uploadFailed')}: ${message}`);
     }
-  }, [handlePreviewModelFile, openVideoReconstructionFileDialog, t, setAuthPermissionError, setLoading, setTasks]);
+  }, [
+    canGenerateModels,
+    handlePreviewModelFile,
+    openVideoReconstructionFileDialog,
+    showGenerationPermissionError,
+    t,
+    setLoading,
+    setLoadingProgress,
+    setTasks,
+  ]);
 
   const handleFileDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -300,7 +328,11 @@ function App() {
       </button>
 
       {/* Sidebar */}
-      <Sidebar onUpload={handleUpload}>
+      <Sidebar
+        canGenerateModels={canGenerateModels}
+        onGenerationBlocked={showGenerationPermissionError}
+        onUpload={handleUpload}
+      >
         {activeView === 'photos' ? <PhotoAlbumList /> : <GalleryList />}
       </Sidebar>
       

@@ -17,11 +17,13 @@ import { TaskQueue } from '@/components/layout/TaskQueue';
 import styles from './Sidebar.module.css';
 
 interface SidebarProps {
+  canGenerateModels: boolean;
+  onGenerationBlocked: () => void;
   onUpload: (files: FileList) => void;
   children?: React.ReactNode;
 }
 
-export function Sidebar({ onUpload, children }: SidebarProps) {
+export function Sidebar({ canGenerateModels, onGenerationBlocked, onUpload, children }: SidebarProps) {
   const { t, i18n } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -48,6 +50,11 @@ export function Sidebar({ onUpload, children }: SidebarProps) {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
+      if (!canGenerateModels) {
+        onGenerationBlocked();
+        e.target.value = '';
+        return;
+      }
       onUpload(e.target.files);
       e.target.value = ''; // Reset input
     }
@@ -76,6 +83,14 @@ export function Sidebar({ onUpload, children }: SidebarProps) {
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       onUpload(e.dataTransfer.files);
     }
+  };
+
+  const handleGenerateClick = () => {
+    if (!canGenerateModels) {
+      onGenerationBlocked();
+      return;
+    }
+    fileInputRef.current?.click();
   };
 
   const handleLangToggle = () => {
@@ -135,8 +150,10 @@ export function Sidebar({ onUpload, children }: SidebarProps) {
           <Button
             variant="primary"
             icon={<PlusIcon />}
-            onClick={() => fileInputRef.current?.click()}
+            onClick={handleGenerateClick}
             className={styles.uploadBtn}
+            aria-disabled={!canGenerateModels}
+            data-tooltip={!canGenerateModels ? t('ownerOnlyAction') : undefined}
           >
             {t('generateNew')}
           </Button>

@@ -277,8 +277,13 @@ def get_required_access_level(access_config=None):
         return ACCESS_OWNER if method != "GET" else ACCESS_UNLOCKED
     if path in {"/api/browse-folder", "/api/restart", "/api/convert-all"}:
         return ACCESS_OWNER
-    if path.startswith("/api/delete/") or (path.startswith("/api/task/") and path.endswith("/cancel")):
+    if path.startswith("/api/delete/"):
         return ACCESS_OWNER
+    if path.startswith("/api/task/") and path.endswith("/cancel"):
+        access_config = access_config or get_access_control_config(persist_missing=False)
+        if not is_access_control_enabled(access_config):
+            return ACCESS_OWNER
+        return ACCESS_UNLOCKED if coerce_bool(access_config.get("allow_remote_generation"), False) else ACCESS_OWNER
     if path == "/api/photo-albums" and method != "GET":
         return ACCESS_OWNER
     if path == "/api/photo-gallery/cache":

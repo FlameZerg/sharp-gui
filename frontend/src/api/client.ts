@@ -23,6 +23,19 @@ interface FetchOptions extends RequestInit {
   timeout?: number;
 }
 
+interface UploadProgress {
+  loaded: number;
+  total: number | null;
+  percent: number;
+  lengthComputable: boolean;
+}
+
+interface FormDataUploadOptions {
+  headers?: HeadersInit;
+  timeout?: number;
+  onUploadProgress?: (progress: UploadProgress) => void;
+}
+
 async function fetchWithTimeout(
   url: string,
   options: FetchOptions = {}
@@ -134,6 +147,74 @@ export async function apiPostFormData<T>(
   }
   
   return response.json();
+}
+
+export async function apiPostFormDataWithProgress<T>(
+  url: string,
+  formData: FormData,
+  options: FormDataUploadOptions = {}
+): Promise<T> {
+  const { headers, timeout = 30000, onUploadProgress } = options;
+
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url, true);
+    xhr.timeout = timeout;
+    xhr.withCredentials = true;
+
+    if (headers) {
+      const normalizedHeaders = new Headers(headers);
+      normalizedHeaders.forEach((value, key) => {
+        xhr.setRequestHeader(key, value);
+      });
+    }
+
+    xhr.upload.onprogress = (event) => {
+      if (!onUploadProgress) {
+        return;
+      }
+      const total = event.lengthComputable ? event.total : null;
+      const percent = total ? Math.min(100, Math.max(0, (event.loaded / total) * 100)) : 0;
+      onUploadProgress({
+        loaded: event.loaded,
+        total,
+        percent,
+        lengthComputable: event.lengthComputable,
+      });
+    };
+
+    xhr.onload = () => {
+      const rawText = xhr.responseText || '';
+      let data: T | ApiErrorData | null = null;
+      try {
+        data = rawText ? JSON.parse(rawText) as T : ({} as T);
+      } catch {
+        data = null;
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onUploadProgress?.({
+          loaded: 1,
+          total: 1,
+          percent: 100,
+          lengthComputable: true,
+        });
+        resolve((data ?? {}) as T);
+        return;
+      }
+      const errorData = data && typeof data === 'object' ? data as ApiErrorData : null;
+      reject(new ApiError(
+        errorData?.error || `HTTP error! status: ${xhr.status}`,
+        xhr.status,
+        errorData,
+      ));
+    };
+
+    xhr.onerror = () => reject(new ApiError('Network request failed', 0, null));
+    xhr.ontimeout = () => reject(new ApiError('Request timed out', 0, null));
+    xhr.onabort = () => reject(new ApiError('Request aborted', 0, null));
+
+    xhr.send(formData);
+  });
 }
 
 export async function apiDelete<T>(url: string): Promise<T> {

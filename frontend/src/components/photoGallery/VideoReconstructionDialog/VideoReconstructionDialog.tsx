@@ -89,6 +89,7 @@ export function VideoReconstructionDialog() {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [message, setMessage] = useState<{ tone: 'error' | 'success' | 'warning'; text: string } | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
 
   useEffect(() => {
     const targetName = target?.name ?? fileTarget?.name;
@@ -104,6 +105,7 @@ export function VideoReconstructionDialog() {
     setKeepIntermediateFiles(config.keep_intermediate_files);
     setAdvancedOpen(false);
     setMessage(null);
+    setUploadProgress(null);
   }, [config.default_engine, config.default_quality, config.keep_intermediate_files, fileTarget, isOpen, target]);
 
   useEffect(() => {
@@ -201,6 +203,7 @@ export function VideoReconstructionDialog() {
 
     setSubmitting(true);
     setMessage(null);
+    setUploadProgress(fileTarget ? 0 : null);
     try {
       const requestOptions = {
         mode,
@@ -211,7 +214,9 @@ export function VideoReconstructionDialog() {
         keep_intermediate_files: keepIntermediateFiles,
       };
       const response = fileTarget
-        ? await createVideoReconstructionFromFile(fileTarget, requestOptions)
+        ? await createVideoReconstructionFromFile(fileTarget, requestOptions, {
+            onUploadProgress: ({ percent }) => setUploadProgress(percent),
+          })
         : await createVideoReconstruction({
             video_id: target!.id,
             ...requestOptions,
@@ -223,6 +228,7 @@ export function VideoReconstructionDialog() {
       setMessage({ tone: 'success', text: t('videoReconQueued') });
       window.setTimeout(() => closeDialog(), 260);
     } catch (error) {
+      setUploadProgress(null);
       const text = error instanceof ApiError && error.data?.code
         ? t(`videoReconError.${error.data.code}`, { defaultValue: error.message })
         : error instanceof Error
@@ -484,7 +490,20 @@ export function VideoReconstructionDialog() {
           </div>
         ) : null}
 
-        {message ? (
+        {submitting && fileTarget && uploadProgress !== null ? (
+          <div className={[styles.message, styles.uploading].join(' ')} role="status" aria-live="polite">
+            <div className={styles.uploadProgressHeader}>
+              <span>{t('videoReconUploadingFile')}</span>
+              <strong>{Math.round(uploadProgress)}%</strong>
+            </div>
+            <div className={styles.uploadProgressBar}>
+              <div
+                className={styles.uploadProgressFill}
+                style={{ width: `${Math.min(100, Math.max(0, uploadProgress))}%` }}
+              />
+            </div>
+          </div>
+        ) : message ? (
           <div className={[styles.message, styles[message.tone]].join(' ')} role="status" aria-live="polite">
             {message.text}
           </div>

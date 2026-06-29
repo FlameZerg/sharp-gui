@@ -1,9 +1,15 @@
 .shell {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
   min-height: 100vh;
   min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
   display: grid;
   place-items: center;
   padding: 24px;
+  overflow: hidden;
   background:
     radial-gradient(circle at 18% 18%, rgba(0, 113, 227, 0.14), transparent 34%),
     radial-gradient(circle at 78% 18%, rgba(52, 199, 89, 0.12), transparent 30%),
