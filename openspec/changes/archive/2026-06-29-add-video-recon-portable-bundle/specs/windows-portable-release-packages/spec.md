@@ -1,10 +1,4 @@
-# windows-portable-release-packages Specification
-
-## Purpose
-
-定义 Sharp GUI 在 Windows x64 NVIDIA GPU 环境下的完整便携 ZIP 发布能力，包括本地一键打包、硬件分包、包内运行时路径、校验文件、缓存策略，以及 GitHub Release 通过网盘链接分发大包的说明要求。
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Windows Release 必须提供按 GPU 目标区分的完整便携 ZIP 包
 
@@ -110,22 +104,6 @@ Windows 视频重建增强便携包 MUST 包含以包目录相对路径工作的
 - **WHEN** 目标机器 PATH 中没有系统级 Nerfstudio、COLMAP 或 ffmpeg
 - **THEN** 视频重建增强包 MUST 仍能通过包内路径通过依赖诊断
 - **AND** 系统 MUST NOT 要求用户运行在线安装脚本后才获得视频重建命令
-
-### Requirement: 便携运行时必须把模型与缓存数据放在包工作区内
-
-Windows 便携运行时 MUST 使用包内路径保存模型文件和运行缓存，使启动过程不依赖用户 home 目录中的缓存。
-
-#### Scenario: 模型已包含在包资产中
-
-- **WHEN** 完整 ZIP 解压后便携运行时启动
-- **THEN** Sharp GUI 必须使用 `.cache\torch\hub\checkpoints` 下的包内模型文件
-- **AND** 正常启动时不得尝试重新下载 Sharp 模型
-
-#### Scenario: 用户从另一个 Windows 账号运行
-
-- **WHEN** 包目录被移动到另一个 Windows 用户配置目录
-- **THEN** 启动器必须按包目录相对路径解析模型和缓存路径
-- **AND** 启动不得要求原始打包机器或原始 Windows 用户配置目录中的文件
 
 ### Requirement: GitHub Release 必须用中文说明链接到外部完整 ZIP 包
 

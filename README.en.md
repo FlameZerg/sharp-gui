@@ -132,7 +132,7 @@ Built on [Apple ml-sharp](https://github.com/apple/ml-sharp). No cloud uploads n
 
 **🔐 Safer LAN Access** — Optional access-code gate, real LAN bind toggle, sensitive-file protection, and debug mode off by default make long-running home LAN use safer.
 
-**📦 Windows Full Portable Bundles** — Two flavours, `cu128-rtx50` and `cu126-mainstream`, ship Python + PyTorch + model cache out of the box (downloaded from the cloud-drive link in the Release notes, with matching `.sha256.txt`).
+**📦 Windows Full Portable Bundles** — Core bundles `cu128-rtx50` and `cu126-mainstream` ship Python + PyTorch + model cache out of the box, with an additional `cu128-rtx50-video-recon` bundle for RTX 50 video reconstruction (downloaded from the cloud-drive link in the Release notes, with matching `.sha256.txt`).
 
 Full release notes → **[Latest Release](https://github.com/lueluelue12138/sharp-gui/releases/latest)**
 
@@ -291,24 +291,25 @@ Built with Apple Human Interface Guidelines for a premium feel:
 >
 > 🛠️ **Zero manual setup**: when an NVIDIA GPU is present, the install script detects your driver and installs the matching CUDA-enabled PyTorch (cu118 / cu126 / cu128).
 >
-> 🎥 **Video reconstruction environment requires a separate check**: the regular install flow gets the core app and image-to-3D inference running first. To generate 3D models from video, follow [Video Reconstruction Manual Environment Setup](#video-reconstruction-manual-environment-setup) to install or reuse `.video-reconstruction-env`, Nerfstudio/Splatfacto, COLMAP, and `ffmpeg/ffprobe`.
+> 🎥 **Video reconstruction environment requires a separate check**: the regular install flow and core portable bundles get the core app and image-to-3D inference running first. To generate 3D models from video, download the `cu128-rtx50-video-recon` bundle, or follow [Video Reconstruction Manual Environment Setup](#video-reconstruction-manual-environment-setup) to install/reuse `.video-reconstruction-env`, Nerfstudio/Splatfacto, COLMAP, and `ffmpeg/ffprobe`.
 >
 > 👉 Unverified platforms should theoretically work. Report issues on [GitHub Issues](https://github.com/lueluelue12138/sharp-gui/issues).
 
 ### Option 1: Windows Full Portable Bundle (Recommended for NVIDIA Users)
 
-Windows RTX 50 / mainstream NVIDIA users can use the full portable bundle directly, without manually setting up Python, PyTorch, or the model cache.
+Windows RTX 50 / mainstream NVIDIA users can use the full portable bundle directly, without manually setting up Python, PyTorch, or the model cache. Pick the dedicated video reconstruction bundle when you need local video 3DGS reconstruction.
 
 Permanent cloud-drive folder: [Open download folder](https://pan.quark.cn/s/94f4acaada40)
 
-The same folder is kept up to date with the latest version. Pick the package for your GPU:
+The same folder is kept up to date with the latest version. Pick the package for your GPU and use case:
 
-- **RTX 50 series**: download the `cu128-rtx50` bundle
-- **Mainstream NVIDIA below RTX 50**: download the `cu126-mainstream` bundle
+- **RTX 50 series (core features)**: download the `cu128-rtx50` bundle
+- **RTX 50 series (video 3DGS reconstruction)**: download the `cu128-rtx50-video-recon` bundle
+- **Mainstream NVIDIA below RTX 50 (core features)**: download the `cu126-mainstream` bundle
 
 Download the ZIP and matching `.sha256.txt`, verify SHA256 first, then extract and double-click `portable-run.bat`.
 
-> 💡 Full portable bundles currently target NVIDIA GPUs only; there is no CPU-only portable bundle.
+> 💡 Full portable bundles currently target NVIDIA GPUs only; there is no CPU-only portable bundle. The video reconstruction bundle currently targets the RTX 50 / CUDA 12.8 route and does not mean every NVIDIA GPU has been verified.
 
 ### Option 2: Install from Source (Recommended for macOS / Linux / Developers)
 
@@ -541,7 +542,7 @@ The backend starts an asynchronous dependency warmup once per process. Opening t
 
 ### Video Reconstruction Manual Environment Setup
 
-This guide covers setting up the stable video reconstruction route (COLMAP + Nerfstudio/Splatfacto) from scratch. The only verified platform so far is **Windows + NVIDIA GPU (RTX 5070 Ti Laptop 12GB)**.
+This guide is for users and AI agents who do not download the video reconstruction bundle, or who need to troubleshoot manually. It covers setting up the stable video reconstruction route (COLMAP + Nerfstudio/Splatfacto) from scratch. The only verified platform so far is **Windows + NVIDIA GPU (RTX 5070 Ti Laptop 12GB)**.
 
 #### Use an AI Agent to Help
 
