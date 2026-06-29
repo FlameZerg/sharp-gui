@@ -88,6 +88,7 @@ Built on [Apple ml-sharp](https://github.com/apple/ml-sharp). No cloud uploads n
 <br>
 
 [Configuration](#%EF%B8%8F-configuration)<br>
+[Video Reconstruction Settings](#video-reconstruction-settings)<br>
 [LAN Access Gate](#-lan-access-gate-and-privacy-boundary)
 
 </td>
@@ -290,6 +291,8 @@ Built with Apple Human Interface Guidelines for a premium feel:
 >
 > 🛠️ **Zero manual setup**: when an NVIDIA GPU is present, the install script detects your driver and installs the matching CUDA-enabled PyTorch (cu118 / cu126 / cu128).
 >
+> 🎥 **Video reconstruction environment requires a separate check**: the regular install flow gets the core app and image-to-3D inference running first. To generate 3D models from video, follow [Video Reconstruction Manual Environment Setup](#video-reconstruction-manual-environment-setup) to install or reuse `.video-reconstruction-env`, Nerfstudio/Splatfacto, COLMAP, and `ffmpeg/ffprobe`.
+>
 > 👉 Unverified platforms should theoretically work. Report issues on [GitHub Issues](https://github.com/lueluelue12138/sharp-gui/issues).
 
 ### Option 1: Windows Full Portable Bundle (Recommended for NVIDIA Users)
@@ -330,6 +333,8 @@ run.bat           # Windows
 > 💡 Install Node.js and run `./build.sh` / `build.bat` only if you modify the frontend source and need to regenerate `frontend/dist/`.
 >
 > 💡 The install script auto-generates HTTPS certificates. HTTPS mode is recommended for full functionality.
+>
+> 🎥 If you need video reconstruction, finish the regular install first, then prepare the separate dependencies in [Video Reconstruction Manual Environment Setup](#video-reconstruction-manual-environment-setup).
 
 ### Option 3: Generic Release Package (No git clone)
 
@@ -354,6 +359,8 @@ run.bat           # Windows
 ```
 
 > 💡 Want latest features? Download [Pre-release](https://github.com/lueluelue12138/sharp-gui/releases) versions (marked as `Pre-release`).
+>
+> 🎥 The regular Release ZIP flow covers the core app environment first; confirm video reconstruction dependencies separately via [Video Reconstruction Manual Environment Setup](#video-reconstruction-manual-environment-setup).
 
 ### What Does the Install Script Do?
 
@@ -363,7 +370,7 @@ The install script automatically handles all setup steps, no manual configuratio
 - 📦 **Detect/Install Git** - Auto-installs if missing (Windows)
 - 🎮 **Detect NVIDIA GPU** - Auto-installs the CUDA-enabled PyTorch that matches your driver (cu118 / cu126 / cu128)
 - 🧩 **Install Dependencies** - Creates virtual environment, installs ml-sharp core and GUI deps
-- 🎥 **Install video reconstruction environment (Windows NVIDIA)** - Installs or reuses `.video-reconstruction-env`, CUDA/PyTorch, Nerfstudio/Splatfacto, gsplat, COLMAP, and `ffmpeg/ffprobe`
+- 🎥 **Video reconstruction environment is prepared separately** - Nerfstudio/Splatfacto, COLMAP, and `ffmpeg/ffprobe` are not required for the regular install; follow [Video Reconstruction Manual Environment Setup](#video-reconstruction-manual-environment-setup) when you need video reconstruction
 - 📥 **Pre-download Model** - Downloads inference model (~500MB) during install, no wait on first run
 - 🔐 **Generate HTTPS Certificate** - Auto-generates self-signed certificate for secure LAN access
 
@@ -395,10 +402,10 @@ update.bat        # Windows
 
 ### Uninstall
 
-All dependencies are installed inside the project's `venv/` virtual environment and won't affect your system. To uninstall, simply delete the project folder:
+Core app dependencies are installed inside the project's `venv/` virtual environment; if video reconstruction is enabled, its separate dependencies live in `.video-reconstruction-env/`. They do not affect your system environment. To uninstall, simply delete the project folder:
 
 ```bash
-# Delete project (includes venv, ml-sharp, models, etc.)
+# Delete project (includes venv, .video-reconstruction-env, ml-sharp, models, etc.)
 rm -rf sharp-gui/
 
 # (Optional) Clean model cache
@@ -425,6 +432,8 @@ rm -rf sharp-gui/
 5. **Convert to 3D** - Convert photos from cards or the preview layer, or multi-select and queue a batch into the existing workflow
 
 ### Generate 3D Models from Video
+
+> 🎥 Before starting, confirm the video reconstruction dependencies are available: install or reuse `.video-reconstruction-env`, and make sure Nerfstudio/Splatfacto, COLMAP, and `ffmpeg/ffprobe` pass diagnostics. See [Video Reconstruction Manual Environment Setup](#video-reconstruction-manual-environment-setup).
 
 1. **Choose a video** - Select one video in the local media gallery, or drop a single video onto the model view, model list, or "Generate New" entry
 2. **Pick settings** - Choose mode (Auto / Object / Environment), quality (Quick Preview / High Quality / Extreme / Custom), and engine (Auto / Stable). Custom lets you set frame count, iterations, input downscale, matching method, and image cache
