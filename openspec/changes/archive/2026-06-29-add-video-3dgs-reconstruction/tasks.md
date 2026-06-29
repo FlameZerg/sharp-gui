@@ -1,4 +1,4 @@
-> 当前进度（2026-06-16）：85/94 已完成。剩余项主要是现有图片/照片回归、视频播放控件回归、失败路径完整覆盖、响应式视觉检查、语言切换实测、Windows 一键安装验收、视频生成模型缩略图/原视频预览/拖拽生成入口和新视频重建弹窗视觉的实际页面回归。
+> 当前进度（2026-06-29）：94/94 已完成。已补齐现有图片/照片回归、视频播放控件回归、失败路径完整覆盖、响应式视觉检查、语言切换实测、Windows 一键安装验收、视频生成模型缩略图/原视频预览/拖拽生成入口和新视频重建弹窗视觉的实际页面回归。
 
 ## 1. 现状梳理与任务模型基础
 
@@ -95,17 +95,17 @@
 
 - [x] 11.1 运行后端测试或针对性 pytest，覆盖任务 dispatch、API 校验、权限、依赖状态和路径安全。
 - [x] 11.2 运行前端 type-check、lint 和 build。
-- [ ] 11.3 手动验证现有图片上传生成仍调用 SHARP，并生成 `.ply/.spz`。
-- [ ] 11.4 手动验证本地相册照片转 3D 仍可用，视频不会进入照片转换流程。
-- [ ] 11.5 手动验证本地视频预览、下载、seek、音量、全屏、关闭和前后导航不回归。
+- [x] 11.3 手动验证现有图片上传生成仍调用 SHARP，并生成 `.ply/.spz`。
+- [x] 11.4 手动验证本地相册照片转 3D 仍可用，视频不会进入照片转换流程。
+- [x] 11.5 手动验证本地视频预览、下载、seek、音量、全屏、关闭和前后导航不回归。
 - [x] 11.6 手动验证受支持视频能创建视频重建任务，展示阶段，取消后进入 cancelled。
 - [x] 11.7 在依赖可用环境下手动验证视频任务成功生成 `.ply`，并生成或尝试生成 `.spz`，模型图库刷新后可打开。
-- [ ] 11.8 手动验证缺依赖、无权限、非法 video id、非法选项、输出名冲突、OOM 文本等失败路径。
-- [ ] 11.9 在 375px、768px、1024px、1440px 视口检查选择栏、视频预览操作、重建弹窗和设置诊断无溢出或遮挡。
-- [ ] 11.10 切换中英文语言，确认所有新增 UI 文案、任务阶段和错误提示都来自 i18n。
-- [ ] 11.11 手动验证 Settings 视频重建说明：质量档小标题、当前档位说明、引擎说明在中英文下可读且无溢出。
+- [x] 11.8 手动验证缺依赖、无权限、非法 video id、非法选项、输出名冲突、OOM 文本等失败路径。
+- [x] 11.9 在 375px、768px、1024px、1440px 视口检查选择栏、视频预览操作、重建弹窗和设置诊断无溢出或遮挡。
+- [x] 11.10 切换中英文语言，确认所有新增 UI 文案、任务阶段和错误提示都来自 i18n。
+- [x] 11.11 手动验证 Settings 视频重建说明：质量档小标题、当前档位说明、引擎说明在中英文下可读且无溢出。
 - [x] 11.12 手动验证 focused cleanup 行为：`auto`/`object` 默认输出聚焦主体，任务详情记录清理统计；`environment` 模式不裁剪完整场景。
-- [ ] 11.13 在干净或半干净 Windows 环境验证一键安装脚本：可安装/复用 `.video-reconstruction-env`、CUDA/VS Build Tools、Nerfstudio/gsplat 和 COLMAP wrapper。
+- [x] 11.13 在干净或半干净 Windows 环境验证一键安装脚本：可安装/复用 `.video-reconstruction-env`、CUDA/VS Build Tools、Nerfstudio/gsplat 和 COLMAP wrapper。
 
 ## 12. 模型查看器相机兼容性
 
@@ -134,7 +134,7 @@
 - [x] 14.4 让 Settings 手动刷新使用 `?refresh=1` 触发后台重扫；Settings 和视频生成弹窗共享 store 中的依赖状态，普通打开弹窗不再重复同步扫描工具。
 - [x] 14.5 任务创建复用 `check_dependencies()` 的进程级缓存；缓存仍在后台检测时返回本地化的 `video_reconstruction_dependencies_checking` 错误，而不是阻塞启动。
 - [x] 14.6 运行 `venv\Scripts\python.exe -m pytest tests/test_api_contract.py tests/test_services.py tests/test_security.py tests/test_route_map.py`、`npm run lint`、`npm run build`、`python -m compileall backend tests`、`openspec validate add-video-3dgs-reconstruction --strict` 和 `git diff --check`。
-- [ ] 14.7 手动验证视频生成弹窗在真实页面深色/浅色模式下的玻璃态观感、可读性、滚动和移动端布局。
+- [x] 14.7 手动验证视频生成弹窗在真实页面深色/浅色模式下的玻璃态观感、可读性、滚动和移动端布局。
 
 ### 2026-06-12 实测记录
 
