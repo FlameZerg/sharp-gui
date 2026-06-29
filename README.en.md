@@ -88,6 +88,7 @@ Built on [Apple ml-sharp](https://github.com/apple/ml-sharp). No cloud uploads n
 <br>
 
 [Configuration](#%EF%B8%8F-configuration)<br>
+[Video Reconstruction Settings](#video-reconstruction-settings)<br>
 [LAN Access Gate](#-lan-access-gate-and-privacy-boundary)
 
 </td>
@@ -123,13 +124,15 @@ Built on [Apple ml-sharp](https://github.com/apple/ml-sharp). No cloud uploads n
 
 **🗂️ Local Media Gallery** — Configure local, external-drive, or NAS folders as albums. Browse, filter, preview, and download photos and videos together; photos can be converted to 3D one by one or in batches, while videos can be played, scrubbed, and viewed fullscreen.
 
+**🎥 Video 3DGS Reconstruction (Stable Route)** — On Windows with an NVIDIA RTX 5070 Ti Laptop GPU, local videos have been verified end-to-end through the Nerfstudio/Splatfacto stable route, producing `.ply/.spz` models with quality presets, focused cleanup, video-poster thumbnails, source-video replay, and viewer orientation adaptation.
+
 **📥 Upload Into Current Album** — Add photos directly to the current album with file picker or drag-and-drop; the album refreshes automatically after upload.
 
 **⚡ Faster Gallery Startup** — Gallery indexing now loads on demand, so startup no longer waits for a full album scan and large libraries show the first screen faster.
 
 **🔐 Safer LAN Access** — Optional access-code gate, real LAN bind toggle, sensitive-file protection, and debug mode off by default make long-running home LAN use safer.
 
-**📦 Windows Full Portable Bundles** — Two flavours, `cu128-rtx50` and `cu126-mainstream`, ship Python + PyTorch + model cache out of the box (downloaded from the cloud-drive link in the Release notes, with matching `.sha256.txt`).
+**📦 Windows Full Portable Bundles** — Core bundles `cu128-rtx50` and `cu126-mainstream` ship Python + PyTorch + model cache out of the box, with an additional `cu128-rtx50-video-recon` bundle for RTX 50 video reconstruction (downloaded from the cloud-drive link in the Release notes, with matching `.sha256.txt`).
 
 Full release notes → **[Latest Release](https://github.com/lueluelue12138/sharp-gui/releases/latest)**
 
@@ -148,8 +151,9 @@ No need to install apps on every device. Run Sharp GUI on one computer, and any 
 | Feature                    | Description                                                                                                                                                              |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **📸 Image to 3D**         | Upload any image; Apple ML-Sharp generates a 3D Gaussian Splatting model. The ~500MB model is pre-downloaded during install.                                             |
+| **🎥 Video 3DGS Reconstruction** | Create static Gaussian Splat models from local album videos or dropped video files through the Nerfstudio/Splatfacto stable route, with quality presets, focused cleanup, task stages, thumbnails, and source-video replay. |
 | **🖼️ Modern Workflow**     | Multi-select / drag-and-drop upload, virtualized gallery, in-app original viewer, smart task queue (2s while active, 10s idle), slide-out delete, cancellable jobs.      |
-| **🗂️ Local Media Gallery** | Configure multiple local/NAS folders as albums, browse and filter photos/videos together, preview and download media, convert photos to 3D, and play videos directly. |
+| **🗂️ Local Media Gallery** | Configure multiple local/NAS folders as albums, browse and filter photos/videos together, preview and download media, convert photos to 3D, play videos, and start video reconstruction. |
 | **👁️ Real-time Viewer**    | Three.js + Spark 2.0 WASM-accelerated viewer with mouse / touch / keyboard (WASD) / gyroscope controls, click-to-focus with a GPU focus ring, quick transform panel.     |
 | **🎭 Reveal Effects**      | Magic / Spread / Unroll / Twister / Rain entrance animations with replay support.                                                                                        |
 | **📱 Mobile Optimized**    | Phones / tablets get gyroscope controls (iOS-style indicator ball), virtual joystick, touch gestures, and a drawer-style sidebar.                                        |
@@ -203,6 +207,20 @@ Built with Apple Human Interface Guidelines for a premium feel:
 </p>
 
 <p align="center"><i>Multi-folder albums, mixed photo/video browsing, media preview, multi-select to 3D</i></p>
+
+### Video 3DGS Reconstruction
+
+<p align="center">
+  <img src="docs/images/video-reconstruction-dialog.png" width="800" alt="Video reconstruction settings dialog">
+</p>
+
+<p align="center"><i>Open the reconstruction dialog from an album video or dropped video, then choose mode, quality, custom parameters, and dependency status</i></p>
+
+<p align="center">
+  <img src="docs/images/demo-video-reconstruction.gif" width="800" alt="Video reconstruction workflow demo">
+</p>
+
+<p align="center"><i>Choose a video → configure settings → watch task progress / live preview → open the model result and source-video replay</i></p>
 
 ### Mobile Adaptation
 
@@ -265,28 +283,33 @@ Built with Apple Human Interface Guidelines for a premium feel:
 | **Linux x86_64 + NVIDIA**   | ✅ CUDA           | ❓ Unverified |
 | **macOS Intel**             | ✅ CPU            | ❓ Unverified |
 
+> 🎥 **Current video reconstruction platform**: Video 3DGS reconstruction has currently only been verified end-to-end on **Windows + NVIDIA RTX 5070 Ti Laptop GPU (12GB VRAM)**. Other Windows NVIDIA GPUs may work, but Linux, macOS, CPU, and MPS video reconstruction are not yet verified.
+>
 > 🚀 **NVIDIA GPU recommended**: 3D Gaussian Splatting inference is compute-heavy. CUDA typically delivers **multiple-x to ~10x** speedups over pure CPU, with a noticeably better experience.
 >
 > 💡 **CPU-only still works**: inference runs fine without a GPU, just slower per image. Apple Silicon users get a near-GPU experience via the MPS backend.
 >
 > 🛠️ **Zero manual setup**: when an NVIDIA GPU is present, the install script detects your driver and installs the matching CUDA-enabled PyTorch (cu118 / cu126 / cu128).
 >
+> 🎥 **Video reconstruction environment requires a separate check**: the regular install flow and core portable bundles get the core app and image-to-3D inference running first. To generate 3D models from video, download the `cu128-rtx50-video-recon` bundle, or follow [Video Reconstruction Manual Environment Setup](#video-reconstruction-manual-environment-setup) to install/reuse `.video-reconstruction-env`, Nerfstudio/Splatfacto, COLMAP, and `ffmpeg/ffprobe`.
+>
 > 👉 Unverified platforms should theoretically work. Report issues on [GitHub Issues](https://github.com/lueluelue12138/sharp-gui/issues).
 
 ### Option 1: Windows Full Portable Bundle (Recommended for NVIDIA Users)
 
-Windows RTX 50 / mainstream NVIDIA users can use the full portable bundle directly, without manually setting up Python, PyTorch, or the model cache.
+Windows RTX 50 / mainstream NVIDIA users can use the full portable bundle directly, without manually setting up Python, PyTorch, or the model cache. Pick the dedicated video reconstruction bundle when you need local video 3DGS reconstruction.
 
 Permanent cloud-drive folder: [Open download folder](https://pan.quark.cn/s/94f4acaada40)
 
-The same folder is kept up to date with the latest version. Pick the package for your GPU:
+The same folder is kept up to date with the latest version. Pick the package for your GPU and use case:
 
-- **RTX 50 series**: download the `cu128-rtx50` bundle
-- **Mainstream NVIDIA below RTX 50**: download the `cu126-mainstream` bundle
+- **RTX 50 series (core features)**: download the `cu128-rtx50` bundle
+- **RTX 50 series (video 3DGS reconstruction)**: download the `cu128-rtx50-video-recon` bundle
+- **Mainstream NVIDIA below RTX 50 (core features)**: download the `cu126-mainstream` bundle
 
 Download the ZIP and matching `.sha256.txt`, verify SHA256 first, then extract and double-click `portable-run.bat`.
 
-> 💡 Full portable bundles currently target NVIDIA GPUs only; there is no CPU-only portable bundle.
+> 💡 Full portable bundles currently target NVIDIA GPUs only; there is no CPU-only portable bundle. The video reconstruction bundle currently targets the RTX 50 / CUDA 12.8 route and does not mean every NVIDIA GPU has been verified.
 
 ### Option 2: Install from Source (Recommended for macOS / Linux / Developers)
 
@@ -311,6 +334,8 @@ run.bat           # Windows
 > 💡 Install Node.js and run `./build.sh` / `build.bat` only if you modify the frontend source and need to regenerate `frontend/dist/`.
 >
 > 💡 The install script auto-generates HTTPS certificates. HTTPS mode is recommended for full functionality.
+>
+> 🎥 If you need video reconstruction, finish the regular install first, then prepare the separate dependencies in [Video Reconstruction Manual Environment Setup](#video-reconstruction-manual-environment-setup).
 
 ### Option 3: Generic Release Package (No git clone)
 
@@ -335,6 +360,8 @@ run.bat           # Windows
 ```
 
 > 💡 Want latest features? Download [Pre-release](https://github.com/lueluelue12138/sharp-gui/releases) versions (marked as `Pre-release`).
+>
+> 🎥 The regular Release ZIP flow covers the core app environment first; confirm video reconstruction dependencies separately via [Video Reconstruction Manual Environment Setup](#video-reconstruction-manual-environment-setup).
 
 ### What Does the Install Script Do?
 
@@ -344,6 +371,7 @@ The install script automatically handles all setup steps, no manual configuratio
 - 📦 **Detect/Install Git** - Auto-installs if missing (Windows)
 - 🎮 **Detect NVIDIA GPU** - Auto-installs the CUDA-enabled PyTorch that matches your driver (cu118 / cu126 / cu128)
 - 🧩 **Install Dependencies** - Creates virtual environment, installs ml-sharp core and GUI deps
+- 🎥 **Video reconstruction environment is prepared separately** - Nerfstudio/Splatfacto, COLMAP, and `ffmpeg/ffprobe` are not required for the regular install; follow [Video Reconstruction Manual Environment Setup](#video-reconstruction-manual-environment-setup) when you need video reconstruction
 - 📥 **Pre-download Model** - Downloads inference model (~500MB) during install, no wait on first run
 - 🔐 **Generate HTTPS Certificate** - Auto-generates self-signed certificate for secure LAN access
 
@@ -375,10 +403,10 @@ update.bat        # Windows
 
 ### Uninstall
 
-All dependencies are installed inside the project's `venv/` virtual environment and won't affect your system. To uninstall, simply delete the project folder:
+Core app dependencies are installed inside the project's `venv/` virtual environment; if video reconstruction is enabled, its separate dependencies live in `.video-reconstruction-env/`. They do not affect your system environment. To uninstall, simply delete the project folder:
 
 ```bash
-# Delete project (includes venv, ml-sharp, models, etc.)
+# Delete project (includes venv, .video-reconstruction-env, ml-sharp, models, etc.)
 rm -rf sharp-gui/
 
 # (Optional) Clean model cache
@@ -403,6 +431,23 @@ rm -rf sharp-gui/
 3. **Browse Media** - Photos use cached thumbnails and open originals on demand; videos can be previewed, scrubbed, viewed fullscreen, and downloaded
 4. **Upload to Album** - Pick or drag photos into the current album; the album refreshes automatically
 5. **Convert to 3D** - Convert photos from cards or the preview layer, or multi-select and queue a batch into the existing workflow
+
+### Generate 3D Models from Video
+
+> 🎥 Before starting, confirm the video reconstruction dependencies are available: install or reuse `.video-reconstruction-env`, and make sure Nerfstudio/Splatfacto, COLMAP, and `ffmpeg/ffprobe` pass diagnostics. See [Video Reconstruction Manual Environment Setup](#video-reconstruction-manual-environment-setup).
+
+1. **Choose a video** - Select one video in the local media gallery, or drop a single video onto the model view, model list, or "Generate New" entry
+2. **Pick settings** - Choose mode (Auto / Object / Environment), quality (Quick Preview / High Quality / Extreme / Custom), and engine (Auto / Stable). Custom lets you set frame count, iterations, input downscale, matching method, and image cache
+3. **Wait for reconstruction** - The task queue reports stages such as frame extraction, pose estimation, Gaussian optimization, export, and SPZ compression
+4. **Open the result** - The model appears in the existing model gallery, uses the video poster as its thumbnail when available, and exposes source-video replay from the hover actions
+
+Current guidance:
+
+- **Default quality**: High Quality, tuned for RTX 5070 Ti Laptop 12GB-class machines, about 180 frames / 30k iterations / 2x input downscale
+- **Long-video guidance**: Select Custom and start from about 600 frames / 35k iterations / 2x input downscale / sequential matching / CPU image cache to prioritize walk-through coverage. If you switch to exhaustive matching, reduce frame count sharply to avoid COLMAP matching blowups
+- **Default engine**: Auto; currently equivalent to the verified stable Nerfstudio/Splatfacto route, with room for future strategy changes
+- **Default cleanup**: Auto / Object modes enable focused cleanup to remove distant loose splats; Environment mode keeps the full scene
+- **Current limits**: One video per task; dynamic 4D, mesh repair, manual trimming, and cloud training are out of scope
 
 ### 3D Interaction Controls
 
@@ -478,10 +523,138 @@ The system auto-creates:
 - `inputs/` - Uploaded images
 - `outputs/` - Generated models
 - `.photo-gallery-cache/` - Local photo gallery index and cached thumbnails
+- `.video-reconstruction/` - Video reconstruction jobs, uploaded video cache, and intermediate files
 
 > 💡 Albums can be added from the UI and are remembered per workspace: `photo_gallery_roots_by_workspace` is keyed by the normalized workspace path, so switching workspaces shows each one's own albums and switching back restores them. When editing manually, use paths from the server machine. Windows, Linux, and macOS are supported; LAN clients browse folders on the host running Sharp GUI.
 >
 > ⚠️ Older versions stored albums in a top-level `photo_gallery_roots` array. On the first launch after upgrading, it is automatically migrated into the bucket for the current workspace — no manual action needed.
+
+### Video Reconstruction Settings
+
+The Settings > Video Reconstruction area is for dependency diagnostics and defaults:
+
+- **Default quality**: Quick Preview / High Quality / Extreme, mapped to different frame, iteration, matching, and input-resolution budgets. Per-task custom parameters are available in the generation dialog
+- **Default engine**: Auto / Stable; Auto currently uses the verified stable Nerfstudio/Splatfacto route
+- **VRAM budget**: Auto / 8GB / 12GB / 16GB / 24GB, used to tighten or relax resource boundaries
+- **Keep intermediate files**: Useful for inspecting frames, poses, and Nerfstudio logs; when off, completed/cancelled jobs clean their job folders
+
+The backend starts an asynchronous dependency warmup once per process. Opening the home page or reconstruction dialog does not synchronously scan external tools. Pressing refresh in Settings triggers a background re-check.
+
+### Video Reconstruction Manual Environment Setup
+
+This guide is for users and AI agents who do not download the video reconstruction bundle, or who need to troubleshoot manually. It covers setting up the stable video reconstruction route (COLMAP + Nerfstudio/Splatfacto) from scratch. The only verified platform so far is **Windows + NVIDIA GPU (RTX 5070 Ti Laptop 12GB)**.
+
+#### Use an AI Agent to Help
+
+If you do not want to configure everything manually, you can let a local AI coding agent read the project, install the environment from this README, and verify it. Suggested prompt:
+
+> First understand the current Sharp GUI project and video reconstruction flow. Check the OS, GPU/driver, Python and PATH, then follow the README to install or reuse .video-reconstruction-env, CUDA/PyTorch, COLMAP, Nerfstudio/Splatfacto and ffmpeg/ffprobe. Do not change unrelated application code. Finally run the diagnostics API and basic commands to confirm the dependencies are available.
+
+#### Prerequisites
+
+| Dependency | Purpose | How to get |
+|------------|---------|-----------|
+| Python 3.10–3.12 | Video reconstruction virtual environment | [python.org](https://www.python.org/downloads/) or system package manager |
+| NVIDIA GPU + Driver ≥ 535 | CUDA inference and training | [nvidia.com/drivers](https://www.nvidia.com/Download/index.aspx) |
+| Git | Clone dependency repos | [git-scm.com](https://git-scm.com/) |
+
+#### 1. Create the video reconstruction virtual environment
+
+```bash
+# Create a separate venv at the project root (isolated from the main project venv)
+python -m venv .video-reconstruction-env
+
+# Activate (Windows)
+.video-reconstruction-env\Scripts\activate
+# Activate (Linux/macOS)
+source .video-reconstruction-env/bin/activate
+```
+
+#### 2. Install PyTorch (CUDA)
+
+Choose the CUDA version matching your GPU and driver. Check supported CUDA version: top-right in `nvidia-smi` output.
+
+```bash
+# RTX 50 series (CUDA 12.8, requires driver >= 570)
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+
+# RTX 20/30/40 series mainstream (CUDA 12.6, requires driver >= 560)
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
+
+# Older GPUs (CUDA 11.8, requires driver >= 520)
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+```
+
+#### 3. Install stable route dependencies (Nerfstudio / COLMAP / ffmpeg)
+
+##### 3a. Nerfstudio + gsplat (Splatfacto training/export engine)
+
+```bash
+# gsplat (Gaussian Splatting CUDA kernels, a Nerfstudio dependency)
+pip install gsplat
+
+# Nerfstudio (provides ns-process-data / ns-train / ns-export commands)
+pip install nerfstudio
+```
+
+> Verify: `ns-train --help`, `ns-process-data --help`, and `ns-export --help` all produce output.
+
+##### 3b. COLMAP (sparse reconstruction / pose estimation)
+
+- **Windows**: Download prebuilt from [COLMAP releases](https://github.com/colmap/colmap/releases), extract, and add `bin/` to system `PATH`
+- **Linux (Ubuntu/Debian)**: `sudo apt install colmap`
+- **macOS**: `brew install colmap`
+
+> Verify: `colmap -h` produces output.
+
+##### 3c. ffmpeg + ffprobe (video decoding / frame extraction)
+
+- **Windows**: Download from [gyan.dev builds](https://www.gyan.dev/ffmpeg/builds/) or [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds/releases), extract, add `bin/` to `PATH`
+- **Linux**: `sudo apt install ffmpeg`
+- **macOS**: `brew install ffmpeg`
+
+> Verify: `ffmpeg -version` and `ffprobe -version` produce output.
+
+#### 4. Verify the environment
+
+After starting Sharp GUI, open Settings > Video Reconstruction, or query the diagnostics API directly:
+
+```bash
+curl http://127.0.0.1:5050/api/video-reconstructions/status | python -m json.tool
+```
+
+When correctly configured, each group should report:
+
+| Group | Status | Tools checked |
+|-------|--------|--------------|
+| **Video tools** (required) | ✅ Available | ffmpeg, ffprobe |
+| **Stable 3DGS route** (stable) | ✅ Available | ns-process-data, ns-train, ns-export, colmap |
+
+#### Verified dependency versions
+
+| Package | Verified version | Notes |
+|---------|-----------------|-------|
+| Python | 3.11.x | Used in .video-reconstruction-env |
+| PyTorch | 2.5+ (cu128) | RTX 5070 Ti needs cu128; mainstream GPUs use cu126 |
+| Nerfstudio | 1.1.x+ | Must support `splatfacto` method and `nerfstudio-data` dataparser |
+| gsplat | 1.4+ | Nerfstudio's Gaussian Splatting CUDA backend |
+| COLMAP | 3.9+ | Prebuilt binaries are fine, no source build needed |
+| ffmpeg / ffprobe | 6.x+ | Must support `-vf fps=` filter |
+
+#### Directory layout
+
+```
+sharp-gui/
+├── .video-reconstruction-env/    # Video reconstruction venv (gitignored)
+│   ├── Scripts/ or bin/          #   → python, ns-train, ns-export, colmap, etc.
+│   └── Lib/ or lib/             #   → torch, nerfstudio, gsplat, etc.
+├── .video-reconstruction/         # Runtime intermediate files (inside workspace, auto-created)
+│   ├── jobs/                     #   Per-task working directory (cleaned after completion)
+│   └── uploads/                  #   Drag-and-drop video upload cache
+└── outputs/                       # Final outputs: *.ply + *.spz + *.meta.json
+```
+
+> 💡 `.video-reconstruction-env` is excluded in `.gitignore` and will not be committed to the repository.
 
 ### Enable HTTPS (Recommended)
 
@@ -554,8 +727,8 @@ sharp-gui/
 │   ├── 📄 config.py          # config.json and access-control normalization
 │   ├── 📄 paths.py           # workspace/inputs/outputs/cache path context
 │   ├── 📁 security/          # LAN access gate, permission matrix, request hooks
-│   ├── 📁 services/          # Model/photo gallery, task queue, export, static-file services
-│   └── 📁 routes/            # auth/gallery/photo_gallery/tasks/settings/files/export/frontend
+│   ├── 📁 services/          # Model/photo gallery, video reconstruction, task queue, export, static-file services
+│   └── 📁 routes/            # auth/gallery/photo_gallery/video_reconstruction/tasks/settings/files/export/frontend
 ├── 📄 install.sh/bat         # One-click install scripts
 ├── 📄 run.sh/bat             # Startup scripts (supports --legacy flag)
 ├── 📄 run_verbose.sh/bat     # Verbose entry (writes sharp-gui-verbose.log)
@@ -574,6 +747,7 @@ sharp-gui/
 ├── 📁 ml-sharp/              # (after install) Apple ML-Sharp core
 ├── 📁 inputs/                # Input images
 ├── 📁 outputs/               # Output models (.ply + .spz)
+├── 📁 .video-reconstruction/ # Video reconstruction jobs, uploaded video cache, and intermediates (inside workspace by default)
 └── 📁 .photo-gallery-cache/  # Photo gallery index and thumbnail cache (inside workspace by default)
 ```
 
@@ -608,7 +782,7 @@ frontend/
 | **i18n**         | i18next + react-i18next                                |
 | **Styling**      | CSS Modules + Apple Glass Morphism                     |
 | **Backend**      | Python 3.10+, Flask app factory + Blueprints, TaskManager |
-| **AI Engine**    | Apple ML-Sharp (PyTorch, gsplat)                       |
+| **AI Engine**    | Apple ML-Sharp (PyTorch, gsplat); stable video reconstruction uses Nerfstudio/Splatfacto + COLMAP/ffmpeg |
 | **3D Rendering** | Three.js + Spark 2.0 (WASM-accelerated Gaussian Splatting) |
 
 ### Performance Optimizations
@@ -617,6 +791,7 @@ frontend/
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | **Code Splitting**        | Vite manualChunks: three.js (~493KB), spark (~487KB), react-vendor (4KB)                                                                 |
 | **Thumbnail System**      | Model gallery uses 200px JPEG thumbnails; photo gallery creates cached thumbnails on demand and only loads originals for preview/download |
+| **Video Reconstruction Cache** | Backend warms and caches video reconstruction dependency status once per process; Settings can refresh it, and video outputs use sidecar metadata in the existing model gallery |
 | **Smart Polling**         | Active 2s polling, idle 10s, saves resources                                                                                             |
 | **Format Conversion**     | Auto-converts generated models to compact SPZ; share export embeds SPZ by default while preserving the legacy PLY/Splat path             |
 | **Memory Cleanup**        | Completed tasks auto-removed from memory after 1 hour                                                                                    |
@@ -658,8 +833,9 @@ The `app.py` compatibility entry and `backend/` modules honor the following envi
 |----------|---------|-------------|
 | `SHARP_FRONTEND_MODE` | `react` | Frontend mode: `react` (built) or `legacy` (single-file). `run.sh --legacy` sets it to `legacy`. |
 | `SHARP_DEBUG` | off | Set `1`/`true` to enable the Flask debugger (returns stack traces to the browser, enables the interactive debugger). **Security risk — local troubleshooting only, never enable on a LAN/public network.** |
-| `SHARP_VERBOSE` | off | Set `1`/`true` for detailed diagnostics (werkzeug raised to DEBUG, logs every request and writes a log file). `run.sh --verbose` sets it. |
+| `SHARP_VERBOSE` | off | Set `1`/`true` for the detailed diagnostics log file. `run.sh --verbose` / `run.bat --verbose` sets it. |
 | `SHARP_LOG_LEVEL` | `INFO` (`DEBUG` when verbose) | Application log level. |
+| `SHARP_HTTP_LOGS` | off | Set `1`/`true` to print Werkzeug HTTP request logs; off by default to avoid thumbnail/polling request spam. |
 | `SHARP_LOG_FILE` | `sharp-gui-verbose.log` | Output path for the detailed diagnostics log. |
 | `SHARP_BIND_HOST` | follows the gate setting | Overrides the listen address. When unset it follows the "LAN access" toggle in Settings (on → `0.0.0.0` / off → `127.0.0.1`). |
 | `SHARP_LAN_IP` | auto-detected | LAN IP shown in the startup banner; injected automatically by `run.sh`. |

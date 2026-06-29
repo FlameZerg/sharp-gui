@@ -590,6 +590,18 @@ pip install flask
 
 echo [OK] Python 依赖安装完成
 
+echo.
+echo 安装视频 3D 重建依赖 (Nerfstudio / Splatfacto / COLMAP)...
+python "%SCRIPT_DIR%tools\install_video_reconstruction.py"
+if !ERRORLEVEL! neq 0 (
+    echo.
+    echo [警告] 视频 3D 重建依赖安装失败
+    echo        基础图片生成仍可使用；稍后可重新运行:
+    echo        python tools\install_video_reconstruction.py
+) else (
+    echo [OK] 视频 3D 重建依赖已就绪
+)
+
 if not exist "%SCRIPT_DIR%inputs" mkdir "%SCRIPT_DIR%inputs"
 if not exist "%SCRIPT_DIR%outputs" mkdir "%SCRIPT_DIR%outputs"
 

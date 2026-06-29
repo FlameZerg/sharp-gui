@@ -8,7 +8,8 @@
     [switch]$CleanOldArtifacts,
     [switch]$SkipArchiveTest,
     [switch]$SkipCu126,
-    [switch]$SkipCu128
+    [switch]$SkipCu128,
+    [switch]$SkipVideoRecon
 )
 
 $ErrorActionPreference = "Stop"
@@ -28,6 +29,22 @@ function Fail {
     param([string]$Message)
     Write-Host "[错误] $Message" -ForegroundColor Red
     exit 1
+}
+
+function Remove-DirectoryTree {
+    param([string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return
+    }
+
+    $resolved = [System.IO.Path]::GetFullPath($Path)
+    $longPath = if ($resolved.StartsWith("\\?\")) {
+        $resolved
+    } else {
+        "\\?\$resolved"
+    }
+    Remove-Item -LiteralPath $longPath -Recurse -Force -ErrorAction Stop
 }
 
 function Resolve-SevenZip {
@@ -253,31 +270,48 @@ function Write-ReleaseTemplate {
     $lines.Add("")
     $lines.Add("下载：[点击打开网盘文件夹](待填写网盘链接)")
     $lines.Add("")
-    $lines.Add("网盘文件夹内包含 RTX 50 和主流 NVIDIA 两个完整包，请按显卡选择：")
+    $lines.Add("网盘文件夹内包含 RTX 50 核心包、RTX 50 视频重建完整包和主流 NVIDIA 核心包，请按用途和显卡选择：")
     $lines.Add("")
     $lines.Add("| 适用显卡 | 下载文件 | SHA256 |")
     $lines.Add("|---|---|---|")
 
     $orderedPackages = $Packages | Sort-Object @{
         Expression = {
-            if ($_.Target -eq "cu128-rtx50") { 0 } else { 1 }
+            switch ($_.Target) {
+                "cu128-rtx50" { 0 }
+                "cu128-rtx50-video-recon" { 1 }
+                "cu126-mainstream" { 2 }
+                default { 9 }
+            }
         }
     }, Target
 
     foreach ($pkg in $orderedPackages) {
-        if ($pkg.Target -eq "cu128-rtx50") {
-            $label = "RTX 50 系列"
-        } else {
-            $label = "RTX 50 以下主流 NVIDIA"
+        switch ($pkg.Target) {
+            "cu128-rtx50" {
+                $label = "RTX 50 系列（核心包）"
+            }
+            "cu128-rtx50-video-recon" {
+                $label = "RTX 50 系列（视频重建完整包）"
+            }
+            "cu126-mainstream" {
+                $label = "RTX 50 以下主流 NVIDIA（核心包）"
+            }
+            default {
+                $label = $pkg.Target
+            }
         }
 
         $lines.Add(('| {0} | `{1}` | `{2}` |' -f $label, $pkg.File, $pkg.Hash))
     }
 
     $lines.Add("")
-    $lines.Add('使用方式：下载匹配显卡的 ZIP，校验 SHA256，解压后双击 `portable-run.bat`。')
+    $lines.Add('使用方式：下载匹配显卡和用途的 ZIP，校验 SHA256，解压后双击 `portable-run.bat`。')
     $lines.Add("")
-    $lines.Add("> 首版完整便携包只支持 NVIDIA GPU，不提供纯 CPU 包。")
+    $lines.Add("- 只使用图片生成、模型浏览和图库功能：优先下载核心包。")
+    $lines.Add("- 需要本地视频 3DGS 重建且使用 RTX 50 系列：下载视频重建完整包。")
+    $lines.Add("")
+    $lines.Add("> 当前完整便携包只支持 NVIDIA GPU，不提供纯 CPU 包；视频重建完整包仅按 RTX 50 / CUDA 12.8 路线发布，不代表所有 NVIDIA GPU 都已完成验证。")
 
     Set-Content -LiteralPath $template -Encoding UTF8 -Value ($lines -join "`r`n")
     Write-Info "Release 模板: $template"
@@ -341,6 +375,9 @@ if ($PlanOnly) {
     if (-not $SkipCu128) {
         Invoke-PackageBuild -Root $root -Version $version -Target "cu128-rtx50" -VenvDir (Join-Path $root "venv") -OutputDir $OutputDir -CompressionLevel $CompressionLevel -SkipFrontendBuild:$false -PlanOnly:$true
     }
+    if (-not $SkipVideoRecon) {
+        Invoke-PackageBuild -Root $root -Version $version -Target "cu128-rtx50-video-recon" -VenvDir (Join-Path $root "venv") -OutputDir $OutputDir -CompressionLevel $CompressionLevel -SkipFrontendBuild:$true -PlanOnly:$true
+    }
     if (-not $SkipCu126) {
         if (Test-Path -LiteralPath (Join-Path $cu126Venv "Scripts\python.exe")) {
             Invoke-PackageBuild -Root $root -Version $version -Target "cu126-mainstream" -VenvDir $cu126Venv -OutputDir $OutputDir -CompressionLevel $CompressionLevel -SkipFrontendBuild:$true -PlanOnly:$true
@@ -360,6 +397,11 @@ if ($PlanOnly) {
 
 if (-not $SkipCu128) {
     Invoke-PackageBuild -Root $root -Version $version -Target "cu128-rtx50" -VenvDir (Join-Path $root "venv") -OutputDir $OutputDir -CompressionLevel $CompressionLevel -SkipFrontendBuild:$false -PlanOnly:$false
+}
+
+if (-not $SkipVideoRecon) {
+    $skipVideoFrontendBuild = -not $SkipCu128
+    Invoke-PackageBuild -Root $root -Version $version -Target "cu128-rtx50-video-recon" -VenvDir (Join-Path $root "venv") -OutputDir $OutputDir -CompressionLevel $CompressionLevel -SkipFrontendBuild:$skipVideoFrontendBuild -PlanOnly:$false
 }
 
 if (-not $SkipCu126) {
@@ -389,10 +431,10 @@ Write-ReleaseTemplate -OutputDir $OutputDir -Version $version -Packages $package
 
 if ($CleanBuildVenvs -and -not $PlanOnly) {
     Write-Step "清理临时打包环境"
-    Remove-Item -LiteralPath (Join-Path $root ".portable-venvs") -Recurse -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath (Join-Path $root ".portable-build") -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-DirectoryTree -Path (Join-Path $root ".portable-venvs")
+    Remove-DirectoryTree -Path (Join-Path $root ".portable-build")
 } else {
-    Remove-Item -LiteralPath (Join-Path $root ".portable-build") -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-DirectoryTree -Path (Join-Path $root ".portable-build")
 }
 
 Write-Host ""
@@ -403,6 +445,7 @@ Write-Host "下一步：把 ZIP 和 .sha256.txt 上传到网盘，然后把 port
 Write-Host ""
 Write-Host "缓存说明："
 Write-Host "  cu126 打包缓存: $(Join-Path $root ".portable-venvs")"
+Write-Host "  视频重建环境: $(Join-Path $root ".video-reconstruction-env")"
 Write-Host "  pip 缓存: $env:LOCALAPPDATA\pip\Cache"
 Write-Host "  npm 缓存: $env:LOCALAPPDATA\npm-cache"
 Write-Host "如需手动清理项目内打包缓存，可运行："

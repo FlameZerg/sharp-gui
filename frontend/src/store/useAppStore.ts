@@ -17,6 +17,8 @@ import type {
   PhotoMediaCounts,
   PhotoMediaType,
   Task,
+  VideoReconstructionConfig,
+  VideoReconstructionDependencies,
   ViewerInteractionState,
   ViewerOrientationPreset,
   ViewerQualityState,
@@ -48,6 +50,12 @@ const DEFAULT_PHOTO_MEDIA_COUNTS: PhotoMediaCounts = {
   image: 0,
   photo: 0,
   video: 0,
+};
+const DEFAULT_VIDEO_RECONSTRUCTION_CONFIG: VideoReconstructionConfig = {
+  default_quality: 'high',
+  default_engine: 'auto',
+  vram_budget: '12gb',
+  keep_intermediate_files: false,
 };
 
 const QUALITY_LIMITS = {
@@ -382,6 +390,7 @@ interface AppState {
   controlsCollapsed: boolean;
   helpPanelVisible: boolean;
   settingsModalOpen: boolean;
+  videoReconstructionGuideOpen: boolean;
 
   // Loading State
   isLoading: boolean;
@@ -414,6 +423,12 @@ interface AppState {
   photoSelectionMode: boolean;
   selectedPhotoIds: string[];
   previewPhoto: PhotoItem | null;
+  videoReconstructionDialogOpen: boolean;
+  videoReconstructionTarget: PhotoItem | null;
+  videoReconstructionFileTarget: File | null;
+  videoReconstructionDependencies: VideoReconstructionDependencies | null;
+  videoReconstructionConfig: VideoReconstructionConfig;
+  videoReconstructionSubmitting: boolean;
 
   // Model Format Preference
   serverModelFormat: ModelFormat;        // Host default from config.json
@@ -466,6 +481,8 @@ interface AppState {
   toggleControlsCollapsed: () => void;
   toggleHelpPanel: () => void;
   setSettingsModalOpen: (open: boolean) => void;
+  openVideoReconstructionGuide: () => void;
+  closeVideoReconstructionGuide: () => void;
 
   setLoading: (loading: boolean, text?: string) => void;
   setLoadingProgress: (progress: number) => void;
@@ -497,6 +514,14 @@ interface AppState {
   toggleSelectedPhoto: (photoId: string) => void;
   clearSelectedPhotos: () => void;
   setPreviewPhoto: (item: PhotoItem | null) => void;
+  openVideoReconstructionDialog: (item: PhotoItem) => void;
+  openVideoReconstructionFileDialog: (file: File) => void;
+  closeVideoReconstructionDialog: () => void;
+  setVideoReconstructionStatus: (
+    dependencies: VideoReconstructionDependencies | null,
+    config?: VideoReconstructionConfig,
+  ) => void;
+  setVideoReconstructionSubmitting: (submitting: boolean) => void;
 
   setServerModelFormat: (format: ModelFormat) => void;
   setLocalModelFormat: (format: ModelFormat | null) => void;
@@ -546,6 +571,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   controlsCollapsed: false,
   helpPanelVisible: false,
   settingsModalOpen: false,
+  videoReconstructionGuideOpen: false,
 
   isLoading: false,
   loadingText: '',
@@ -574,6 +600,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   photoSelectionMode: false,
   selectedPhotoIds: [],
   previewPhoto: null,
+  videoReconstructionDialogOpen: false,
+  videoReconstructionTarget: null,
+  videoReconstructionFileTarget: null,
+  videoReconstructionDependencies: null,
+  videoReconstructionConfig: { ...DEFAULT_VIDEO_RECONSTRUCTION_CONFIG },
+  videoReconstructionSubmitting: false,
 
   // Model Format Preference
   serverModelFormat: 'spz',
@@ -625,6 +657,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   toggleControlsCollapsed: () => set((state) => ({ controlsCollapsed: !state.controlsCollapsed })),
   toggleHelpPanel: () => set((state) => ({ helpPanelVisible: !state.helpPanelVisible })),
   setSettingsModalOpen: (open) => set({ settingsModalOpen: open }),
+  openVideoReconstructionGuide: () => set({ videoReconstructionGuideOpen: true }),
+  closeVideoReconstructionGuide: () => set({ videoReconstructionGuideOpen: false }),
 
   setLoading: (loading, text = '') => set((state) => ({
     isLoading: loading,
@@ -844,6 +878,27 @@ export const useAppStore = create<AppState>((set, get) => ({
     photoSelectionMode: false,
   }),
   setPreviewPhoto: (item) => set({ previewPhoto: item }),
+  openVideoReconstructionDialog: (item) => set({
+    videoReconstructionDialogOpen: true,
+    videoReconstructionTarget: item,
+    videoReconstructionFileTarget: null,
+  }),
+  openVideoReconstructionFileDialog: (file) => set({
+    videoReconstructionDialogOpen: true,
+    videoReconstructionTarget: null,
+    videoReconstructionFileTarget: file,
+  }),
+  closeVideoReconstructionDialog: () => set({
+    videoReconstructionDialogOpen: false,
+    videoReconstructionTarget: null,
+    videoReconstructionFileTarget: null,
+    videoReconstructionSubmitting: false,
+  }),
+  setVideoReconstructionStatus: (dependencies, config) => set((state) => ({
+    videoReconstructionDependencies: dependencies,
+    videoReconstructionConfig: config ?? state.videoReconstructionConfig,
+  })),
+  setVideoReconstructionSubmitting: (submitting) => set({ videoReconstructionSubmitting: submitting }),
 
   setServerModelFormat: (format) => set({ serverModelFormat: format }),
   setLocalModelFormat: (format) => {

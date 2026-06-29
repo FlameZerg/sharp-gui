@@ -162,11 +162,70 @@
     transition: width 0.3s ease;
 }
 
+.progressMeta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 4px;
+}
+
 .progressText {
     font-size: 10px;
     color: var(--accent-blue);
     margin-top: 4px;
     font-weight: 600;
+}
+
+.progressMeta .progressText {
+    margin-top: 0;
+}
+
+.elapsedText {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.viewerLink {
+    display: inline-flex;
+    align-items: center;
+    align-self: flex-start;
+    max-width: 100%;
+    margin-top: 6px;
+    padding: 3px 8px;
+    border-radius: var(--radius-sm);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    color: var(--accent-blue);
+    font-size: 10px;
+    font-weight: 600;
+    text-decoration: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: background var(--transition-normal);
+}
+
+.viewerLink:hover {
+    background: var(--glass-bg-light);
+}
+
+.viewerLink:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 1px;
+}
+
+.errorText {
+    display: -webkit-box;
+    margin-top: 5px;
+    overflow: hidden;
+    color: var(--danger-color);
+    font-size: 10px;
+    line-height: 1.35;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
 }
 
 /* Spin animation for processing icon */

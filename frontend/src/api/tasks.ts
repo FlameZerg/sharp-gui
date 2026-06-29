@@ -26,7 +26,7 @@ export async function generateFromImages(
   const formData = new FormData();
   
   for (const file of files) {
-    if (file.type.startsWith('image/')) {
+    if (file.type.startsWith('image/') || /\.(jpe?g|png|webp)$/i.test(file.name)) {
       formData.append('file', file);
     }
   }

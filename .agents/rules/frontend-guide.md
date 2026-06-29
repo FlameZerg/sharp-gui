@@ -131,6 +131,8 @@ export const useAppStore = create<AppState>((set) => ({
 - 模型图库仍使用 `galleryItems`、`selectedModel` 等字段。
 - 本地媒体图库使用 `photoAlbums`、`currentPhotoAlbumId`、`photoItems`、`photoNextCursor`、`photoMediaType`、`photoSelectionMode`、`selectedPhotoIds`、`previewPhoto` 等独立字段，避免影响 3D 查看器状态。
 - `PhotoItem.media_type` 支持 `image` / `video`，`photoMediaType` 支持 `all` / `image` / `video`；视频条目通过 `poster_url`、`playback_url`、`download_url` 和可选元数据驱动卡片与预览。
+- 视频 3DGS 重建状态放在同一个 store 中的必要字段：重建弹窗打开状态、目标视频、默认配置、依赖诊断状态和提交中状态；不要为视频重建单独新建全局 store。
+- 视频生成模型在 `GalleryItem` 中可带 `source_media_type` / `source_video_url` 等来源字段；列表操作应沿用现有 hover 后出现的图标按钮逻辑，不因视频模型而改成常驻按钮。
 - 局域网门禁使用 `authStatus`、`isAuthenticated`、`isOwnerAccess`、`authSetupRequired`、`authPermissionError` 等字段；本机 owner 可进入设置，远程未解锁时必须展示门禁页或权限反馈。
 
 ### 使用方式
@@ -155,6 +157,7 @@ api/
 ├── auth.ts      # 局域网门禁、访问码、会话与远程生成设置 API
 ├── gallery.ts   # 图库相关 API
 ├── photoGallery.ts # 本地媒体相册、媒体列表、扫描、转换/下载 API
+├── videoReconstruction.ts # 视频重建创建、上传创建与依赖诊断 API
 ├── tasks.ts     # 任务相关 API
 ├── settings.ts  # 设置相关 API
 └── index.ts     # 桶导出（export * from 各模块）
@@ -185,6 +188,13 @@ export async function apiDelete<T>(url: string): Promise<T>;
 3. 在 `api/index.ts` 中确保 `export *` 导出
 4. 对应的类型定义放在 `types/` 目录
 5. 新增私有 API 时必须确认后端 `get_required_access_level()` 已分类，并在前端区分 401（未解锁）与 403（权限不足）
+
+视频重建 API 约定：
+
+- 从相册视频创建任务调用 `POST /api/video-reconstructions`，只传 `video_id`、`mode`、`quality`、`engine`、`output_name` 等安全字段。
+- 从拖入视频创建任务时，先打开视频重建弹窗；用户提交后再调用 `POST /api/video-reconstructions/upload`，使用 `FormData` 上传单个视频文件。
+- 依赖状态调用 `GET /api/video-reconstructions/status`；Settings 手动刷新才传 `?refresh=1`，普通首页、弹窗打开和提交任务前不得重复触发刷新扫描。
+- source video 预览使用图库条目的 `source_video_url`，fallback 为 `/api/gallery/<id>/source-video`；前端不得推断或拼接服务器绝对路径。
 
 ---
 
@@ -292,6 +302,11 @@ export type { CameraConfig } from './viewer';
 - 网格密度调节和触控捏合只改变展示列数，不重新扫描相册。
 - 切换类型筛选、排序、网格密度或多选状态不得触发重新扫描；只应重置/请求当前相册分页数据。
 - 多选状态只存储 media id 集合，避免复制大对象；视频可下载但不可加入照片转 3D。
+- 视频可以从本地媒体图库、视频预览层、模型视图空态/主画布、模型列表区域和「生成新模型」入口触发重建；多个视频或视频+图片混合拖入时必须给出明确提示。
+- 视频预览层触发重建时，应先关闭或让出视频预览 overlay，再打开视频重建弹窗；弹窗不得被视频预览层遮挡。
+- 从模型视图、模型列表区域或「生成新模型」入口拖入单个视频时，应打开同一视频重建弹窗，不得绕过配置直接提交重建任务。
+- 视频重建弹窗必须延续 Settings 同一套玻璃态视觉、浅色/深色适配和分段控件层级；不要使用普通白底表单、浏览器原生 `alert` 或割裂的临时样式。
+- 视频重建模型列表缩略图优先使用源视频封面；没有可用缩略图时才展示克制 fallback。原视频预览入口应和单图模型下载/删除等操作一样遵循 hover/触控可达逻辑。
 
 ### 视频预览交互
 
@@ -367,7 +382,7 @@ Vite 配置了 `manualChunks` 代码分割：
 | **WASM Raycaster** | 内置 WASM 加速射线检测，用于点击聚焦（`splatMesh.raycast()`） |
 | **GsplatModifier** | 用于 Reveal Effects（Magic / Spread / Unroll / Twister / Rain）等渲染特效 |
 
-当前 React 查看器支持的模型格式：`.ply`、`.splat`、`.spz`、`.rad`。后端默认生成 `.ply`，并自动转换 `.spz` 供默认查看/下载。
+当前 React 查看器支持的模型格式：`.ply`、`.splat`、`.spz`、`.rad`。后端默认生成 `.ply`，并自动转换 `.spz` 供默认查看/下载。视频重建模型也进入同一模型图库和 Spark Viewer，不应引入第二套查看器。
 
 ### 关键代码模式
 
@@ -398,11 +413,13 @@ const intersects = raycaster.intersectObject(splatMesh);
 ### 注意事项
 
 - **模型朝向**：加载后需设置 `splatMesh.rotation.x = Math.PI` 纠正模型上下颠倒
+- **视频模型坐标适配**：Nerfstudio/Splatfacto 视频重建模型可能是 Y-front 形态；适配应优先在模型侧隐藏 orientation 中完成，使 camera/OrbitControls 保持默认 `Y-up / -Z forward / polar≈90°` 的干净状态。不要通过把相机初始极角推到 0°/10° 或切换异常 up 向量来“看起来调正”，这会导致左右拖拽变成 roll。
 - **缩放**：通过 `splatMesh.scale.setScalar(modelScale)` 控制（默认 2.0）
 - **清理**：切换模型或组件销毁时调用 `splatMesh.dispose()`，并销毁 `sparkRenderer`
 - **listenToKeyEvents**：不可调用 `OrbitControls.listenToKeyEvents()`（Spark 注册的全局 listener 与之冲突）
 - **Reveal Effects**：效果选择与默认值走 Zustand + localStorage，用户可见文案必须同步 `en.json` / `zh.json`
 - **Quick Controls**：模型姿态、交互方向和质量覆盖按模型持久化，新字段需同步更新 `types/viewerQuickControls.ts`
+- **调试读数**：Quick Controls 中的相机/OrbitControls/模型姿态/包围盒调试数据可以保留，用于排查视频模型坐标系；新增字段仍需中英文 i18n 和复制输出一致性。
 
 ---
 

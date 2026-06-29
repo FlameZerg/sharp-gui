@@ -31,6 +31,7 @@
 .trigger:focus-visible,
 .resetBtn:focus-visible,
 .presetBtn:focus-visible,
+.debugCopyBtn:focus-visible,
 .toggleField input:focus-visible {
   outline: 2px solid var(--accent-blue);
   outline-offset: 2px;
@@ -104,6 +105,7 @@
 
 .resetBtn:disabled,
 .presetBtn:disabled,
+.debugCopyBtn:disabled,
 .field input:disabled,
 .toggleField input:disabled {
   opacity: 0.5;
@@ -208,6 +210,57 @@
   margin: 0;
 }
 
+.debugHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.debugHeader .sectionTitle {
+  margin-bottom: 0;
+}
+
+.debugCopyBtn {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.68);
+  color: var(--text-secondary);
+  padding: 4px 7px;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.debugGrid {
+  display: grid;
+  gap: 5px;
+}
+
+.debugRow {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.debugLabel {
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.debugValue {
+  color: var(--text-primary);
+  font-family: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', monospace;
+  font-size: 10px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
 @media (max-width: 768px) {
   .root {
     right: var(--viewer-overlay-mobile-right);
@@ -247,13 +300,15 @@
   }
 
   .resetBtn,
-  .presetBtn {
+  .presetBtn,
+  .debugCopyBtn {
     background: rgba(255, 255, 255, 0.08);
     border-color: rgba(255, 255, 255, 0.16);
     color: rgba(255, 255, 255, 0.82);
   }
 
-  .presetBtn:hover {
+  .presetBtn:hover,
+  .debugCopyBtn:hover:not(:disabled) {
     background: rgba(255, 255, 255, 0.14);
     color: #fff;
   }
@@ -263,8 +318,13 @@
   }
 
   .fieldLabel,
+  .debugLabel,
   .toggleField,
   .disabledHint {
     color: rgba(255, 255, 255, 0.76);
+  }
+
+  .debugValue {
+    color: rgba(255, 255, 255, 0.92);
   }
 }

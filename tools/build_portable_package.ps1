@@ -1,6 +1,6 @@
 ﻿param(
     [string]$Version = "",
-    [ValidateSet("auto", "cu128-rtx50", "cu128-nvidia", "cu126-mainstream")]
+    [ValidateSet("auto", "cu128-rtx50", "cu128-rtx50-video-recon", "cu128-nvidia", "cu126-mainstream")]
     [string]$Target = "auto",
     [string]$OutputDir = "",
     [string]$VenvDir = "",
@@ -29,6 +29,22 @@ function Fail {
     param([string]$Message)
     Write-Host "[错误] $Message" -ForegroundColor Red
     exit 1
+}
+
+function Remove-DirectoryTree {
+    param([string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return
+    }
+
+    $resolved = [System.IO.Path]::GetFullPath($Path)
+    $longPath = if ($resolved.StartsWith("\\?\")) {
+        $resolved
+    } else {
+        "\\?\$resolved"
+    }
+    Remove-Item -LiteralPath $longPath -Recurse -Force -ErrorAction Stop
 }
 
 function Invoke-Robocopy {
@@ -146,6 +162,176 @@ function Resolve-Node {
     }
 
     return $null
+}
+
+function Resolve-ExecutablePath {
+    param([string]$Name)
+
+    $cmd = Get-Command $Name -ErrorAction SilentlyContinue
+    if ($cmd) {
+        return $cmd.Source
+    }
+
+    return $null
+}
+
+function Resolve-FfmpegBinDir {
+    $ffmpeg = Resolve-ExecutablePath -Name "ffmpeg.exe"
+    $ffprobe = Resolve-ExecutablePath -Name "ffprobe.exe"
+
+    if (-not $ffmpeg -or -not (Test-Path -LiteralPath $ffmpeg)) {
+        Fail "未找到 ffmpeg.exe。视频重建完整包需要可复制的 ffmpeg/ffprobe。"
+    }
+    if (-not $ffprobe -or -not (Test-Path -LiteralPath $ffprobe)) {
+        Fail "未找到 ffprobe.exe。视频重建完整包需要可复制的 ffmpeg/ffprobe。"
+    }
+
+    $ffmpegDir = Split-Path -Parent $ffmpeg
+    $ffprobeDir = Split-Path -Parent $ffprobe
+    if (([System.IO.Path]::GetFullPath($ffmpegDir)) -ne ([System.IO.Path]::GetFullPath($ffprobeDir))) {
+        Fail "ffmpeg.exe 与 ffprobe.exe 不在同一目录，无法作为一个包内工具目录复制。"
+    }
+
+    return $ffmpegDir
+}
+
+function Write-AsciiFile {
+    param(
+        [string]$Path,
+        [string]$Content
+    )
+
+    [System.IO.File]::WriteAllText(
+        $Path,
+        ($Content -replace "`r?`n", "`r`n"),
+        [System.Text.Encoding]::ASCII
+    )
+}
+
+function Write-PortableNerfstudioWrappers {
+    param([string]$VideoEnvDir)
+
+    $portableBin = Join-Path $VideoEnvDir "portable-bin"
+    New-Item -ItemType Directory -Force -Path $portableBin | Out-Null
+
+    $entrypoints = [ordered]@{
+        "ns-process-data" = "nerfstudio.scripts.process_data"
+        "ns-train" = "nerfstudio.scripts.train"
+        "ns-export" = "nerfstudio.scripts.exporter"
+        "ns-render" = "nerfstudio.scripts.render"
+        "ns-eval" = "nerfstudio.scripts.eval"
+        "ns-viewer" = "nerfstudio.scripts.viewer.run_viewer"
+        "ns-download-data" = "nerfstudio.scripts.downloads.download_data"
+    }
+
+    foreach ($name in $entrypoints.Keys) {
+        $module = $entrypoints[$name]
+        $script = @"
+@echo off
+setlocal
+set "ENV_DIR=%~dp0.."
+set "PYTHONUTF8=1"
+set "PYTHONIOENCODING=utf-8"
+"%ENV_DIR%\Scripts\python.exe" -c "from $module import entrypoint; entrypoint()" %*
+exit /b %ERRORLEVEL%
+"@
+        Write-AsciiFile -Path (Join-Path $portableBin "$name.cmd") -Content $script
+    }
+}
+
+function Write-PortableColmapWrappers {
+    param([string]$VideoEnvDir)
+
+    $portableBin = Join-Path $VideoEnvDir "portable-bin"
+    New-Item -ItemType Directory -Force -Path $portableBin | Out-Null
+
+    $wrapper = @'
+@echo off
+setlocal enabledelayedexpansion
+set "COLMAP_EXE=%~dp0..\colmap\bin\colmap.exe"
+if not exist "%COLMAP_EXE%" (
+    echo [ERROR] Missing bundled COLMAP: %COLMAP_EXE%
+    exit /b 1
+)
+set "ARGS="
+
+:loop
+if "%~1"=="" goto run
+set "ARG=%~1"
+if /I "!ARG!"=="--SiftExtraction.use_gpu" set "ARG=--FeatureExtraction.use_gpu"
+if /I "!ARG!"=="--SiftMatching.use_gpu" set "ARG=--FeatureMatching.use_gpu"
+set ARGS=!ARGS! "!ARG!"
+shift
+goto loop
+
+:run
+"%COLMAP_EXE%" !ARGS!
+exit /b %ERRORLEVEL%
+'@
+
+    Write-AsciiFile -Path (Join-Path $portableBin "colmap.cmd") -Content $wrapper
+    Write-AsciiFile -Path (Join-Path $VideoEnvDir "Scripts\colmap.cmd") -Content $wrapper
+}
+
+function Test-VideoReconstructionRuntime {
+    param([string]$PackageRoot)
+
+    $videoEnv = Join-Path $PackageRoot ".video-reconstruction-env"
+    $python = Join-Path $videoEnv "Scripts\python.exe"
+    $portableBin = Join-Path $videoEnv "portable-bin"
+    $scriptsDir = Join-Path $videoEnv "Scripts"
+    $colmapBin = Join-Path $videoEnv "colmap\bin"
+    $ffmpegBin = Join-Path $PackageRoot "tools\ffmpeg\bin"
+
+    foreach ($required in @($python, $portableBin, $colmapBin, $ffmpegBin)) {
+        if (-not (Test-Path -LiteralPath $required)) {
+            Fail "视频重建包缺少运行时路径: $required"
+        }
+    }
+
+    $oldPath = $env:PATH
+    $oldPythonHome = $env:PYTHONHOME
+    $oldPythonPath = $env:PYTHONPATH
+    $oldTorchHome = $env:TORCH_HOME
+    $oldPythonUtf8 = $env:PYTHONUTF8
+    $oldPythonIoEncoding = $env:PYTHONIOENCODING
+
+    try {
+        $env:PATH = @($portableBin, $scriptsDir, $colmapBin, $ffmpegBin, $oldPath) -join ";"
+        $env:PYTHONHOME = ""
+        $env:PYTHONPATH = ""
+        $env:PYTHONUTF8 = "1"
+        $env:PYTHONIOENCODING = "utf-8"
+        $env:TORCH_HOME = Join-Path $PackageRoot ".cache\torch"
+
+        Write-Step "校验视频重建包运行时"
+        & $python -c "import torch; assert torch.cuda.is_available(), 'CUDA is not available'; x=torch.ones((4,4),device='cuda'); y=(x@x).sum(); torch.cuda.synchronize(); print('video runtime CUDA OK: torch=' + torch.__version__ + ', cuda=' + str(torch.version.cuda) + ', gpu=' + torch.cuda.get_device_name(0))" | Out-Host
+        if ($LASTEXITCODE -ne 0) {
+            Fail "视频重建包 PyTorch CUDA 校验失败"
+        }
+
+        $checks = @(
+            "ns-process-data --help >nul",
+            "ns-train --help >nul",
+            "ns-export --help >nul",
+            "colmap -h >nul",
+            "ffmpeg -version >nul",
+            "ffprobe -version >nul"
+        )
+        foreach ($check in $checks) {
+            & cmd.exe /d /c $check
+            if ($LASTEXITCODE -ne 0) {
+                Fail "视频重建包命令校验失败: $check"
+            }
+        }
+    } finally {
+        $env:PATH = $oldPath
+        $env:PYTHONHOME = $oldPythonHome
+        $env:PYTHONPATH = $oldPythonPath
+        $env:TORCH_HOME = $oldTorchHome
+        $env:PYTHONUTF8 = $oldPythonUtf8
+        $env:PYTHONIOENCODING = $oldPythonIoEncoding
+    }
 }
 
 function Invoke-Npm {
@@ -345,6 +531,22 @@ if ($Target -eq "auto") {
     }
 }
 
+$includeVideoReconstruction = $resolvedTarget -eq "cu128-rtx50-video-recon"
+$videoReconEnvDir = Join-Path $root ".video-reconstruction-env"
+$ffmpegBinDir = $null
+if ($includeVideoReconstruction) {
+    if (-not ([string]$torchInfo.cuda).StartsWith("12.8")) {
+        Fail "cu128-rtx50-video-recon 需要主 venv 使用 CUDA 12.8 PyTorch，当前为 CUDA $($torchInfo.cuda)。"
+    }
+    if (-not (Test-Path -LiteralPath (Join-Path $videoReconEnvDir "Scripts\python.exe"))) {
+        Fail "未找到视频重建虚拟环境: $videoReconEnvDir。请先运行 install.bat 或 python tools\install_video_reconstruction.py。"
+    }
+    if (-not (Test-Path -LiteralPath (Join-Path $videoReconEnvDir "colmap\bin\colmap.exe"))) {
+        Fail "未找到视频重建 COLMAP: $(Join-Path $videoReconEnvDir "colmap\bin\colmap.exe")"
+    }
+    $ffmpegBinDir = Resolve-FfmpegBinDir
+}
+
 $modelPath = $null
 if (-not $SkipModel) {
     $modelPath = Resolve-ModelPath -PythonExe $venvPython -Root $root
@@ -359,7 +561,7 @@ if (-not $SkipModel) {
 
 $packageName = "sharp-gui-$Version-windows-$resolvedTarget-portable"
 $stagingRoot = Join-Path $root ".portable-build"
-$packageRoot = Join-Path $stagingRoot $packageName
+$packageRoot = Join-Path $stagingRoot $resolvedTarget
 $zipPath = Join-Path $OutputDir "$packageName.zip"
 
 Write-Step "打包计划"
@@ -371,6 +573,10 @@ Write-Info "GPU: $($torchInfo.device_name)"
 Write-Info "Python 源目录: $pythonHome"
 Write-Info "依赖虚拟环境: $VenvDir"
 Write-Info "输出 ZIP: $zipPath"
+if ($includeVideoReconstruction) {
+    Write-Info "视频重建环境: $videoReconEnvDir"
+    Write-Info "ffmpeg 工具目录: $ffmpegBinDir"
+}
 if ($modelPath) {
     $modelSizeGb = [math]::Round((Get-Item -LiteralPath $modelPath).Length / 1GB, 2)
     Write-Info ("模型: {0} ({1} GiB)" -f $modelPath, $modelSizeGb)
@@ -447,7 +653,7 @@ if (-not (Test-Path -LiteralPath "$frontendDir\dist\index.html")) {
 
 Write-Step "创建打包目录"
 if (Test-Path -LiteralPath $packageRoot) {
-    Remove-Item -LiteralPath $packageRoot -Recurse -Force
+    Remove-DirectoryTree -Path $packageRoot
 }
 New-Item -ItemType Directory -Force -Path $packageRoot | Out-Null
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
@@ -499,6 +705,17 @@ if ($modelPath) {
     Copy-Item -LiteralPath $modelPath -Destination $modelDestDir -Force
 }
 
+if ($includeVideoReconstruction) {
+    Write-Step "复制视频重建运行时"
+    $videoReconDest = Join-Path $packageRoot ".video-reconstruction-env"
+    Invoke-Robocopy -Source $videoReconEnvDir -Destination $videoReconDest -ExtraArgs @("/XD", "__pycache__", ".pytest_cache")
+    Write-PortableNerfstudioWrappers -VideoEnvDir $videoReconDest
+    Write-PortableColmapWrappers -VideoEnvDir $videoReconDest
+
+    $ffmpegDest = Join-Path $packageRoot "tools\ffmpeg\bin"
+    Invoke-Robocopy -Source $ffmpegBinDir -Destination $ffmpegDest
+}
+
 Write-Step "生成便携启动脚本"
 $portableRun = @'
 @echo off
@@ -514,6 +731,23 @@ set "PYTHONPATH="
 set "TORCH_HOME=%SCRIPT_DIR%.cache\torch"
 set "SHARP_FRONTEND_MODE=react"
 set "PATH=%SCRIPT_DIR%;%SCRIPT_DIR%python;%SCRIPT_DIR%python\Scripts;%PATH%"
+
+if exist "%SCRIPT_DIR%tools\ffmpeg\bin\ffmpeg.exe" (
+    set "PATH=%SCRIPT_DIR%tools\ffmpeg\bin;%PATH%"
+    echo [Video 3D] Portable ffmpeg detected
+)
+if exist "%SCRIPT_DIR%.video-reconstruction-env\colmap\bin\colmap.exe" (
+    set "PATH=%SCRIPT_DIR%.video-reconstruction-env\colmap\bin;%PATH%"
+    echo [Video 3D] Portable COLMAP detected
+)
+if exist "%SCRIPT_DIR%.video-reconstruction-env\Scripts\python.exe" (
+    set "PATH=%SCRIPT_DIR%.video-reconstruction-env\Scripts;%PATH%"
+    echo [Video 3D] Portable Nerfstudio environment detected
+)
+if exist "%SCRIPT_DIR%.video-reconstruction-env\portable-bin" (
+    set "PATH=%SCRIPT_DIR%.video-reconstruction-env\portable-bin;%PATH%"
+    echo [Video 3D] Portable video reconstruction commands detected
+)
 
 if /I "%~1"=="--verbose" (
     set "SHARP_VERBOSE=1"
@@ -596,10 +830,29 @@ $sharpCmd = @'
 '@
 Set-Content -LiteralPath "$packageRoot\sharp.cmd" -Encoding ASCII -Value $sharpCmd
 
+$packageKind = if ($includeVideoReconstruction) { "video-reconstruction" } else { "core" }
+$videoMetadata = $null
+if ($includeVideoReconstruction) {
+    $videoMetadata = [ordered]@{
+        included = $true
+        target = "rtx50-cu128"
+        environment = ".video-reconstruction-env"
+        portableBin = ".video-reconstruction-env\\portable-bin"
+        colmap = ".video-reconstruction-env\\colmap\\bin"
+        ffmpeg = "tools\\ffmpeg\\bin"
+        commands = @("ns-process-data", "ns-train", "ns-export", "colmap", "ffmpeg", "ffprobe")
+    }
+} else {
+    $videoMetadata = [ordered]@{
+        included = $false
+    }
+}
+
 $packageInfo = [ordered]@{
     name = $packageName
     version = $Version
     target = $resolvedTarget
+    kind = $packageKind
     createdAt = (Get-Date).ToString("s")
     torch = @{
         version = $torchInfo.version
@@ -608,14 +861,27 @@ $packageInfo = [ordered]@{
         capability = $torchInfo.capability
         archList = $torchInfo.arch_list
     }
+    videoReconstruction = $videoMetadata
     notes = @(
         "这是本地打包生成的 Windows GPU 完整 ZIP。",
         "首选入口是 portable-run.bat。",
         "反馈问题时可以运行 portable-run-verbose.bat 获取更多日志。",
-        "包内使用本地 TORCH_HOME，模型文件放在 .cache\\torch\\hub\\checkpoints。"
+        "包内使用本地 TORCH_HOME，模型文件放在 .cache\\torch\\hub\\checkpoints。",
+        $(if ($includeVideoReconstruction) { "本包包含 RTX 50 / CUDA 12.8 视频重建运行时。" } else { "本包不包含视频重建完整运行时。" })
     )
 }
 $packageInfo | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath "$packageRoot\portable-package.json" -Encoding UTF8
+
+$videoReconNote = if ($includeVideoReconstruction) {
+    @"
+- RTX 50 / CUDA 12.8 视频重建运行时
+  - `.video-reconstruction-env` 中的 Nerfstudio / Splatfacto / gsplat
+  - `.video-reconstruction-env\colmap\bin` 中的 COLMAP
+  - `tools\ffmpeg\bin` 中的 ffmpeg / ffprobe
+"@
+} else {
+    "- 本包不包含视频重建完整运行时；需要视频重建时请下载 `cu128-rtx50-video-recon` 包或按 README 手动准备。"
+}
 
 $notes = @"
 # Sharp GUI Windows 完整便携包
@@ -632,15 +898,21 @@ $notes = @"
 - Sharp 模型缓存（除非打包时使用了 `-SkipModel`）
 - `sharp.cmd` 包内 CLI 入口
 - `portable-run-verbose.bat` 详细日志入口
+$videoReconNote
 
 注意：
 
 - 首版只面向 NVIDIA GPU，不提供纯 CPU 包。
+- 视频重建完整包当前面向 RTX 50 / CUDA 12.8 路线，不代表所有 NVIDIA GPU 都已验证。
 - 如果目标机器 NVIDIA 驱动过旧，包内 PyTorch CUDA 检查会失败，需要升级驱动或换用匹配包。
 - 这个包用于网盘发布，不适合上传到 GitHub Release 资产。
 - 如果移动包目录，仍应使用包内的 `portable-run.bat` 启动。
 "@
 Set-Content -LiteralPath "$packageRoot\便携包说明.md" -Encoding UTF8 -Value $notes
+
+if ($includeVideoReconstruction) {
+    Test-VideoReconstructionRuntime -PackageRoot $packageRoot
+}
 
 Write-Step "压缩完整 ZIP"
 if (Test-Path -LiteralPath $zipPath) {
@@ -678,7 +950,7 @@ $hashLine = "$($zipHash.Hash)  $($zipItem.Name)"
 Set-Content -LiteralPath (Join-Path $OutputDir "$packageName.sha256.txt") -Encoding ASCII -Value $hashLine
 
 if (-not $KeepStaging) {
-    Remove-Item -LiteralPath $stagingRoot -Recurse -Force
+    Remove-DirectoryTree -Path $stagingRoot
 }
 
 Write-Host ""

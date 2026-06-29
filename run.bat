@@ -18,6 +18,9 @@ cd /d "%SCRIPT_DIR%"
 REM Default to React frontend
 set USE_LEGACY=false
 set SHARP_FRONTEND_MODE=react
+if not defined SHARP_LOG_LEVEL set SHARP_LOG_LEVEL=INFO
+if not defined SHARP_LOG_FILE set "SHARP_LOG_FILE=%SCRIPT_DIR%sharp-gui-verbose.log"
+if not defined PYTHONFAULTHANDLER set PYTHONFAULTHANDLER=1
 
 REM Parse arguments
 :parse_args
@@ -101,6 +104,17 @@ pause
 exit /b 1
 
 :sharp_cmd_ok
+
+REM Optional video reconstruction environment (Nerfstudio + COLMAP)
+set "VIDEO_RECON_ENV=%SCRIPT_DIR%.video-reconstruction-env"
+if exist "%VIDEO_RECON_ENV%\Scripts\ns-train.exe" (
+    set "PATH=%PATH%;%VIDEO_RECON_ENV%\Scripts"
+    echo [Video 3D] Nerfstudio environment detected
+)
+if exist "%VIDEO_RECON_ENV%\colmap\bin\colmap.exe" (
+    set "PATH=%PATH%;%VIDEO_RECON_ENV%\colmap\bin"
+    echo [Video 3D] COLMAP environment detected
+)
 
 echo.
 echo ========================================

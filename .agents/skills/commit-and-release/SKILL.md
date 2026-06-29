@@ -171,6 +171,7 @@ build_portable_release.bat
 - 构建 React 前端。
 - 前端构建会优先复用现有 `frontend\node_modules`，通过 Node 直接调用 TypeScript 与 Vite 入口；只有缺失或构建失败时才安装依赖，避免 npm 版本差异导致 lockfile 被改、`npm ci` 失败或 Windows `.bin` shim 权限问题。
 - 使用主 `venv` 生成 `cu128-rtx50` 完整包。
+- 使用主 `venv` 和 `.video-reconstruction-env` 生成 `cu128-rtx50-video-recon` 视频重建完整包。
 - 自动准备 `.portable-venvs\cu126` 并生成 `cu126-mainstream` 完整包。
 - 生成 `.sha256.txt`。
 - 用 7-Zip 测试 ZIP 完整性。
@@ -186,6 +187,7 @@ build_portable_release.bat -Version v1.2.3 -PlanOnly
 build_portable_release.bat -AllowLocalVersion -PlanOnly
 build_portable_release.bat -SkipCu126
 build_portable_release.bat -SkipCu128
+build_portable_release.bat -SkipVideoRecon
 build_portable_release.bat -CleanBuildVenvs
 build_portable_release.bat -CleanOldArtifacts
 ```
@@ -205,7 +207,7 @@ build_portable_release.bat -CleanOldArtifacts
 
 - 确认 `portable-dist\*.zip` 与对应 `.sha256.txt` 已生成，且文件名包含真实版本号 `vX.Y.Z`，不能发布 `local-*` 或 `v-local-test` 包。
 - 确认 `portable-dist\portable-release-template-<version>.md` 已生成，并将网盘链接补进去。
-- `cu128-rtx50` 面向 RTX 50 系列；`cu126-mainstream` 面向 RTX 50 以下主流 NVIDIA 显卡。
+- `cu128-rtx50` 面向 RTX 50 系列核心包；`cu128-rtx50-video-recon` 面向 RTX 50 / CUDA 12.8 视频重建完整包；`cu126-mainstream` 面向 RTX 50 以下主流 NVIDIA 核心包。
 - 首版完整便携包不提供纯 CPU 包。
 - 不要把完整大 ZIP 上传到 GitHub Release 资产；GitHub Release 只贴网盘链接和 SHA256。
 - 生成 commit message 或 release note 时，必须提到 Windows 完整便携包的适用显卡和校验方式。

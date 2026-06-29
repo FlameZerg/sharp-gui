@@ -28,6 +28,56 @@ import { useXR } from './useXR';
 // Inject focus-ring CSS animation once
 let focusRingStyleInjected = false;
 const missingRadCache = new Set<string>();
+const CAMERA_RESET_CENTER_LATERAL_RATIO = 0.25;
+const CAMERA_RESET_CENTER_MIN_OFFSET = 0.2;
+const CAMERA_RESET_FIT_PADDING = 1.15;
+const CAMERA_RESET_Y_FRONT_DEPTH_RATIO = 0.65;
+const DEBUG_UPDATE_INTERVAL_MS = 250;
+
+type ViewerResetMode =
+  | 'default'
+  | 'bounds-centered'
+  | 'bounds-y-front'
+  | 'bounds-default'
+  | 'bounds-unavailable';
+
+type VectorTuple = [number, number, number];
+
+type ControlsLimitConfig = typeof DEFAULT_CAMERA_CONFIG.limits;
+type ViewerOrientationMode = 'default' | 'y-front';
+
+const Y_FRONT_ORIENTATION_QUATERNION = new THREE.Quaternion()
+  .setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+
+export interface ViewerDebugInfo {
+  resetMode: ViewerResetMode;
+  camera: {
+    position: VectorTuple;
+    rotationDeg: VectorTuple;
+    up: VectorTuple;
+    forward: VectorTuple;
+  };
+  controls: {
+    target: VectorTuple;
+    distance: number;
+    orbitAzimuthDeg: number;
+    orbitPolarDeg: number;
+  };
+  model: {
+    position: VectorTuple | null;
+    rotationDeg: VectorTuple | null;
+    scale: VectorTuple | null;
+    right: VectorTuple | null;
+    up: VectorTuple | null;
+    forward: VectorTuple | null;
+  };
+  bounds: {
+    center: VectorTuple;
+    size: VectorTuple;
+    targetDelta: VectorTuple;
+    targetDistance: number;
+  } | null;
+}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -36,6 +86,179 @@ function clamp(value: number, min: number, max: number): number {
 function isNotFoundError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   return /\b404\b/i.test(error.message) || /\bnot found\b/i.test(error.message);
+}
+
+function toVectorTuple(vector: THREE.Vector3): VectorTuple {
+  return [vector.x, vector.y, vector.z];
+}
+
+function toEulerDegreesTuple(euler: THREE.Euler): VectorTuple {
+  return [
+    THREE.MathUtils.radToDeg(euler.x),
+    THREE.MathUtils.radToDeg(euler.y),
+    THREE.MathUtils.radToDeg(euler.z),
+  ];
+}
+
+function isFiniteBox(box: THREE.Box3): boolean {
+  return [
+    box.min.x,
+    box.min.y,
+    box.min.z,
+    box.max.x,
+    box.max.y,
+    box.max.z,
+  ].every(Number.isFinite);
+}
+
+function getSplatWorldBoundingBox(splatMesh: SplatMesh): THREE.Box3 | null {
+  if (typeof splatMesh.getBoundingBox !== 'function') {
+    return null;
+  }
+
+  if (!splatMesh.packedSplats && !splatMesh.extSplats) {
+    return null;
+  }
+
+  const bbox = splatMesh.getBoundingBox(true).clone();
+  splatMesh.updateMatrixWorld(true);
+  bbox.applyMatrix4(splatMesh.matrixWorld);
+
+  if (bbox.isEmpty() || !isFiniteBox(bbox)) {
+    return null;
+  }
+
+  return bbox;
+}
+
+function shouldCenterResetOnBounds(box: THREE.Box3, defaultLookAt: THREE.Vector3): boolean {
+  const center = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3());
+  const maxAxis = Math.max(size.x, size.y, size.z, 0.001);
+  const lateralOffset = Math.hypot(center.x - defaultLookAt.x, center.y - defaultLookAt.y);
+
+  return lateralOffset > Math.max(
+    CAMERA_RESET_CENTER_MIN_OFFSET,
+    maxAxis * CAMERA_RESET_CENTER_LATERAL_RATIO,
+  );
+}
+
+function shouldUseYFrontResetOnBounds(box: THREE.Box3): boolean {
+  const size = box.getSize(new THREE.Vector3());
+  const wideAxis = Math.max(size.x, size.y, 0.001);
+
+  return (
+    size.x > 0.001
+    && size.y > 0.001
+    && size.z > 0.001
+    && size.z / wideAxis < CAMERA_RESET_Y_FRONT_DEPTH_RATIO
+    && size.y > size.z
+  );
+}
+
+function shouldUseCurrentModelVideoOrientation(): boolean {
+  const state = useAppStore.getState();
+  if (!state.currentModelId) {
+    return false;
+  }
+
+  const currentItem = state.galleryItems.find((item) => item.id === state.currentModelId);
+  return currentItem?.source_media_type === 'video' || Boolean(currentItem?.source_video_url);
+}
+
+async function resolveCurrentModelVideoOrientation(signal?: AbortSignal): Promise<boolean> {
+  const state = useAppStore.getState();
+  if (!state.currentModelId || state.currentModelUrl?.startsWith('blob:')) {
+    return false;
+  }
+
+  if (shouldUseCurrentModelVideoOrientation()) {
+    return true;
+  }
+
+  const currentItem = state.galleryItems.find((item) => item.id === state.currentModelId);
+  if (!currentItem || currentItem.image_url) {
+    return false;
+  }
+
+  try {
+    const response = await fetch(
+      `/api/gallery/${encodeURIComponent(state.currentModelId)}/source-video`,
+      { method: 'HEAD', signal },
+    );
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+function getBoundsCenteredCameraPosition(
+  camera: THREE.PerspectiveCamera,
+  box: THREE.Box3,
+  target: THREE.Vector3,
+): THREE.Vector3 {
+  const size = box.getSize(new THREE.Vector3());
+  const fov = THREE.MathUtils.degToRad(camera.fov);
+  const halfFovTangent = Math.tan(fov / 2);
+  const aspect = Math.max(camera.aspect || 1, 0.001);
+  const fitHeightDistance = size.y / (2 * halfFovTangent);
+  const fitWidthDistance = size.x / (2 * halfFovTangent * aspect);
+  const fitDepthDistance = size.z + DEFAULT_CAMERA_CONFIG.minDistance;
+  const distance = Math.max(
+    DEFAULT_CAMERA_CONFIG.minDistance,
+    fitHeightDistance,
+    fitWidthDistance,
+    fitDepthDistance,
+  ) * CAMERA_RESET_FIT_PADDING;
+
+  return target.clone().add(new THREE.Vector3(0, 0, distance));
+}
+
+function getControlsLimitConfig(
+  limitsEnabled: boolean,
+): ControlsLimitConfig {
+  return limitsEnabled ? DEFAULT_CAMERA_CONFIG.limits : DEFAULT_CAMERA_CONFIG.freeMode;
+}
+
+function applyControlLimits(
+  controls: OrbitControls,
+  limitsEnabled: boolean,
+): void {
+  const config = getControlsLimitConfig(limitsEnabled);
+
+  controls.minAzimuthAngle = config.minAzimuth;
+  controls.maxAzimuthAngle = config.maxAzimuth;
+  controls.minPolarAngle = config.minPolar;
+  controls.maxPolarAngle = config.maxPolar;
+}
+
+function applySplatTransform(
+  splatMesh: SplatMesh,
+  transform: {
+    positionX: number;
+    positionY: number;
+    positionZ: number;
+    rotationX: number;
+    rotationY: number;
+    rotationZ: number;
+    scale: number;
+  },
+  orientationMode: ViewerOrientationMode,
+): void {
+  splatMesh.position.set(
+    transform.positionX,
+    transform.positionY,
+    transform.positionZ,
+  );
+  const userQuaternion = new THREE.Quaternion().setFromEuler(
+    new THREE.Euler(transform.rotationX, transform.rotationY, transform.rotationZ),
+  );
+  if (orientationMode === 'y-front') {
+    userQuaternion.premultiply(Y_FRONT_ORIENTATION_QUATERNION);
+  }
+  splatMesh.quaternion.copy(userQuaternion);
+  splatMesh.scale.setScalar(Math.max(0.05, transform.scale));
+  splatMesh.updateMatrixWorld(true);
 }
 
 function injectFocusRingStyle() {
@@ -87,6 +310,9 @@ export interface ViewerContext {
   scene: THREE.Scene;
   sparkRenderer: SparkRenderer;
   splatMesh: SplatMesh | null;
+  debugBounds: THREE.Box3 | null;
+  lastResetMode: ViewerResetMode;
+  orientationMode: ViewerOrientationMode;
 }
 
 interface UseViewerOptions {
@@ -100,6 +326,7 @@ export const useViewer = (
 ) => {
   const viewerRef = useRef<ViewerContext | null>(null);
   const revealEffectRuntimeRef = useRef(createRevealEffectRuntime());
+  const lastDebugUpdateRef = useRef(0);
   const {
     currentModelUrl,
     currentModelFormat,
@@ -109,7 +336,99 @@ export const useViewer = (
     setCanCompareLod,
     setUsedRadLastLoad,
   } = useAppStore();
+  const currentModelSourceSignature = useAppStore((state) => {
+    const item = state.currentModelId
+      ? state.galleryItems.find((candidate) => candidate.id === state.currentModelId)
+      : null;
+
+    return item
+      ? [
+        item.id,
+        item.source_media_type ?? '',
+        item.source_video_url ? 'source-video' : '',
+      ].join('|')
+      : '';
+  });
   const [isViewerReady, setIsViewerReady] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<ViewerDebugInfo | null>(null);
+
+  const refreshDebugBounds = useCallback((ctx: ViewerContext): THREE.Box3 | null => {
+    if (!ctx.splatMesh) {
+      ctx.debugBounds = null;
+      return null;
+    }
+
+    ctx.debugBounds = getSplatWorldBoundingBox(ctx.splatMesh);
+    return ctx.debugBounds;
+  }, []);
+
+  const getViewerDebugInfo = useCallback((ctx: ViewerContext): ViewerDebugInfo => {
+    const cameraPosition = ctx.camera.position.clone();
+    const cameraEuler = new THREE.Euler().setFromQuaternion(ctx.camera.quaternion, 'XYZ');
+    const cameraForward = new THREE.Vector3();
+    ctx.camera.getWorldDirection(cameraForward);
+
+    const target = ctx.controls.target.clone();
+    const cameraOffset = cameraPosition.clone().sub(target);
+    const spherical = new THREE.Spherical().setFromVector3(cameraOffset);
+    const bounds = ctx.debugBounds;
+    const boundsCenter = bounds?.getCenter(new THREE.Vector3()) ?? null;
+    const boundsSize = bounds?.getSize(new THREE.Vector3()) ?? null;
+    const boundsTargetDelta = boundsCenter ? boundsCenter.clone().sub(target) : null;
+
+    let modelPosition: THREE.Vector3 | null = null;
+    let modelRotationDeg: VectorTuple | null = null;
+    let modelScale: THREE.Vector3 | null = null;
+    let modelRight: THREE.Vector3 | null = null;
+    let modelUp: THREE.Vector3 | null = null;
+    let modelForward: THREE.Vector3 | null = null;
+
+    if (ctx.splatMesh) {
+      ctx.splatMesh.updateMatrixWorld(true);
+      const modelQuaternion = new THREE.Quaternion();
+      modelPosition = ctx.splatMesh.getWorldPosition(new THREE.Vector3());
+      modelScale = ctx.splatMesh.getWorldScale(new THREE.Vector3());
+      ctx.splatMesh.getWorldQuaternion(modelQuaternion);
+      modelRotationDeg = toEulerDegreesTuple(
+        new THREE.Euler().setFromQuaternion(modelQuaternion, 'XYZ'),
+      );
+      modelRight = new THREE.Vector3(1, 0, 0).applyQuaternion(modelQuaternion).normalize();
+      modelUp = new THREE.Vector3(0, 1, 0).applyQuaternion(modelQuaternion).normalize();
+      modelForward = new THREE.Vector3(0, 0, -1).applyQuaternion(modelQuaternion).normalize();
+    }
+
+    return {
+      resetMode: ctx.lastResetMode,
+      camera: {
+        position: toVectorTuple(cameraPosition),
+        rotationDeg: toEulerDegreesTuple(cameraEuler),
+        up: toVectorTuple(ctx.camera.up),
+        forward: toVectorTuple(cameraForward),
+      },
+      controls: {
+        target: toVectorTuple(target),
+        distance: spherical.radius,
+        orbitAzimuthDeg: THREE.MathUtils.radToDeg(ctx.controls.getAzimuthalAngle()),
+        orbitPolarDeg: THREE.MathUtils.radToDeg(ctx.controls.getPolarAngle()),
+      },
+      model: {
+        position: modelPosition ? toVectorTuple(modelPosition) : null,
+        rotationDeg: modelRotationDeg,
+        scale: modelScale ? toVectorTuple(modelScale) : null,
+        right: modelRight ? toVectorTuple(modelRight) : null,
+        up: modelUp ? toVectorTuple(modelUp) : null,
+        forward: modelForward ? toVectorTuple(modelForward) : null,
+      },
+      bounds: bounds && boundsCenter && boundsSize && boundsTargetDelta
+        ? {
+          center: toVectorTuple(boundsCenter),
+          size: toVectorTuple(boundsSize),
+          targetDelta: toVectorTuple(boundsTargetDelta),
+          targetDistance: boundsTargetDelta.length(),
+        }
+        : null,
+    };
+  }, []);
 
   const applyCurrentLodSettings = useCallback(() => {
     const ctx = viewerRef.current;
@@ -143,19 +462,10 @@ export const useViewer = (
     if (ctx.renderer.xr.isPresenting) return;
 
     const transform = useAppStore.getState().viewerTransformApplied;
-    ctx.splatMesh.position.set(
-      transform.positionX,
-      transform.positionY,
-      transform.positionZ,
-    );
-    ctx.splatMesh.rotation.set(
-      transform.rotationX,
-      transform.rotationY,
-      transform.rotationZ,
-    );
-    ctx.splatMesh.scale.setScalar(Math.max(0.05, transform.scale));
+    applySplatTransform(ctx.splatMesh, transform, ctx.orientationMode);
+    refreshDebugBounds(ctx);
     ctx.sparkRenderer.sortDirty = true;
-  }, []);
+  }, [refreshDebugBounds]);
 
   const applyCurrentInteractionSettings = useCallback(() => {
     const ctx = viewerRef.current;
@@ -179,53 +489,76 @@ export const useViewer = (
     const ctx = viewerRef.current;
     if (!ctx) return;
 
-    const c = ctx.controls;
+    const activeCtx = ctx;
+    const c = activeCtx.controls;
 
-    const targetPos = new THREE.Vector3(...DEFAULT_CAMERA_CONFIG.initialPosition);
+    let targetPos = new THREE.Vector3(...DEFAULT_CAMERA_CONFIG.initialPosition);
     const targetLookAt = new THREE.Vector3(0, 0, 0);
     const targetUp = new THREE.Vector3(...DEFAULT_CAMERA_CONFIG.cameraUp);
 
     // Dynamic intersection point algorithm: Calculate where the front face of the bounding box starts
     // and push the focus point inward proportionally (a quadratic curve modeled from sample data)
     let dynamicOffset = DEFAULT_CAMERA_CONFIG.orbitTargetOffset || 1.5;
+    let splatBounds: THREE.Box3 | null = null;
+    const shouldPreferVideoOrientation =
+      activeCtx.orientationMode === 'y-front' || shouldUseCurrentModelVideoOrientation();
+    ctx.lastResetMode = 'bounds-unavailable';
 
     if (
-      ctx.splatMesh &&
-      typeof ctx.splatMesh.getBoundingBox === 'function' &&
-      !ctx.renderer.xr.isPresenting
+      activeCtx.splatMesh &&
+      typeof activeCtx.splatMesh.getBoundingBox === 'function' &&
+      !activeCtx.renderer.xr.isPresenting
     ) {
-      const canUseBoundingBoxSource = Boolean(
-        ctx.splatMesh.packedSplats || ctx.splatMesh.extSplats,
-      );
+      try {
+        splatBounds = refreshDebugBounds(activeCtx);
 
-      if (canUseBoundingBoxSource) {
-        try {
-          ctx.splatMesh.updateMatrixWorld(true);
-          const bbox = ctx.splatMesh.getBoundingBox().clone();
-          bbox.applyMatrix4(ctx.splatMesh.matrixWorld);
+        if (splatBounds) {
+          const shouldAdaptYFront =
+            activeCtx.orientationMode === 'default'
+            && (shouldPreferVideoOrientation || shouldUseYFrontResetOnBounds(splatBounds));
 
-          if (!bbox.isEmpty()) {
-            // Camera is positioned at targetPos
-            // Since camera initially looks down -Z, the frontest point of the model is max.z
-            const frontZ = bbox.max.z;
-            // DF (Distance to Front): Distance from camera to the frontest visible surface
-            const distToFront = Math.max(0.1, targetPos.z - frontZ);
-
-            // Best-fit curve from user samples: Offset = DF + 0.08 * DF^2
-            dynamicOffset = distToFront + 0.08 * Math.pow(distToFront, 2);
+          if (shouldAdaptYFront) {
+            activeCtx.orientationMode = 'y-front';
+            applyCurrentTransformSettings();
+            splatBounds = refreshDebugBounds(activeCtx) ?? splatBounds;
           }
-        } catch (error) {
-          console.warn('[Viewer] Bounding box unavailable, using default reset offset:', error);
+
+          activeCtx.lastResetMode = 'bounds-default';
+          // Camera is positioned at targetPos.
+          // Since camera initially looks down -Z, the frontest point of the model is max.z.
+          const frontZ = splatBounds.max.z;
+          // DF (Distance to Front): Distance from camera to the frontest visible surface.
+          const distToFront = Math.max(0.1, targetPos.z - frontZ);
+
+          // Best-fit curve from user samples: Offset = DF + 0.08 * DF^2.
+          dynamicOffset = distToFront + 0.08 * Math.pow(distToFront, 2);
         }
+      } catch (error) {
+        console.warn('[Viewer] Bounding box unavailable, using default reset offset:', error);
       }
     }
 
     // Compute pivot along the viewing direction
     const forwardDir = new THREE.Vector3(0, 0, -1);
     targetLookAt.copy(targetPos).add(forwardDir.multiplyScalar(dynamicOffset));
+
+    if (
+      splatBounds
+      && (shouldPreferVideoOrientation || shouldCenterResetOnBounds(splatBounds, targetLookAt))
+    ) {
+      splatBounds.getCenter(targetLookAt);
+      targetPos = getBoundsCenteredCameraPosition(activeCtx.camera, splatBounds, targetLookAt);
+      activeCtx.lastResetMode = activeCtx.orientationMode === 'y-front'
+        ? 'bounds-y-front'
+        : 'bounds-centered';
+    } else if (!splatBounds) {
+      activeCtx.lastResetMode = 'default';
+    }
+
     const startPos = c.object.position.clone();
     const startLookAt = c.target.clone();
     const startUp = c.object.up.clone();
+    applyControlLimits(c, useAppStore.getState().isLimitsOn);
 
     const startTime = performance.now();
     const duration = DEFAULT_CAMERA_CONFIG.resetAnimationDuration;
@@ -237,8 +570,9 @@ export const useViewer = (
 
       c.object.position.lerpVectors(startPos, targetPos, ease);
       c.target.lerpVectors(startLookAt, targetLookAt, ease);
-      c.object.up.lerpVectors(startUp, targetUp, ease);
+      c.object.up.lerpVectors(startUp, targetUp, ease).normalize();
       c.update();
+      setDebugInfo(getViewerDebugInfo(activeCtx));
 
       if (progress < 1) {
         requestAnimationFrame(animate);
@@ -246,7 +580,7 @@ export const useViewer = (
     }
 
     requestAnimationFrame(animate);
-  }, []);
+  }, [applyCurrentTransformSettings, getViewerDebugInfo, refreshDebugBounds]);
 
   // Child hooks — they read viewerRef.current.camera / .controls
   const { speedMode } = useKeyboard(viewerRef, resetCamera);
@@ -351,17 +685,29 @@ export const useViewer = (
 
         // Render loop
         renderer.setAnimationLoop(() => {
+          const now = performance.now();
           const activeMesh = viewerRef.current?.splatMesh;
           if (
             activeMesh
             && isRevealEffectEnabled(revealEffectRuntimeRef.current.activeEffect)
           ) {
-            const revealUpdated = updateRevealEffectPlayback(revealEffectRuntimeRef.current, performance.now());
+            const revealUpdated = updateRevealEffectPlayback(revealEffectRuntimeRef.current, now);
             if (revealUpdated) {
               activeMesh.updateVersion();
             }
           }
           controls.update();
+
+          const activeContext = viewerRef.current;
+          if (
+            activeContext
+            && useAppStore.getState().quickControlsOpen
+            && now - lastDebugUpdateRef.current >= DEBUG_UPDATE_INTERVAL_MS
+          ) {
+            lastDebugUpdateRef.current = now;
+            setDebugInfo(getViewerDebugInfo(activeContext));
+          }
+
           renderer.render(scene, camera);
         });
 
@@ -417,7 +763,17 @@ export const useViewer = (
         renderer.domElement.addEventListener('pointerdown', onPointerDown);
         renderer.domElement.addEventListener('pointerup', onPointerUp);
 
-        viewerRef.current = { camera, controls, renderer, scene, sparkRenderer, splatMesh: null };
+        viewerRef.current = {
+          camera,
+          controls,
+          renderer,
+          scene,
+          sparkRenderer,
+          splatMesh: null,
+          debugBounds: null,
+          lastResetMode: 'default',
+          orientationMode: 'default',
+        };
         applyCurrentInteractionSettings();
         setIsViewerReady(true);
       } catch (error) {
@@ -556,12 +912,14 @@ export const useViewer = (
       setIsViewerReady(false);
       setCanCompareLod(false);
       setUsedRadLastLoad(false);
+      setDebugInfo(null);
     };
   }, [
     containerRef,
     applyCurrentInteractionSettings,
     applyCurrentLodSettings,
     applyCurrentTransformSettings,
+    getViewerDebugInfo,
     setCanCompareLod,
     setUsedRadLastLoad,
   ]);
@@ -572,21 +930,30 @@ export const useViewer = (
     if (!ctx || !currentModelUrl) {
       setCanCompareLod(false);
       setUsedRadLastLoad(false);
+      setDebugInfo(null);
       return;
     }
 
     let cancelled = false;
+    const abortController = new AbortController();
 
     const load = async () => {
       setLoading(true, 'Loading Scene...');
       setLoadingProgress(0);
 
       try {
+        const useVideoOrientation = await resolveCurrentModelVideoOrientation(abortController.signal);
+        if (cancelled) {
+          return;
+        }
+
         // Remove previous splatMesh if any
         if (ctx.splatMesh) {
           ctx.scene.remove(ctx.splatMesh);
           ctx.splatMesh.dispose();
           ctx.splatMesh = null;
+          ctx.debugBounds = null;
+          ctx.orientationMode = 'default';
         }
 
         const state = useAppStore.getState();
@@ -678,8 +1045,10 @@ export const useViewer = (
 
         ctx.scene.add(splatMesh);
         ctx.splatMesh = splatMesh;
+        ctx.orientationMode = useVideoOrientation ? 'y-front' : 'default';
         applyRevealEffectToMesh(revealEffectRuntimeRef.current, splatMesh);
         applyCurrentTransformSettings();
+        refreshDebugBounds(ctx);
 
         const hasComparison = lodEnabled && hasLodComparisonData(splatMesh);
         setCanCompareLod(hasComparison);
@@ -702,14 +1071,19 @@ export const useViewer = (
     };
 
     load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      abortController.abort();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     currentModelUrl,
     currentModelFormat,
+    currentModelSourceSignature,
     isViewerReady,
     applyCurrentLodSettings,
     applyCurrentTransformSettings,
+    refreshDebugBounds,
     setCanCompareLod,
     setLoading,
     setLoadingProgress,
@@ -723,12 +1097,7 @@ export const useViewer = (
     if (!ctx) return;
 
     const c = ctx.controls;
-    const config = isLimitsOn ? DEFAULT_CAMERA_CONFIG.limits : DEFAULT_CAMERA_CONFIG.freeMode;
-
-    c.minAzimuthAngle = config.minAzimuth;
-    c.maxAzimuthAngle = config.maxAzimuth;
-    c.minPolarAngle = config.minPolar;
-    c.maxPolarAngle = config.maxPolar;
+    applyControlLimits(c, isLimitsOn);
     c.update();
   }, [isLimitsOn]);
 
@@ -746,5 +1115,6 @@ export const useViewer = (
     indicatorBallRef,
     joystick,
     xr,
+    debugInfo,
   };
 };

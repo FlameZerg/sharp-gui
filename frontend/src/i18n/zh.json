@@ -4,9 +4,9 @@
   "generateNew": "生成新模型",
   "processingQueue": "处理队列",
 
-  "emptyStateTitle": "从画廊选择或生成新模型",
-  "emptyStateHint": "拖拽 .ply / .splat / .spz / .rad 文件到此处预览",
-  "dragToSidebarHint": "拖拽源图片到左侧直接生成模型",
+  "emptyStateTitle": "选择模型，或拖入图片/视频生成新模型",
+  "emptyStateHint": "拖拽 .ply / .splat / .spz / .rad 可直接预览；拖拽图片或单个视频可生成 3D 模型",
+  "dragToSidebarHint": "拖拽图片或视频到左侧直接生成模型",
 
   "loading": "加载中...",
   "loadingModel": "正在加载模型...",
@@ -54,6 +54,34 @@
   "quickControlsLodScale": "LoD 比例",
   "quickControlsConeFoveate": "视锥注视系数",
   "quickControlsBehindFoveate": "背向注视系数",
+  "quickControlsDebug": "调试读数",
+  "quickControlsDebugCopy": "复制",
+  "quickControlsDebugCopied": "已复制",
+  "quickControlsDebugWaiting": "打开模型后会显示实时相机和模型姿态读数。",
+  "quickControlsDebugResetMode": "重置模式",
+  "quickControlsDebugResetModeDefault": "默认",
+  "quickControlsDebugResetModeBoundsCentered": "包围盒居中",
+  "quickControlsDebugResetModeBoundsYFront": "Y 正面适配",
+  "quickControlsDebugResetModeBoundsDefault": "包围盒未触发",
+  "quickControlsDebugResetModeBoundsUnavailable": "包围盒不可用",
+  "quickControlsDebugCameraPosition": "相机位置",
+  "quickControlsDebugCameraRotation": "相机旋转",
+  "quickControlsDebugCameraUp": "相机上方向",
+  "quickControlsDebugCameraForward": "相机朝向",
+  "quickControlsDebugControlsTarget": "控制目标点",
+  "quickControlsDebugOrbit": "轨道角度",
+  "quickControlsDebugDistanceShort": "距",
+  "quickControlsDebugAzimuthShort": "方位",
+  "quickControlsDebugPolarShort": "极角",
+  "quickControlsDebugModelPosition": "模型位置",
+  "quickControlsDebugModelRotation": "模型旋转",
+  "quickControlsDebugModelScale": "模型缩放",
+  "quickControlsDebugModelRight": "模型右轴",
+  "quickControlsDebugModelUp": "模型上轴",
+  "quickControlsDebugModelForward": "模型前轴",
+  "quickControlsDebugBoundsCenter": "包围盒中心",
+  "quickControlsDebugBoundsSize": "包围盒尺寸",
+  "quickControlsDebugTargetDelta": "目标偏差",
 
   "revealEffectsTitle": "渲染效果",
   "revealEffectsOpenAria": "打开渲染效果面板，当前效果：{{effect}}",
@@ -114,6 +142,7 @@
   "precisionMode": "精细模式",
 
   "viewOriginal": "查看原图",
+  "viewOriginalVideo": "预览原视频",
   "download": "下载模型",
   "delete": "删除",
   "galleryThumbLoading": "正在加载预览",
@@ -219,6 +248,7 @@
   "selectImageFiles": "请选择图片文件",
   "uploadFailed": "上传失败",
   "uploadingFiles": "正在上传 {{count}} 个文件...",
+  "uploadingVideo": "正在上传视频并创建重建任务...",
 
   "ready": "就绪",
   "viewerError": "查看器错误",
@@ -226,7 +256,7 @@
   "pageWillRefresh": "页面将自动刷新",
 
   "dropModelHint": "拖拽 .ply / .splat / .spz / .rad 文件预览",
-  "unsupportedFormat": "不支持的格式，请拖拽 .ply、.splat、.spz 或 .rad 文件",
+  "unsupportedFormat": "不支持的格式。可拖拽模型文件（.ply / .splat / .spz / .rad）、图片，或单个视频（.mp4 / .mov / .m4v / .webm）。",
   "modelLoaded": "模型已加载",
   "modelLoadFailed": "模型加载失败",
 
@@ -409,5 +439,292 @@
   "photoVideoVolume": "视频音量",
   "photoVideoFullscreen": "全屏",
   "photoVideoExitFullscreen": "退出全屏",
-  "photoDownloadVideo": "下载视频"
+  "photoDownloadVideo": "下载视频",
+
+  "videoReconGenerate3d": "生成 3D",
+  "videoReconLiveProgress": "实时进度",
+  "videoReconSingleVideoOnly": "选择单个视频",
+  "videoReconDialogTitle": "视频生成 3D",
+  "videoReconStatusLoadFailed": "加载视频重建议诊断失败。",
+  "videoReconCheckingDependencies": "正在检查本机重建工具...",
+  "videoReconRequiredMissing": "缺少 ffmpeg 或 ffprobe，无法启动视频重建。",
+  "videoReconStableMissing": "缺少 Nerfstudio / Splatfacto 命令行工具，请安装后再开始重建。",
+  "videoReconDependenciesReady": "稳定重建路线已就绪。",
+  "videoReconQueued": "视频重建任务已加入队列。",
+  "videoReconCreateFailed": "创建视频重建任务失败。",
+  "videoReconRecommended": "默认",
+  "videoReconModeLabel": "模式",
+  "videoReconQualityLabel": "质量",
+  "videoReconOutputName": "输出名称",
+  "videoReconOutputPlaceholder": "模型图库中的名称",
+  "videoReconAdvanced": "高级",
+  "videoReconEngineLabel": "引擎",
+  "videoReconKeepIntermediate": "保留中间文件",
+  "videoReconKeepIntermediateHint": "便于排查抽帧、位姿和 Nerfstudio 日志，但会占用更多磁盘空间。",
+  "videoReconVramBudget": "显存预算",
+  "videoReconStart": "开始",
+  "videoReconSubmitting": "提交中...",
+  "videoReconSettingsTitle": "视频重建",
+  "videoReconSettingsDefaults": "默认值与诊断",
+  "videoReconSettingsHint": "控制本地视频重建的默认预设；单次任务的自定义参数可在生成弹窗里调整。",
+  "videoReconRefreshDiagnostics": "刷新",
+  "videoReconDefaultQuality": "默认质量",
+  "videoReconDefaultQualityMeta": "影响帧数、分辨率、迭代与耗时",
+  "videoReconDefaultEngine": "默认引擎",
+  "videoReconDefaultEngineMeta": "选择重建路线；建议保持自动",
+  "videoReconVramBudgetMeta": "按本机显存限制资源边界",
+  "videoReconSettingsSaved": "视频重建设置已保存。",
+  "videoReconSettingsUnsaved": "视频重建设置有未保存更改",
+  "videoReconSettingsCurrent": "已保存：视频重建默认值为最新",
+  "videoReconOpenGuide": "重建指南",
+  "videoReconGuideTitle": "视频重建指南",
+  "videoReconGuideBadge": "本地 3DGS 流程",
+  "videoReconGuideHeroTitle": "先拍对，再调参",
+  "videoReconGuideHeroText": "视频重建会从整段视频抽取关键帧，先用 COLMAP 估计相机位姿，再用 Splatfacto 训练 Gaussian Splat 模型。它更像静态场景扫描，不是视频特效。",
+  "videoReconGuideFact": {
+    "preview": "快速确认",
+    "high": "常用成品",
+    "extreme": "离线上限"
+  },
+  "videoReconGuideBasicsTitle": "它到底在做什么",
+  "videoReconGuideBasicsText": "理解路线、取帧和适用场景后，质量档和自定义参数会更容易选择。",
+  "videoReconGuideOverview": {
+    "route": {
+      "title": "重建路线",
+      "text": "当前稳定路线是 ffmpeg/ffprobe 读取视频，COLMAP 求相机位姿，Nerfstudio Splatfacto 训练并导出 PLY/SPZ。"
+    },
+    "sampling": {
+      "title": "取帧方式",
+      "text": "预设里的帧数是目标抽帧规模；系统会按视频长度稀疏采样，不会因为视频更长就自动覆盖更多细节。"
+    },
+    "scene": {
+      "title": "适合场景",
+      "text": "静态房间、物体、展品和桌面空间更适合；人群、屏幕、镜面、透明物和大面积白墙会降低稳定性。"
+    },
+    "result": {
+      "title": "输出结果",
+      "text": "任务完成后会进入模型图库，可预览或下载 PLY/SPZ；开启保留中间文件能帮助排查失败。"
+    }
+  },
+  "videoReconGuideShootTitle": "拍摄建议",
+  "videoReconGuideShootText": "素材质量决定上限。重建更喜欢慢、稳、连续、有纹理的镜头。",
+  "videoReconGuideTips": {
+    "path": {
+      "title": "缓慢移动，避免急转",
+      "text": "保持稳定步速和连续路径，让相机位姿有足够重叠可追踪。"
+    },
+    "overlap": {
+      "title": "保证视角重叠",
+      "text": "围绕物体多拍半圈到一圈；房间走拍时每个区域都要从多个角度看到。"
+    },
+    "light": {
+      "title": "光线要稳定",
+      "text": "避免明显曝光跳变、强反光和频闪；均匀光照通常比高对比灯光更稳。"
+    },
+    "blur": {
+      "title": "减少动态和运动模糊",
+      "text": "人、宠物、摇晃植物、屏幕内容和快速运动会被当成噪声，可能生成漂浮碎片。"
+    },
+    "long": {
+      "title": "长视频优先拆段或自定义",
+      "text": "录完整个家很正常，但 10 分钟素材建议按房间拆任务，或用自定义提高帧数并选择顺序匹配。"
+    }
+  },
+  "videoReconGuideParametersTitle": "参数怎么选",
+  "videoReconGuideParametersText": "默认高质量适合多数素材；当视频很长、细节不足或显存吃紧时再进入自定义。",
+  "videoReconGuideParameters": {
+    "frames": {
+      "title": "目标帧数",
+      "text": "决定从整段视频里取多少张图。长路径想覆盖更多区域，就提高帧数；代价是 COLMAP 和训练更久。"
+    },
+    "iterations": {
+      "title": "训练迭代",
+      "text": "决定 Splatfacto 优化多久。更多迭代可能提升细节，但不会弥补拍摄路径缺失。"
+    },
+    "downscale": {
+      "title": "输入下采样",
+      "text": "1x 保留最多细节也最吃显存；2x 是均衡默认；4x 更省资源，适合先确认路线。"
+    },
+    "matching": {
+      "title": "COLMAP 匹配",
+      "text": "顺序匹配适合长走拍；完整匹配更稳但会随帧数快速变慢，所以高帧数会被限制。"
+    },
+    "cache": {
+      "title": "图像缓存",
+      "text": "GPU 缓存可能更快；CPU 缓存更省显存，适合高帧数、高分辨率或显存紧张时使用。"
+    }
+  },
+  "videoReconGuideDependencyTitle": "环境依赖",
+  "videoReconGuideDependencyText": "开始前先确认这些基础要求；Settings 里可以刷新本机诊断结果。",
+  "videoReconGuideDependencies": {
+    "ffmpeg": {
+      "title": "ffmpeg / ffprobe",
+      "text": "读取视频元数据、抽帧和生成封面，是启动视频任务的基础依赖。"
+    },
+    "colmap": {
+      "title": "COLMAP",
+      "text": "负责特征匹配和相机位姿估计；这一步失败通常和素材重叠、模糊或纹理不足有关。"
+    },
+    "nerfstudio": {
+      "title": "Nerfstudio / Splatfacto",
+      "text": "负责训练 3D Gaussian Splatting 并导出可进入模型图库的 PLY。"
+    },
+    "gpu": {
+      "title": "NVIDIA GPU / CUDA / PyTorch",
+      "text": "当前端到端验证平台是 Windows + NVIDIA GPU；显存越大，可承受的帧数和输入细节越高。"
+    },
+    "storage": {
+      "title": "磁盘空间",
+      "text": "抽帧、COLMAP 数据库、训练日志和临时模型会占用空间；长视频建议预留更多缓存。"
+    }
+  },
+  "videoReconGuideSetupTitle": "配置指南",
+  "videoReconGuideSetupText": "依赖要求确认后，可以按 README 手动配置，也可以让本机 AI Agent 代劳。",
+  "videoReconGuideInstallTitle": "安装方式参考 README",
+  "videoReconGuideInstallText": "项目 README 包含视频重建环境手动搭建指南，覆盖 .video-reconstruction-env、CUDA/PyTorch、COLMAP、Nerfstudio 和 ffmpeg/ffprobe。",
+  "videoReconGuideAgentTitle": "也可以交给 AI Agent 配置",
+  "videoReconGuideAgentText": "适合不想逐步排查 PATH、CUDA、Python 和外部命令的情况；把下面这句话交给本机 AI coding agent 即可。",
+  "videoReconGuideAgentPrompt": "请先了解当前 Sharp GUI 项目和视频重建流程，检查系统、GPU/驱动、Python 与 PATH；按 README 安装或复用 .video-reconstruction-env、CUDA/PyTorch、COLMAP、Nerfstudio/Splatfacto、ffmpeg/ffprobe。不要修改无关业务代码。最后运行诊断 API 和基础命令，确认依赖可用。",
+  "videoReconGuideReadReadme": "打开中文 README",
+  "videoReconGuideReadReadmeEn": "English README",
+  "videoReconDependencyAvailable": "可用",
+  "videoReconDependencyChecking": "检测中",
+  "videoReconDependencyMissing": "缺失",
+  "videoReconMode": {
+    "auto": "自动",
+    "object": "物品",
+    "environment": "环境"
+  },
+  "videoReconModeMeta": {
+    "auto": "推荐",
+    "object": "主体优先",
+    "environment": "空间优先"
+  },
+  "videoReconQuality": {
+    "preview": "快速预览",
+    "high": "高质量",
+    "extreme": "极致",
+    "custom": "自定义"
+  },
+  "videoReconQualityMeta": {
+    "preview": "90 帧 / 7k",
+    "high": "180 帧 / 30k",
+    "extreme": "360 帧 / 50k",
+    "custom": "手动调参"
+  },
+  "videoReconQualityHint": {
+    "preview": "用于快速确认相机路径和主体清理效果，输入细节和 splat 数量较少。",
+    "high": "当前推荐：2x 输入分辨率、focused 清理，这段 4K 视频约 50 分钟级。",
+    "extreme": "提高帧数和训练预算，适合长时间离线追求上限，显存和耗时压力更大。",
+    "custom": "当预设不适合当前视频时使用。可以有意识地提高覆盖、细节或稳定性，同时承担耗时和显存代价。"
+  },
+  "videoReconCustomTitle": "自定义重建参数",
+  "videoReconCustomHint": "这些参数只作用于本次任务，不会保存为全局默认值。",
+  "videoReconCustomFrameCount": "目标帧数",
+  "videoReconCustomFrameCountHint": "帧数越多，越能覆盖长路径；但几何阶段和训练都会更久。",
+  "videoReconCustomIterations": "训练迭代",
+  "videoReconCustomIterationsHint": "迭代越多，可能细化更多细节；但每一步都会增加训练时间。",
+  "videoReconCustomDownscale": "输入下采样",
+  "videoReconCustomDownscaleHint": "下采样越低越保留输入细节；下采样越高越省显存，也更能压住噪声。",
+  "videoReconCustomMatching": "COLMAP 匹配",
+  "videoReconCustomMatchingHint": "顺序匹配适合长时间走拍；完整匹配更稳，但帧数高时增长很快。",
+  "videoReconCustomCacheImages": "图像缓存",
+  "videoReconCustomCacheImagesHint": "GPU 缓存可能更快；CPU 缓存能把显存留给高帧数或高输入细节。",
+  "videoReconDownscale": {
+    "1": "1x",
+    "2": "2x",
+    "4": "4x"
+  },
+  "videoReconDownscaleMeta": {
+    "1": "细节最多",
+    "2": "均衡",
+    "4": "更省显存"
+  },
+  "videoReconMatching": {
+    "sequential": "顺序",
+    "exhaustive": "完整"
+  },
+  "videoReconMatchingMeta": {
+    "sequential": "长视频",
+    "exhaustive": "更稳"
+  },
+  "videoReconCacheImages": {
+    "gpu": "GPU",
+    "cpu": "CPU"
+  },
+  "videoReconCacheImagesMeta": {
+    "gpu": "更快",
+    "cpu": "省显存"
+  },
+  "videoReconCustomValidation": {
+    "frameCount": "目标帧数必须在 24 到 1200 之间。",
+    "iterations": "训练迭代必须在 1k 到 80k 之间。",
+    "exhaustiveFrames": "完整匹配的自定义帧数上限为 450。更长视频请使用顺序匹配。"
+  },
+  "videoReconEngine": {
+    "auto": "自动",
+    "stable": "稳定"
+  },
+  "videoReconEngineMeta": {
+    "auto": "推荐",
+    "stable": "Nerfstudio"
+  },
+  "videoReconEngineHint": {
+    "auto": "使用当前已验证的稳定 3DGS 路线，并保留后续策略切换空间。",
+    "stable": "固定使用 COLMAP + Nerfstudio Splatfacto，也是当前跑出干净高细节结果的路线。"
+  },
+  "videoReconVram": {
+    "auto": "自动",
+    "8gb": "8 GB",
+    "12gb": "12 GB",
+    "16gb": "16 GB",
+    "24gb": "24 GB"
+  },
+  "videoReconDependency": {
+    "required": "视频基础工具",
+    "stable": "稳定 3DGS 路线"
+  },
+  "videoReconDependencyHint": {
+    "required": "ffmpeg 和 ffprobe 用于读取元数据与抽帧。",
+    "stable": "Nerfstudio Splatfacto 用于训练并导出 Gaussian Splat 模型。"
+  },
+  "videoReconError": {
+    "video_reconstruction_dependency_missing": "缺少视频重建必需依赖。",
+    "video_reconstruction_dependencies_checking": "本机重建工具仍在后台检测中，请稍后再试。",
+    "video_reconstruction_stable_unavailable": "稳定 Nerfstudio / Splatfacto 路线不可用。",
+    "video_reconstruction_invalid_request": "视频重建请求包含非法选项。",
+    "video_reconstruction_source_unavailable": "源视频不可用，或已不在配置的相册中。",
+    "video_reconstruction_cancelled": "视频重建已取消。",
+    "video_reconstruction_oom": "GPU 显存不足。请降低质量档位或减少帧数。",
+    "video_reconstruction_output_missing": "重建完成但没有得到可用的 PLY 输出。",
+    "video_reconstruction_spz_failed": "SPZ 压缩失败，但已保留 PLY 输出。",
+    "video_reconstruction_unsupported_video": "不支持的视频格式。请使用 MP4、MOV、M4V 或 WebM。"
+  },
+  "taskStatus": {
+    "pending": "等待中",
+    "running": "运行中",
+    "processing": "处理中",
+    "completed": "已完成",
+    "failed": "失败",
+    "cancelled": "已取消"
+  },
+  "taskStage": {
+    "starting": "启动中",
+    "downloading": "下载中",
+    "loading": "加载中",
+    "processing": "处理中",
+    "preprocessing": "预处理",
+    "inference": "推理中",
+    "postprocessing": "后处理",
+    "saving": "保存中",
+    "done": "完成",
+    "video_prepare": "准备视频",
+    "video_extract_frames": "抽取关键帧",
+    "video_foreground": "前景处理",
+    "video_geometry": "估计几何",
+    "video_optimize": "优化高斯",
+    "video_export": "导出 PLY",
+    "video_compress_spz": "压缩 SPZ",
+    "video_done": "完成"
+  }
 }

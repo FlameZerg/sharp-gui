@@ -1,8 +1,21 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '@/store/useAppStore';
+import type { Task } from '@/types';
 import { cancelTask } from '@/api';
 import styles from './TaskQueue.module.css';
+
+// Format an elapsed duration (seconds) as m:ss or h:mm:ss.
+function formatElapsed(seconds: number): string {
+    const total = Math.max(0, Math.floor(seconds));
+    const mins = Math.floor(total / 60);
+    const secs = total % 60;
+    if (mins < 60) {
+        return `${mins}:${String(secs).padStart(2, '0')}`;
+    }
+    const hours = Math.floor(mins / 60);
+    return `${hours}:${String(mins % 60).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
 
 // Status icons as inline SVG components
 const ClockIcon = () => (
@@ -35,6 +48,19 @@ const CancelIcon = () => (
     </svg>
 );
 
+// Build a viewer URL that works for both the local machine and LAN clients.
+// The backend reports the viewer's listening port; we rebuild the host from the
+// address the user actually used to reach Sharp GUI (localhost locally, the
+// reconstruction machine's LAN IP for remote clients), since the trainer's
+// viewer listens on all interfaces. Falls back to the raw URL when no port.
+function resolveViewerUrl(task: Task): string | undefined {
+    const port = task.details?.viewer_port;
+    if (port && typeof window !== 'undefined' && window.location?.hostname) {
+        return `http://${window.location.hostname}:${port}`;
+    }
+    return task.details?.viewer_url;
+}
+
 export const TaskQueue: React.FC = () => {
     const { t } = useTranslation();
     const { tasks, setTasks } = useAppStore();
@@ -45,6 +71,17 @@ export const TaskQueue: React.FC = () => {
         task.status === 'processing' || 
         task.status === 'failed'
     );
+
+    // Tick once per second while a task is processing, to keep the elapsed timer live.
+    const [nowMs, setNowMs] = useState(() => Date.now());
+    const hasProcessing = activeTasks.some(task => task.status === 'processing');
+    useEffect(() => {
+        if (!hasProcessing) {
+            return;
+        }
+        const intervalId = window.setInterval(() => setNowMs(Date.now()), 1000);
+        return () => window.clearInterval(intervalId);
+    }, [hasProcessing]);
 
     // Handle cancel task
     const handleCancel = async (taskId: string) => {
@@ -81,6 +118,31 @@ export const TaskQueue: React.FC = () => {
         return null;
     }
 
+    const getTaskStageText = (task: Task) => {
+        if (task.status === 'processing' && task.stage) {
+            const key = `taskStage.${task.stage}`;
+            const translated = t(key);
+            return translated === key ? task.stage : translated;
+        }
+        const statusKey = `taskStatus.${task.status}`;
+        const translatedStatus = t(statusKey);
+        return translatedStatus === statusKey ? task.status : translatedStatus;
+    };
+
+    const getTaskErrorText = (task: Task) => {
+        if (!task.error) {
+            return null;
+        }
+        if (task.error_code) {
+            const key = `videoReconError.${task.error_code}`;
+            const translated = t(key);
+            if (translated !== key) {
+                return translated;
+            }
+        }
+        return task.error;
+    };
+
     return (
         <div className={styles.container}>
             <div className={styles.sectionTitle}>{t('processingQueue')}</div>
@@ -89,6 +151,13 @@ export const TaskQueue: React.FC = () => {
                 const { icon, color } = getStatusInfo(task.status);
                 const showProgress = task.status === 'processing' && task.progress !== undefined;
                 const canCancel = task.status === 'pending' || task.status === 'processing';
+                const errorText = getTaskErrorText(task);
+                const stageText = getTaskStageText(task);
+                const viewerUrl = task.status === 'processing' ? resolveViewerUrl(task) : undefined;
+                const elapsedText =
+                    task.status === 'processing' && task.started_at
+                        ? formatElapsed(nowMs / 1000 - task.started_at)
+                        : null;
 
                 return (
                     <div key={task.id} className={styles.queueItem}>
@@ -99,7 +168,7 @@ export const TaskQueue: React.FC = () => {
 
                         {/* Content */}
                         <div className={styles.itemContent}>
-                            <div className={styles.filename}>{task.filename}</div>
+                            <div className={styles.filename} data-tooltip={task.filename}>{task.filename}</div>
                             
                             {/* Progress Bar */}
                             {showProgress && (
@@ -110,14 +179,32 @@ export const TaskQueue: React.FC = () => {
                                             style={{ width: `${task.progress}%` }}
                                         />
                                     </div>
-                                    <div className={styles.progressText}>{task.progress}%</div>
+                                    <div className={styles.progressMeta}>
+                                        <span className={styles.progressText}>{task.progress}%</span>
+                                        {elapsedText ? (
+                                            <span className={styles.elapsedText}>{elapsedText}</span>
+                                        ) : null}
+                                    </div>
                                 </>
                             )}
+                            {errorText ? <div className={styles.errorText} data-tooltip={errorText}>{errorText}</div> : null}
+                            {viewerUrl ? (
+                                <a
+                                    className={styles.viewerLink}
+                                    href={viewerUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(event) => event.stopPropagation()}
+                                    data-tooltip={viewerUrl}
+                                >
+                                    {t('videoReconLiveProgress')}
+                                </a>
+                            ) : null}
                         </div>
 
                         {/* Status Text */}
-                        <div className={styles.statusText}>
-                            {task.status === 'processing' && task.stage ? task.stage : task.status}
+                        <div className={styles.statusText} data-tooltip={stageText}>
+                            {stageText}
                         </div>
 
                         {/* Cancel Button */}
@@ -125,7 +212,8 @@ export const TaskQueue: React.FC = () => {
                             <button 
                                 className={styles.cancelBtn}
                                 onClick={() => handleCancel(task.id)}
-                                title="Cancel"
+                                data-tooltip={t('cancel')}
+                                aria-label={t('cancel')}
                             >
                                 <CancelIcon />
                             </button>

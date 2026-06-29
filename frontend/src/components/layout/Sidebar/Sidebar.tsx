@@ -120,7 +120,7 @@ export function Sidebar({ onUpload, children }: SidebarProps) {
             <button
               className={styles.settingsBtn}
               onClick={() => setSettingsModalOpen(true)}
-              title={t('settings')}
+              data-tooltip={t('settings')}
             >
               <SettingsIcon width={16} height={16} />
             </button>
@@ -144,7 +144,7 @@ export function Sidebar({ onUpload, children }: SidebarProps) {
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept="image/*,video/mp4,video/quicktime,video/webm,.mp4,.m4v,.mov,.webm"
             multiple
             hidden
             onChange={handleFileChange}

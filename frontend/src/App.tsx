@@ -3,14 +3,27 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
 
-import { ApiError, fetchAuthStatus, fetchGallery, fetchSettings, fetchTasks, generateFromImages } from '@/api';
+import {
+  ApiError,
+  fetchAuthStatus,
+  fetchGallery,
+  fetchSettings,
+  fetchTasks,
+  generateFromImages,
+} from '@/api';
 import { AccessGate, AccessSetupPrompt } from '@/components/auth';
 import { GalleryList } from '@/components/gallery';
 import { ImageViewer, Loading } from '@/components/common';
 import { ParticleBackground } from '@/components/common/ParticleBackground';
+import { GlobalTooltip } from '@/components/common/Tooltip';
 import { Settings, Sidebar } from '@/components/layout';
 import { Help } from '@/components/layout/Help/Help';
-import { PhotoAlbumList, PhotoGalleryView } from '@/components/photoGallery';
+import {
+  PhotoAlbumList,
+  PhotoGalleryView,
+  VideoReconstructionDialog,
+  VideoReconstructionGuide,
+} from '@/components/photoGallery';
 import { useTaskQueue } from '@/hooks/useTaskQueue';
 import { useAppStore } from '@/store';
 import { ViewerCanvas } from '@/components/viewer/ViewerCanvas/ViewerCanvas';
@@ -18,6 +31,28 @@ import { ViewerCanvas } from '@/components/viewer/ViewerCanvas/ViewerCanvas';
 import './App.css';
 
 const ACCESS_SETUP_PROMPT_SUPPRESSED_KEY = 'sharp-access-setup-prompt-suppressed';
+type DroppedModelFormat = 'ply' | 'splat' | 'spz' | 'rad';
+
+function toFileArray(files: FileList | File[]): File[] {
+  return Array.from(files);
+}
+
+function getDroppedModelFormat(file: File): DroppedModelFormat | null {
+  const name = file.name.toLowerCase();
+  if (name.endsWith('.ply')) return 'ply';
+  if (name.endsWith('.splat')) return 'splat';
+  if (name.endsWith('.spz')) return 'spz';
+  if (name.endsWith('.rad')) return 'rad';
+  return null;
+}
+
+function isImageUpload(file: File): boolean {
+  return file.type.startsWith('image/') || /\.(jpe?g|png|webp)$/i.test(file.name);
+}
+
+function isVideoUpload(file: File): boolean {
+  return file.type.startsWith('video/') || /\.(mp4|m4v|mov|webm)$/i.test(file.name);
+}
 
 function shouldShowAccessSetupPrompt(status: {
   is_owner: boolean;
@@ -61,6 +96,8 @@ function App() {
     setCurrentModel,
     setAuthPermissionError,
     setSettingsModalOpen,
+    setVideoReconstructionStatus,
+    openVideoReconstructionFileDialog,
   } = useAppStore(
     useShallow((state) => ({
       isBooting: state.isBooting,
@@ -86,6 +123,8 @@ function App() {
       setCurrentModel: state.setCurrentModel,
       setAuthPermissionError: state.setAuthPermissionError,
       setSettingsModalOpen: state.setSettingsModalOpen,
+      setVideoReconstructionStatus: state.setVideoReconstructionStatus,
+      openVideoReconstructionFileDialog: state.openVideoReconstructionFileDialog,
     })),
   );
 
@@ -101,7 +140,8 @@ function App() {
     if (settings.model_format) {
       setServerModelFormat(settings.model_format);
     }
-  }, [setGalleryItems, setTasks, setLocalAccess, setServerModelFormat]);
+    setVideoReconstructionStatus(null, settings.video_reconstruction);
+  }, [setGalleryItems, setTasks, setLocalAccess, setServerModelFormat, setVideoReconstructionStatus]);
 
   useEffect(() => {
     async function init() {
@@ -149,11 +189,47 @@ function App() {
     setSettingsModalOpen(true);
   }, [dismissAccessSetupPrompt, setSettingsModalOpen]);
 
-  // Handle file upload
-  const handleUpload = useCallback(async (files: FileList) => {
+  const handlePreviewModelFile = useCallback((file: File, format: DroppedModelFormat) => {
+    console.log('📦 Loading dropped model:', file.name, 'format:', format);
+    const blobUrl = URL.createObjectURL(file);
+    setCurrentModel(file.name, blobUrl, format);
+  }, [setCurrentModel]);
+
+  // Handle image/video upload or direct model preview
+  const handleUpload = useCallback(async (files: FileList | File[]) => {
+    const fileArray = toFileArray(files);
+    if (fileArray.length === 0) {
+      return;
+    }
+
+    const modelFiles = fileArray
+      .map((file) => ({ file, format: getDroppedModelFormat(file) }))
+      .filter((entry): entry is { file: File; format: DroppedModelFormat } => Boolean(entry.format));
+    const imageFiles = fileArray.filter(isImageUpload);
+    const videoFiles = fileArray.filter(isVideoUpload);
+
+    if (fileArray.length === 1 && modelFiles.length === 1) {
+      handlePreviewModelFile(modelFiles[0].file, modelFiles[0].format);
+      return;
+    }
+
+    if (videoFiles.length > 0) {
+      if (videoFiles.length !== 1 || imageFiles.length > 0 || modelFiles.length > 0 || fileArray.length !== 1) {
+        alert(t('videoReconSingleVideoOnly'));
+        return;
+      }
+      openVideoReconstructionFileDialog(videoFiles[0]);
+      return;
+    }
+
+    if (imageFiles.length === 0 || imageFiles.length !== fileArray.length) {
+      alert(t('unsupportedFormat'));
+      return;
+    }
+
     try {
-      setLoading(true, t('uploadingFiles', { count: files.length }));
-      const result = await generateFromImages(files);
+      setLoading(true, t('uploadingFiles', { count: imageFiles.length }));
+      const result = await generateFromImages(imageFiles);
       setLoading(false);
       
       if (result.success && result.tasks) {
@@ -169,40 +245,16 @@ function App() {
       }
       alert(`${t('uploadFailed')}: ${message}`);
     }
-  }, [t, setAuthPermissionError, setLoading, setTasks]);
+  }, [handlePreviewModelFile, openVideoReconstructionFileDialog, t, setAuthPermissionError, setLoading, setTasks]);
 
-  // Handle model file drop (.ply / .splat / .spz / .rad) for direct preview
-  const handleModelDrop = useCallback((e: React.DragEvent) => {
+  const handleFileDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     
     const files = e.dataTransfer?.files;
     if (!files || files.length === 0) return;
-    
-    const file = files[0];
-    const name = file.name.toLowerCase();
-    
-    // Check for supported model formats and extract format
-    let format: 'ply' | 'splat' | 'spz' | 'rad' | null = null;
-    if (name.endsWith('.ply')) {
-      format = 'ply';
-    } else if (name.endsWith('.splat')) {
-      format = 'splat';
-    } else if (name.endsWith('.spz')) {
-      format = 'spz';
-    } else if (name.endsWith('.rad')) {
-      format = 'rad';
-    } else {
-      alert(t('unsupportedFormat'));
-      return;
-    }
-    
-    console.log('📦 Loading dropped model:', file.name, 'format:', format);
-    
-    // Create Blob URL and set as current model with format hint
-    const blobUrl = URL.createObjectURL(file);
-    setCurrentModel(file.name, blobUrl, format);
-  }, [setCurrentModel, t]);
+    void handleUpload(files);
+  }, [handleUpload]);
 
   const handleMainDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -256,7 +308,7 @@ function App() {
       <main 
         className={`main-content ${!sidebarCollapsed ? 'sidebar-expanded' : ''}`}
         onDragOver={handleMainDragOver}
-        onDrop={handleModelDrop}
+        onDrop={handleFileDrop}
       >
         {activeView === 'models' ? <ParticleBackground /> : null}
         
@@ -319,6 +371,12 @@ function App() {
       
       {/* Lightbox / Image Viewer */}
       <ImageViewer />
+
+      <VideoReconstructionDialog />
+
+      <VideoReconstructionGuide />
+
+      <GlobalTooltip />
     </div>
   );
 }

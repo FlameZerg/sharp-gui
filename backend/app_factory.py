@@ -1,13 +1,19 @@
 from flask import Flask
 
 from backend import runtime
-from backend.config import load_config, normalize_access_control_config, save_config
+from backend.config import (
+    load_config,
+    normalize_access_control_config,
+    normalize_video_reconstruction_config,
+    save_config,
+)
 from backend.paths import build_path_context, ensure_runtime_directories, install_path_config
 from backend.routes import register_routes
 from backend.security.hooks import register_security_hooks
 from backend.services.model_gallery import generate_thumbnail
 from backend.services.photo_gallery import migrate_photo_gallery_roots_config
 from backend.services.task_queue import TaskManager
+from backend.services import video_reconstruction
 
 
 def create_app(start_background_workers=False):
@@ -23,11 +29,13 @@ def create_app(start_background_workers=False):
     config = load_config()
     _, access_config_changed = normalize_access_control_config(config)
     roots_migrated = migrate_photo_gallery_roots_config(config)
-    if access_config_changed or roots_migrated:
+    _, video_config_changed = normalize_video_reconstruction_config(config)
+    if access_config_changed or roots_migrated or video_config_changed:
         save_config(config)
 
     paths = build_path_context(config)
     ensure_runtime_directories(paths)
+    video_reconstruction.cleanup_stale_runtime_artifacts(paths)
     install_path_config(app, paths)
 
     task_manager = TaskManager(
@@ -38,6 +46,7 @@ def create_app(start_background_workers=False):
 
     register_security_hooks(app)
     register_routes(app)
+    video_reconstruction.start_dependency_warmup()
 
     if start_background_workers:
         task_manager.start_workers()

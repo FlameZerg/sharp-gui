@@ -1,4 +1,5 @@
 import os
+import json
 import zipfile
 from io import BytesIO
 
@@ -32,6 +33,7 @@ from backend.services.photo_gallery import (
     scan_photo_album,
     upload_photos_to_album,
 )
+from backend.services import model_gallery, video_reconstruction
 from backend.services.static_files import is_real_path_inside
 from backend.services.task_queue import TaskManager
 from tests.conftest import write_config
@@ -72,6 +74,41 @@ def test_config_normalize_coerces_access_control_values():
     assert changed is True
     assert coerce_bool("on") is True
     assert coerce_int("bad", 7, 1, 10) == 7
+
+
+def test_video_reconstruction_config_and_paths_are_normalized(workspace):
+    from backend.config import normalize_video_reconstruction_config
+
+    config = {
+        "workspace_folder": str(workspace),
+        "video_reconstruction": {
+            "default_quality": "bad",
+            "default_engine": "unsupported",
+            "vram_budget": "invalid",
+            "keep_intermediate_files": "yes",
+        },
+    }
+
+    video_config, changed = normalize_video_reconstruction_config(config)
+    paths = build_path_context(config)
+
+    assert video_config == {
+        "default_quality": "high",
+        "default_engine": "auto",
+        "vram_budget": "12gb",
+        "keep_intermediate_files": True,
+    }
+    assert changed is True
+    assert os.path.normpath(paths.video_reconstruction_jobs_folder).endswith(
+        os.path.normpath(".video-reconstruction/jobs")
+    )
+
+    config["video_reconstruction"]["default_quality"] = "custom"
+    video_config, changed = normalize_video_reconstruction_config(config)
+    assert video_config["default_quality"] == "high"
+    config["video_reconstruction"]["default_quality"] = "extreme"
+    video_config, changed = normalize_video_reconstruction_config(config)
+    assert video_config["default_quality"] == "extreme"
 
 
 def test_real_path_inside_handles_escape(tmp_path):
@@ -213,6 +250,244 @@ def test_video_path_resolver_rejects_album_root_escape(config_file, workspace):
     })
 
     assert resolve_media_path(paths, media_id, expected_type=MEDIA_TYPE_VIDEO) is None
+
+
+def test_video_reconstruction_output_name_is_safe_and_unique(workspace):
+    paths = build_path_context({"workspace_folder": str(workspace)})
+    os.makedirs(paths.output_folder, exist_ok=True)
+    existing = os.path.join(paths.output_folder, "clip.ply")
+    with open(existing, "wb") as f:
+        f.write(b"exists")
+
+    stem, ply_path, spz_path = video_reconstruction.unique_output_paths(paths, "clip.mp4", "fallback.mp4")
+    chinese_stem, _, _ = video_reconstruction.unique_output_paths(paths, "中文 文件.mp4", "fallback.mp4")
+
+    assert stem == "clip-2"
+    assert ply_path.endswith("clip-2.ply")
+    assert spz_path.endswith("clip-2.spz")
+    assert chinese_stem
+
+
+def test_video_reconstruction_quality_profile_uses_vram_budget():
+    default_profile = video_reconstruction.resolve_quality_profile("high", "12gb")
+    low_vram_profile = video_reconstruction.resolve_quality_profile("high", "8gb")
+    large_vram_profile = video_reconstruction.resolve_quality_profile("extreme", "24gb")
+    custom_profile = video_reconstruction.resolve_quality_profile("custom", "8gb", {
+        "frame_count": 720,
+        "max_num_iterations": 42000,
+        "downscale_factor": 2,
+        "matching_method": "sequential",
+        "cache_images": "cpu",
+    })
+
+    assert default_profile["frame_count"] == 180
+    assert default_profile["max_num_iterations"] == 30000
+    assert default_profile["downscale_factor"] == 2
+    assert low_vram_profile["frame_count"] < default_profile["frame_count"]
+    assert low_vram_profile["max_num_iterations"] < default_profile["max_num_iterations"]
+    assert low_vram_profile["max_resolution"] == 1280
+    assert low_vram_profile["downscale_factor"] == 4
+    assert large_vram_profile["frame_count"] > video_reconstruction.QUALITY_PROFILES["extreme"]["frame_count"]
+    assert large_vram_profile["max_resolution"] == 2160
+    assert large_vram_profile["downscale_factor"] == 1
+    assert custom_profile["frame_count"] == 720
+    assert custom_profile["max_num_iterations"] == 42000
+    assert custom_profile["downscale_factor"] == 2
+    assert custom_profile["matching_method"] == "sequential"
+    assert custom_profile["cache_images"] == "cpu"
+
+
+def test_video_reconstruction_commands_use_quality_profile():
+    profile = video_reconstruction.resolve_quality_profile("high", "12gb")
+    custom_profile = video_reconstruction.resolve_quality_profile("custom", "12gb", {
+        "frame_count": 600,
+        "max_num_iterations": 35000,
+        "downscale_factor": 2,
+        "matching_method": "sequential",
+        "cache_images": "cpu",
+    })
+
+    process_cmd = video_reconstruction.build_process_data_command("clip.mp4", "data", profile)
+    train_cmd = video_reconstruction.build_train_command("data", "train", profile)
+    custom_process_cmd = video_reconstruction.build_process_data_command("clip.mp4", "data", custom_profile)
+    custom_train_cmd = video_reconstruction.build_train_command("data", "train", custom_profile)
+
+    assert process_cmd[process_cmd.index("--num-frames-target") + 1] == "180"
+    assert process_cmd[process_cmd.index("--num-downscales") + 1] == "2"
+    assert process_cmd[process_cmd.index("--matching-method") + 1] == "exhaustive"
+    assert train_cmd[train_cmd.index("--vis") + 1] == "viewer"
+    assert train_cmd[train_cmd.index("--downscale-factor") + 1] == "2"
+    assert train_cmd[train_cmd.index("--pipeline.datamanager.train-cameras-sampling-strategy") + 1] == "fps"
+    assert train_cmd[train_cmd.index("--pipeline.model.camera-optimizer.mode") + 1] == "SO3xR3"
+    assert train_cmd[train_cmd.index("--pipeline.model.num-random") + 1] == "80000"
+    assert train_cmd[-4:] == ["--data", "data", "--downscale-factor", "2"]
+    assert custom_process_cmd[custom_process_cmd.index("--num-frames-target") + 1] == "600"
+    assert custom_process_cmd[custom_process_cmd.index("--num-downscales") + 1] == "1"
+    assert custom_process_cmd[custom_process_cmd.index("--matching-method") + 1] == "sequential"
+    assert custom_train_cmd[custom_train_cmd.index("--max-num-iterations") + 1] == "35000"
+    assert custom_train_cmd[custom_train_cmd.index("--pipeline.datamanager.cache-images") + 1] == "cpu"
+    assert custom_train_cmd[-4:] == ["--data", "data", "--downscale-factor", "2"]
+
+
+def test_video_reconstruction_custom_options_are_validated():
+    valid, error = video_reconstruction.normalize_custom_quality_options({
+        "frame_count": "600",
+        "max_num_iterations": "35000",
+        "downscale_factor": "2",
+        "matching_method": "sequential",
+        "cache_images": "cpu",
+    })
+    assert error is None
+    assert valid["frame_count"] == 600
+
+    invalid, error = video_reconstruction.normalize_custom_quality_options({
+        "frame_count": 600,
+        "max_num_iterations": 35000,
+        "downscale_factor": 2,
+        "matching_method": "exhaustive",
+        "cache_images": "cpu",
+    })
+    assert invalid is None
+    assert error["field"] == "custom_options.frame_count"
+
+
+def test_video_reconstruction_train_command_can_disable_viewer():
+    profile = video_reconstruction.resolve_quality_profile("high", "12gb")
+
+    train_cmd = video_reconstruction.build_train_command(
+        "data",
+        "train",
+        profile,
+        visualizer="tensorboard",
+    )
+
+    assert train_cmd[train_cmd.index("--vis") + 1] == "tensorboard"
+
+
+def test_video_reconstruction_focused_cleanup_removes_outliers(tmp_path):
+    import numpy as np
+    from plyfile import PlyData, PlyElement
+
+    source_path = tmp_path / "source.ply"
+    output_path = tmp_path / "focused.ply"
+    dtype = [
+        ("x", "f4"),
+        ("y", "f4"),
+        ("z", "f4"),
+        ("opacity", "f4"),
+        ("scale_0", "f4"),
+        ("scale_1", "f4"),
+        ("scale_2", "f4"),
+    ]
+    vertices = np.zeros(120, dtype=dtype)
+    vertices["x"] = np.linspace(-1.0, 1.0, 120)
+    vertices["y"] = np.linspace(-0.5, 0.5, 120)
+    vertices["z"] = np.linspace(-0.25, 0.25, 120)
+    vertices["opacity"] = 1.5
+    vertices["scale_0"] = -4.0
+    vertices["scale_1"] = -4.0
+    vertices["scale_2"] = -4.0
+    vertices[-1]["x"] = 50.0
+    vertices[-1]["y"] = 50.0
+    vertices[-1]["z"] = 50.0
+    vertices[-2]["opacity"] = -10.0
+    vertices[-3]["scale_0"] = 4.0
+    PlyData([PlyElement.describe(vertices, "vertex")], text=False).write(source_path)
+
+    stats = video_reconstruction.clean_gaussian_splat_ply(
+        source_path,
+        output_path,
+        {
+            **video_reconstruction.FOCUSED_CLEANUP_PROFILE,
+            "min_vertices": 10,
+            "min_keep_ratio": 0.2,
+        },
+    )
+    cleaned = PlyData.read(output_path)["vertex"].data
+
+    assert not stats["skipped"]
+    assert stats["output_vertices"] < stats["input_vertices"]
+    assert cleaned["x"].max() < 50.0
+    assert cleaned["opacity"].min() > -10.0
+
+
+def test_video_reconstruction_resolves_source_video_safely(config_file, workspace):
+    album_dir = workspace / "album"
+    album_dir.mkdir()
+    video_path = album_dir / "clip.mp4"
+    video_path.write_bytes(b"fake-video")
+    write_config(
+        config_file,
+        {
+            "workspace_folder": str(workspace),
+            "access_control": {
+                "enabled": False,
+                "password_hash": "",
+                "session_secret": "test-secret",
+                "session_days": 30,
+                "allow_localhost_bypass": True,
+                "allow_remote_generation": False,
+                "session_version": 1,
+                "lan_bind_enabled": True,
+            },
+            "photo_gallery_roots": [{"id": "album1", "name": "Album", "path": str(album_dir), "enabled": True}],
+        },
+    )
+    paths = build_path_context({"workspace_folder": str(workspace)})
+    meta = photo_meta_from_path({"id": "album1", "path": str(album_dir)}, str(video_path))
+    save_photo_index(paths, {"photos": {meta["id"]: meta}})
+
+    resolved = video_reconstruction.resolve_source_video(paths, meta["id"])
+
+    assert resolved is not None
+    assert resolved[1] == str(video_path.resolve())
+
+
+def test_task_manager_public_serialization_keeps_image_compatibility_and_hides_paths(workspace):
+    paths = build_path_context({"workspace_folder": str(workspace)})
+    task_manager = TaskManager(paths=paths)
+    input_path = workspace / "inputs" / "photo.jpg"
+    input_path.parent.mkdir()
+    input_path.write_bytes(b"fake")
+
+    created = task_manager.enqueue_file(str(input_path), "photo.jpg")
+    tasks, has_active = task_manager.list_tasks()
+
+    assert created["kind"] == "image_sharp"
+    assert tasks[0]["id"] == created["id"]
+    assert tasks[0]["filename"] == "photo.jpg"
+    assert "input_path" not in tasks[0]
+    assert "output_folder" not in tasks[0]
+    assert has_active is True
+
+
+def test_video_task_public_serialization_hides_source_paths(workspace):
+    paths = build_path_context({"workspace_folder": str(workspace)})
+    task_manager = TaskManager(paths=paths)
+    task = task_manager.enqueue_video_reconstruction({
+        "filename": "clip.ply",
+        "source_media_id": "album_abc",
+        "source_name": "clip.mp4",
+        "source_video_path": str(workspace / "album" / "clip.mp4"),
+        "mode": "auto",
+        "quality": "high",
+        "engine": "auto",
+        "resolved_engine": "stable",
+        "output_name": "clip",
+        "output_path": str(workspace / "outputs" / "clip.ply"),
+        "spz_path": str(workspace / "outputs" / "clip.spz"),
+        "keep_intermediate_files": False,
+        "details": {"warnings": [{"code": "test", "message": "ok"}], "logs": ["secret"]},
+    })
+
+    with task_manager.task_lock:
+        task_manager.task_status[task["id"]]["error"] = f"failed at {workspace / 'album' / 'clip.mp4'}"
+    tasks, _ = task_manager.list_tasks()
+
+    assert "source_video_path" not in task
+    assert "output_path" not in task
+    assert tasks[0]["error"] == "failed at [path]"
+    assert tasks[0]["details"] == {"warnings": [{"code": "test", "message": "ok"}]}
 
 
 def test_video_metadata_and_poster_degrade_without_optional_tools(config_file, workspace, monkeypatch):
@@ -828,3 +1103,680 @@ def test_task_manager_enqueue_and_cancel_without_worker(workspace):
     assert payload["success"] is True
     assert tasks[0]["status"] == "cancelled"
     assert has_active is False
+
+
+def test_task_manager_cancel_processing_terminates_process(workspace):
+    class FakeProcess:
+        def __init__(self):
+            self.terminated = False
+
+        def terminate(self):
+            self.terminated = True
+
+    paths = build_path_context({"workspace_folder": str(workspace)})
+    task_manager = TaskManager(paths=paths)
+    fake_process = FakeProcess()
+    task_manager.task_status["running-task"] = {
+        "id": "running-task",
+        "kind": "image_sharp",
+        "filename": "photo.jpg",
+        "status": "processing",
+        "created_at": 1,
+        "error": None,
+    }
+    task_manager.running_processes["running-task"] = fake_process
+
+    payload, status_code = task_manager.cancel_task("running-task")
+
+    assert status_code == 200
+    assert payload["success"] is True
+    assert fake_process.terminated is True
+    assert task_manager.task_status["running-task"]["status"] == "cancelled"
+
+
+def make_video_task(paths, workspace, **overrides):
+    source_path = workspace / "album" / "clip.mp4"
+    source_path.parent.mkdir(exist_ok=True)
+    source_path.write_bytes(b"video")
+    task = {
+        "id": "video-task",
+        "kind": "video_3dgs",
+        "filename": "clip.ply",
+        "status": "pending",
+        "created_at": 1,
+        "source_media_id": "album_clip",
+        "source_name": "clip.mp4",
+        "source_video_path": str(source_path),
+        "mode": "auto",
+        "quality": "preview",
+        "engine": "auto",
+        "resolved_engine": "stable",
+        "output_name": "clip",
+        "output_path": os.path.join(paths.output_folder, "clip.ply"),
+        "spz_path": os.path.join(paths.output_folder, "clip.spz"),
+        "keep_intermediate_files": False,
+        "details": {"warnings": [], "logs": []},
+        "error": None,
+    }
+    task.update(overrides)
+    return task
+
+
+def test_video_task_creation_writes_source_metadata(config_file, workspace, monkeypatch):
+    album_dir = workspace / "album"
+    album_dir.mkdir()
+    video_path = album_dir / "clip.mp4"
+    video_path.write_bytes(b"video")
+    write_config(
+        config_file,
+        {
+            "workspace_folder": str(workspace),
+            "photo_gallery_roots": [{"id": "album1", "name": "Album", "path": str(album_dir), "enabled": True}],
+        },
+    )
+    paths = build_path_context({"workspace_folder": str(workspace)})
+    meta = photo_meta_from_path({"id": "album1", "path": str(album_dir)}, str(video_path))
+    save_photo_index(paths, {"photos": {meta["id"]: meta}})
+    monkeypatch.setattr("backend.services.video_reconstruction.check_dependencies", lambda: {
+        "required": {"available": True, "tools": [], "message": None},
+        "stable": {"available": True, "tools": [], "message": None},
+        "summary": {
+            "available": True,
+            "stable_available": True,
+        },
+    })
+
+    task, error, status_code = video_reconstruction.build_video_task(paths, {
+        "video_id": meta["id"],
+        "mode": "auto",
+        "quality": "high",
+        "engine": "auto",
+        "vram_budget": "12gb",
+        "keep_intermediate_files": False,
+        "output_name": "",
+    })
+
+    assert error is None
+    assert status_code == 200
+    metadata = model_gallery.read_model_metadata(paths, task["output_name"])
+    assert metadata["source_media_type"] == "video"
+    assert metadata["source_media_id"] == meta["id"]
+    assert metadata["source_name"] == "clip.mp4"
+
+
+def test_gallery_backfills_legacy_video_metadata_from_unique_source(config_file, workspace, monkeypatch):
+    album_dir = workspace / "album"
+    album_dir.mkdir()
+    video_path = album_dir / "clip.mp4"
+    video_path.write_bytes(b"video")
+    write_config(
+        config_file,
+        {
+            "workspace_folder": str(workspace),
+            "photo_gallery_roots": [{"id": "album1", "name": "Album", "path": str(album_dir), "enabled": True}],
+        },
+    )
+    paths = build_path_context({"workspace_folder": str(workspace)})
+    meta = photo_meta_from_path({"id": "album1", "path": str(album_dir)}, str(video_path))
+    save_photo_index(paths, {"photos": {meta["id"]: meta}})
+    os.makedirs(paths.output_folder, exist_ok=True)
+    with open(os.path.join(paths.output_folder, "clip-2.ply"), "wb") as f:
+        f.write(b"ply")
+
+    def fake_generate_video_thumbnail(paths_arg, _source_path, item_id):
+        thumb_path = model_gallery.get_thumbnail_path(paths_arg, item_id)
+        os.makedirs(os.path.dirname(thumb_path), exist_ok=True)
+        with open(thumb_path, "wb") as f:
+            f.write(b"jpg")
+        return thumb_path
+
+    monkeypatch.setattr(
+        "backend.services.model_gallery.generate_video_thumbnail",
+        fake_generate_video_thumbnail,
+    )
+
+    item = model_gallery.build_gallery_item(paths, "clip-2.ply", repair_missing_thumbnail=True)
+
+    assert item["thumb_url"] == "/api/thumbnail/clip-2"
+    assert item["source_video_url"] == "/api/gallery/clip-2/source-video"
+    metadata = model_gallery.read_model_metadata(paths, "clip-2")
+    assert metadata["source_media_type"] == "video"
+    assert metadata["source_media_id"] == meta["id"]
+    assert metadata["recovered_from"] == "gallery-video-stem"
+
+
+def test_video_reconstruction_service_success_and_spz_failure(workspace, monkeypatch):
+    paths = build_path_context({"workspace_folder": str(workspace)})
+    task_manager = TaskManager(paths=paths, spz_converter=lambda *_args: (_ for _ in ()).throw(RuntimeError("spz boom")))
+    task = make_video_task(paths, workspace)
+    task_manager.task_status[task["id"]] = task
+
+    def fake_generate_video_thumbnail(paths_arg, _source_path, item_id):
+        thumb_path = model_gallery.get_thumbnail_path(paths_arg, item_id)
+        os.makedirs(os.path.dirname(thumb_path), exist_ok=True)
+        with open(thumb_path, "wb") as f:
+            f.write(b"jpg")
+        return thumb_path
+
+    def fake_run_command(_manager, _task_id, cmd, **_kwargs):
+        if cmd[0] == "ns-train":
+            train_dir = cmd[cmd.index("--output-dir") + 1]
+            os.makedirs(train_dir, exist_ok=True)
+            with open(os.path.join(train_dir, "config.yml"), "w", encoding="utf-8") as f:
+                f.write("config")
+        if cmd[0] == "ns-export":
+            export_dir = cmd[-1]
+            os.makedirs(export_dir, exist_ok=True)
+            with open(os.path.join(export_dir, "model.ply"), "wb") as f:
+                f.write(b"ply")
+        return 0, [], False
+
+    monkeypatch.setattr("backend.services.video_reconstruction.run_command", fake_run_command)
+    monkeypatch.setattr(
+        "backend.services.model_gallery.generate_video_thumbnail",
+        fake_generate_video_thumbnail,
+    )
+
+    video_reconstruction.run_video_reconstruction_task(task_manager, task["id"], task)
+    public_task = task_manager.list_tasks()[0][0]
+
+    assert public_task["status"] == "completed"
+    assert public_task["stage"] == "video_done"
+    assert public_task["error_code"] == "video_reconstruction_spz_failed"
+    assert os.path.exists(task["output_path"])
+    metadata = model_gallery.read_model_metadata(paths, "clip")
+    assert metadata["source_media_type"] == "video"
+    assert metadata["source_media_id"] == "album_clip"
+    assert metadata["source_name"] == "clip.mp4"
+    item = model_gallery.build_gallery_item(paths, "clip.ply")
+    assert item["thumb_url"] == "/api/thumbnail/clip"
+    assert item["source_video_url"] == "/api/gallery/clip/source-video"
+    assert not os.path.exists(os.path.join(paths.video_reconstruction_jobs_folder, task["id"]))
+
+
+def test_video_reconstruction_retries_viewer_failure_with_tensorboard(workspace, monkeypatch):
+    paths = build_path_context({"workspace_folder": str(workspace)})
+
+    def fake_spz_converter(_source_path, spz_path):
+        with open(spz_path, "wb") as f:
+            f.write(b"spz")
+
+    task_manager = TaskManager(paths=paths, spz_converter=fake_spz_converter)
+    task = make_video_task(paths, workspace, mode="environment")
+    task_manager.task_status[task["id"]] = task
+    visualizers = []
+
+    def fake_generate_video_thumbnail(paths_arg, _source_path, item_id):
+        thumb_path = model_gallery.get_thumbnail_path(paths_arg, item_id)
+        os.makedirs(os.path.dirname(thumb_path), exist_ok=True)
+        with open(thumb_path, "wb") as f:
+            f.write(b"jpg")
+        return thumb_path
+
+    def fake_run_command(_manager, _task_id, cmd, **_kwargs):
+        if cmd[0] == "ns-train":
+            visualizer = cmd[cmd.index("--vis") + 1]
+            train_dir = cmd[cmd.index("--output-dir") + 1]
+            visualizers.append(visualizer)
+            stale_marker = os.path.join(train_dir, "partial-viewer-start")
+            if visualizer == "viewer":
+                os.makedirs(train_dir, exist_ok=True)
+                with open(stale_marker, "w", encoding="utf-8") as f:
+                    f.write("partial")
+                return 1, [
+                    "File \"nerfstudio\\viewer\\viewer.py\", line 114, in __init__\n",
+                    "self.viser_server = viser.ViserServer(host=config.websocket_host, port=websocket_port)\n",
+                    "File \"viser\\_client_autobuild.py\", line 41, in ensure_client_is_built\n",
+                    "psutil.NoSuchProcess: process no longer exists (pid=34908)\n",
+                ], False
+            assert visualizer == "tensorboard"
+            assert not os.path.exists(stale_marker)
+            os.makedirs(train_dir, exist_ok=True)
+            with open(os.path.join(train_dir, "config.yml"), "w", encoding="utf-8") as f:
+                f.write("config")
+        if cmd[0] == "ns-export":
+            export_dir = cmd[-1]
+            os.makedirs(export_dir, exist_ok=True)
+            with open(os.path.join(export_dir, "model.ply"), "wb") as f:
+                f.write(b"ply")
+        return 0, [], False
+
+    monkeypatch.setattr("backend.services.video_reconstruction.run_command", fake_run_command)
+    monkeypatch.setattr(
+        "backend.services.model_gallery.generate_video_thumbnail",
+        fake_generate_video_thumbnail,
+    )
+
+    video_reconstruction.run_video_reconstruction_task(task_manager, task["id"], task)
+    public_task = task_manager.list_tasks()[0][0]
+
+    assert visualizers == ["viewer", "tensorboard"]
+    assert public_task["status"] == "completed"
+    assert task["details"]["train_visualizer_fallback"] == {
+        "from": "viewer",
+        "to": "tensorboard",
+        "reason": "viser_startup_failed",
+    }
+    assert any(
+        warning["code"] == "video_reconstruction_viewer_disabled"
+        for warning in public_task["details"]["warnings"]
+    )
+    assert os.path.exists(task["output_path"])
+    assert os.path.exists(task["spz_path"])
+
+
+def test_video_reconstruction_service_oom_failure_keeps_no_output(workspace, monkeypatch):
+    paths = build_path_context({"workspace_folder": str(workspace)})
+    task_manager = TaskManager(paths=paths)
+    task = make_video_task(paths, workspace)
+    task_manager.task_status[task["id"]] = task
+
+    monkeypatch.setattr(
+        "backend.services.video_reconstruction.run_command",
+        lambda *_args, **_kwargs: (1, ["RuntimeError: CUDA out of memory\n"], False),
+    )
+
+    video_reconstruction.run_video_reconstruction_task(task_manager, task["id"], task)
+    public_task = task_manager.list_tasks()[0][0]
+
+    assert public_task["status"] == "failed"
+    assert public_task["error_code"] == "video_reconstruction_oom"
+    assert "GPU memory" in public_task["error"]
+    assert not os.path.exists(task["output_path"])
+
+
+def test_video_reconstruction_failure_cleans_uploaded_source_and_prepared_assets(workspace, monkeypatch):
+    paths = build_path_context({"workspace_folder": str(workspace)})
+    upload_dir = os.path.join(model_gallery.get_video_uploads_folder(paths), "upload-failed")
+    os.makedirs(upload_dir, exist_ok=True)
+    uploaded_video = os.path.join(upload_dir, "clip.mp4")
+    with open(uploaded_video, "wb") as f:
+        f.write(b"uploaded")
+
+    task_manager = TaskManager(paths=paths)
+    task = make_video_task(
+        paths,
+        workspace,
+        source_media_id=None,
+        source_video_path=uploaded_video,
+        source_mime_type="video/mp4",
+    )
+    task_manager.task_status[task["id"]] = task
+    model_gallery.write_model_metadata(paths, task["output_name"], video_reconstruction.build_video_model_metadata(task))
+    thumb_path = model_gallery.get_thumbnail_path(paths, task["output_name"])
+    os.makedirs(os.path.dirname(thumb_path), exist_ok=True)
+    with open(thumb_path, "wb") as f:
+        f.write(b"jpg")
+    os.makedirs(paths.output_folder, exist_ok=True)
+    with open(task["output_path"], "wb") as f:
+        f.write(b"partial")
+
+    monkeypatch.setattr(
+        "backend.services.video_reconstruction.run_command",
+        lambda *_args, **_kwargs: (1, ["RuntimeError: CUDA out of memory\n"], False),
+    )
+
+    video_reconstruction.run_video_reconstruction_task(task_manager, task["id"], task)
+    public_task = task_manager.list_tasks()[0][0]
+
+    assert public_task["status"] == "failed"
+    assert not os.path.exists(uploaded_video)
+    assert not os.path.exists(upload_dir)
+    assert not os.path.exists(model_gallery.get_model_metadata_path(paths, task["output_name"]))
+    assert not os.path.exists(thumb_path)
+    assert not os.path.exists(task["output_path"])
+
+
+def test_video_reconstruction_service_cancel_cleans_job_and_uploaded_source(workspace, monkeypatch):
+    paths = build_path_context({"workspace_folder": str(workspace)})
+    upload_dir = os.path.join(model_gallery.get_video_uploads_folder(paths), "upload-cancelled")
+    os.makedirs(upload_dir, exist_ok=True)
+    uploaded_video = os.path.join(upload_dir, "clip.mp4")
+    with open(uploaded_video, "wb") as f:
+        f.write(b"uploaded")
+
+    task_manager = TaskManager(paths=paths)
+    task = make_video_task(paths, workspace, source_media_id=None, source_video_path=uploaded_video)
+    task_manager.task_status[task["id"]] = task
+
+    def fake_cancel(_manager, _task_id, *_args, **_kwargs):
+        task_manager.task_status[task["id"]]["status"] = "cancelled"
+        return 143, ["terminated\n"], False
+
+    monkeypatch.setattr("backend.services.video_reconstruction.run_command", fake_cancel)
+
+    video_reconstruction.run_video_reconstruction_task(task_manager, task["id"], task)
+    public_task = task_manager.list_tasks()[0][0]
+
+    assert public_task["status"] == "cancelled"
+    assert not os.path.exists(os.path.join(paths.video_reconstruction_jobs_folder, task["id"]))
+    assert not os.path.exists(uploaded_video)
+    assert not os.path.exists(upload_dir)
+
+
+def test_video_reconstruction_startup_cleanup_removes_orphans_but_keeps_referenced_uploads(workspace):
+    paths = build_path_context({"workspace_folder": str(workspace)})
+    stale_job = os.path.join(paths.video_reconstruction_jobs_folder, "stale-task")
+    os.makedirs(stale_job, exist_ok=True)
+    with open(os.path.join(stale_job, "partial.txt"), "w", encoding="utf-8") as f:
+        f.write("partial")
+
+    upload_root = model_gallery.get_video_uploads_folder(paths)
+    orphan_dir = os.path.join(upload_root, "orphan")
+    referenced_dir = os.path.join(upload_root, "referenced")
+    os.makedirs(orphan_dir, exist_ok=True)
+    os.makedirs(referenced_dir, exist_ok=True)
+    orphan_video = os.path.join(orphan_dir, "clip.mp4")
+    referenced_video = os.path.join(referenced_dir, "clip.mp4")
+    with open(orphan_video, "wb") as f:
+        f.write(b"orphan")
+    with open(referenced_video, "wb") as f:
+        f.write(b"referenced")
+
+    os.makedirs(paths.output_folder, exist_ok=True)
+    with open(os.path.join(paths.output_folder, "kept.ply"), "wb") as f:
+        f.write(b"ply")
+    model_gallery.write_model_metadata(paths, "kept", {
+        "generator": video_reconstruction.TASK_KIND_VIDEO_3DGS,
+        "source_video_path": referenced_video,
+    })
+    model_gallery.write_model_metadata(paths, "unfinished", {
+        "generator": video_reconstruction.TASK_KIND_VIDEO_3DGS,
+        "source_video_path": orphan_video,
+    })
+
+    summary = video_reconstruction.cleanup_stale_runtime_artifacts(paths, terminate_processes=False)
+
+    assert summary["jobs_removed"] == 1
+    assert summary["uploads_removed"] == 1
+    assert summary["sidecars_removed"] == 1
+    assert not os.path.exists(stale_job)
+    assert not os.path.exists(orphan_dir)
+    assert os.path.exists(referenced_video)
+    assert os.path.exists(model_gallery.get_model_metadata_path(paths, "kept"))
+    assert not os.path.exists(model_gallery.get_model_metadata_path(paths, "unfinished"))
+
+
+def test_video_reconstruction_upload_cleanup_can_keep_recent_orphans(workspace):
+    paths = build_path_context({"workspace_folder": str(workspace)})
+    upload_dir = os.path.join(model_gallery.get_video_uploads_folder(paths), "recent")
+    os.makedirs(upload_dir, exist_ok=True)
+    with open(os.path.join(upload_dir, "clip.mp4"), "wb") as f:
+        f.write(b"recent")
+
+    removed = video_reconstruction.cleanup_orphan_video_uploads(paths, stale_age_seconds=3600)
+
+    assert removed == 0
+    assert os.path.exists(upload_dir)
+
+
+def test_video_reconstruction_process_matcher_requires_tool_and_workspace(workspace):
+    paths = build_path_context({"workspace_folder": str(workspace)})
+    job_db = os.path.join(paths.video_reconstruction_jobs_folder, "task", "database.db")
+
+    assert video_reconstruction.process_info_matches_video_runtime(
+        {"name": "colmap.exe", "cmdline": ["colmap", "mapper", "--database_path", job_db], "cwd": None},
+        paths.video_reconstruction_folder,
+    )
+    assert video_reconstruction.process_info_matches_video_runtime(
+        {"name": "python.exe", "cmdline": ["python", "ns-train", "--output-dir", job_db], "cwd": None},
+        paths.video_reconstruction_folder,
+    )
+    assert not video_reconstruction.process_info_matches_video_runtime(
+        {"name": "colmap.exe", "cmdline": ["colmap", "mapper", "--database_path", r"C:\other\database.db"], "cwd": None},
+        paths.video_reconstruction_folder,
+    )
+    assert not video_reconstruction.process_info_matches_video_runtime(
+        {"name": "python.exe", "cmdline": ["python", "script.py", job_db], "cwd": None},
+        paths.video_reconstruction_folder,
+    )
+
+
+def test_build_failure_message_detects_oom_text():
+    oom_code, oom_message = video_reconstruction.build_failure_message(
+        1,
+        ["epoch 1\n", "RuntimeError: CUDA out of memory. Tried to allocate 2GiB\n"],
+    )
+    plain_code, plain_message = video_reconstruction.build_failure_message(
+        2,
+        ["generic failure line\n"],
+    )
+
+    assert oom_code == video_reconstruction.ERROR_OOM
+    assert "GPU memory" in oom_message
+    assert plain_code is None
+    assert "generic failure line" in plain_message
+
+
+def test_viewer_startup_failure_triggers_tensorboard_retry():
+    output_lines = [
+        "File \"nerfstudio\\viewer\\viewer.py\", line 114, in __init__\n",
+        "self.viser_server = viser.ViserServer(host=config.websocket_host, port=websocket_port)\n",
+        "File \"viser\\_client_autobuild.py\", line 41, in ensure_client_is_built\n",
+        "psutil.NoSuchProcess: process no longer exists (pid=34908)\n",
+    ]
+
+    assert video_reconstruction.is_viewer_startup_failure(output_lines) is True
+    assert video_reconstruction.should_retry_train_without_viewer("viewer", output_lines) is True
+    assert video_reconstruction.should_retry_train_without_viewer("tensorboard", output_lines) is False
+
+
+def test_contains_oom_matches_known_patterns():
+    assert video_reconstruction.contains_oom("CUDA out of memory") is True
+    assert video_reconstruction.contains_oom("torch.OutOfMemoryError raised") is True
+    assert video_reconstruction.contains_oom("training finished cleanly") is False
+
+
+def test_resolve_engine_strategy_covers_fallbacks():
+    stable_only = {
+        "stable": {"available": True},
+    }
+    none_available = {
+        "stable": {"available": False},
+    }
+
+    assert video_reconstruction.resolve_engine_strategy("auto", stable_only) == ("stable", None)
+    assert video_reconstruction.resolve_engine_strategy("stable", stable_only) == ("stable", None)
+    assert video_reconstruction.resolve_engine_strategy("unsupported", stable_only) == (
+        None,
+        video_reconstruction.ERROR_INVALID_REQUEST,
+    )
+    assert video_reconstruction.resolve_engine_strategy("auto", none_available) == (
+        None,
+        video_reconstruction.ERROR_DEPENDENCY_MISSING,
+    )
+
+
+def test_parse_training_progress_maps_steps_into_optimize_band():
+    profile = {"max_num_iterations": 30000}
+    base = video_reconstruction.STAGE_PROGRESS["video_optimize"]
+    ceiling = video_reconstruction.STAGE_PROGRESS["video_export"]
+
+    midpoint = video_reconstruction.parse_training_progress("Step 15000 / 30000 ...", profile)
+    percent_row = video_reconstruction.parse_training_progress("2980 (50.00%)", profile)
+    near_end = video_reconstruction.parse_training_progress("progress 30000/30000 done", profile)
+    unrelated = video_reconstruction.parse_training_progress("loaded 5/10 images", profile)
+    no_match = video_reconstruction.parse_training_progress("starting trainer", profile)
+
+    assert midpoint == int(base + (ceiling - base) * 0.5)
+    assert percent_row == int(base + (ceiling - base) * 0.5)
+    assert near_end == ceiling
+    assert base < midpoint < ceiling
+    assert unrelated is None
+    assert no_match is None
+
+
+def test_delete_uploaded_source_video_protects_album_originals(workspace):
+    paths = build_path_context({"workspace_folder": str(workspace)})
+
+    # Album-sourced model: source_media_id present, original must never be removed.
+    album_dir = workspace / "album"
+    album_dir.mkdir()
+    album_video = album_dir / "clip.mp4"
+    album_video.write_bytes(b"album-video")
+    model_gallery.delete_uploaded_source_video(paths, {
+        "source_media_id": "album_clip",
+        "source_video_path": str(album_video),
+    })
+    assert album_video.exists()
+
+    # Path outside the controlled uploads folder must be ignored.
+    stray = workspace / "stray.mp4"
+    stray.write_bytes(b"stray")
+    model_gallery.delete_uploaded_source_video(paths, {
+        "source_media_id": None,
+        "source_video_path": str(stray),
+    })
+    assert stray.exists()
+
+    # Uploaded cache copy must be deleted along with its now-empty job folder.
+    upload_root = model_gallery.get_video_uploads_folder(paths)
+    upload_dir = os.path.join(upload_root, "upload-123")
+    os.makedirs(upload_dir, exist_ok=True)
+    uploaded_video = os.path.join(upload_dir, "clip.mp4")
+    with open(uploaded_video, "wb") as f:
+        f.write(b"uploaded")
+    model_gallery.delete_uploaded_source_video(paths, {
+        "source_media_id": None,
+        "source_video_path": uploaded_video,
+    })
+    assert not os.path.exists(uploaded_video)
+    assert not os.path.exists(upload_dir)
+
+
+def test_parse_viewer_url_extracts_local_viewer():
+    assert video_reconstruction.parse_viewer_url("│   HTTP   │ http://0.0.0.0:7007 │") == (
+        "http://localhost:7007",
+        7007,
+    )
+    assert video_reconstruction.parse_viewer_url(
+        "Viewer running locally at: http://localhost:7007"
+    ) == ("http://localhost:7007", 7007)
+    display_url, port = video_reconstruction.parse_viewer_url(
+        "https://viewer.nerf.studio/?websocket_url=ws://localhost:7007"
+    )
+    assert display_url.startswith("https://viewer.nerf.studio")
+    assert video_reconstruction.parse_viewer_url("loss=0.123 step done") == (None, None)
+
+
+def test_resolve_training_profile_falls_back_to_random_when_few_cameras(tmp_path):
+    data_dir = tmp_path / "nerfstudio-data"
+    data_dir.mkdir()
+    fps_profile = {"train_cameras_sampling_strategy": "fps"}
+
+    # Too few registered cameras -> random sampling to avoid FPS assertion.
+    (data_dir / "transforms.json").write_text(
+        json.dumps({"frames": [{} for _ in range(5)]}),
+        encoding="utf-8",
+    )
+    task = {"details": {}}
+    few = video_reconstruction.resolve_training_profile(fps_profile, str(data_dir), task=task)
+    assert few["train_cameras_sampling_strategy"] == "random"
+    assert task["details"]["camera_sampling_fallback"]["registered_frames"] == 5
+
+    # Enough cameras -> keep FPS unchanged.
+    (data_dir / "transforms.json").write_text(
+        json.dumps({"frames": [{} for _ in range(40)]}),
+        encoding="utf-8",
+    )
+    plenty = video_reconstruction.resolve_training_profile(fps_profile, str(data_dir))
+    assert plenty["train_cameras_sampling_strategy"] == "fps"
+
+    # Missing transforms.json -> leave profile as-is (don't guess).
+    missing = video_reconstruction.resolve_training_profile(fps_profile, str(tmp_path / "nope"))
+    assert missing["train_cameras_sampling_strategy"] == "fps"
+
+
+def test_quality_profiles_bind_matching_method_per_tier():
+    assert video_reconstruction.resolve_quality_profile("preview", "12gb")["matching_method"] == "sequential"
+    assert video_reconstruction.resolve_quality_profile("high", "12gb")["matching_method"] == "exhaustive"
+    assert video_reconstruction.resolve_quality_profile("extreme", "24gb")["matching_method"] == "exhaustive"
+    assert video_reconstruction.resolve_quality_profile(
+        "custom",
+        "12gb",
+        {"matching_method": "sequential"},
+    )["matching_method"] == "sequential"
+
+
+def test_estimate_object_focus_from_orbit_geometry(tmp_path):
+    import math
+
+    import numpy as np
+
+    data_dir = tmp_path / "nerfstudio-data"
+    train_dir = tmp_path / "train"
+    data_dir.mkdir()
+    (train_dir / "run").mkdir(parents=True)
+
+    # 12 cameras orbiting the origin at radius 4, all looking inward (-Z is look-at).
+    frames = []
+    for i in range(12):
+        angle = 2 * math.pi * i / 12
+        cam = np.array([4.0 * math.cos(angle), 0.0, 4.0 * math.sin(angle)])
+        forward = -cam / np.linalg.norm(cam)  # look toward origin
+        z_axis = -forward                      # OpenGL camera +Z points back
+        up = np.array([0.0, 1.0, 0.0])
+        x_axis = np.cross(up, z_axis)
+        x_axis /= np.linalg.norm(x_axis)
+        y_axis = np.cross(z_axis, x_axis)
+        c2w = np.eye(4)
+        c2w[:3, 0] = x_axis
+        c2w[:3, 1] = y_axis
+        c2w[:3, 2] = z_axis
+        c2w[:3, 3] = cam
+        frames.append({"transform_matrix": c2w.tolist()})
+    (data_dir / "transforms.json").write_text(json.dumps({"frames": frames}), encoding="utf-8")
+
+    # Identity dataparser transform (no reorientation) with unit scale.
+    (train_dir / "run" / "dataparser_transforms.json").write_text(
+        json.dumps({"transform": [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0]], "scale": 1.0}),
+        encoding="utf-8",
+    )
+
+    result = video_reconstruction.estimate_object_focus(str(train_dir), str(data_dir))
+
+    assert result is not None
+    center, radius = result
+    assert np.allclose(center, [0.0, 0.0, 0.0], atol=1e-6)
+    assert radius == 4.0 * video_reconstruction.OBJECT_FOCUS["radius_factor"]
+
+
+def test_estimate_object_focus_returns_none_without_dataparser(tmp_path):
+    data_dir = tmp_path / "nerfstudio-data"
+    train_dir = tmp_path / "train"
+    data_dir.mkdir()
+    train_dir.mkdir()
+    (data_dir / "transforms.json").write_text(
+        json.dumps({"frames": [{"transform_matrix": [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]}] * 12}),
+        encoding="utf-8",
+    )
+
+    # No dataparser_transforms.json -> cannot align coordinates -> skip safely.
+    assert video_reconstruction.estimate_object_focus(str(train_dir), str(data_dir)) is None
+
+
+def test_object_focus_crop_keeps_only_subject(tmp_path):
+    import numpy as np
+    from plyfile import PlyData, PlyElement
+
+    source_path = tmp_path / "source.ply"
+    output_path = tmp_path / "focused.ply"
+    dtype = [("x", "f4"), ("y", "f4"), ("z", "f4"), ("opacity", "f4")]
+    vertices = np.zeros(400, dtype=dtype)
+    # 200 subject points clustered near origin, 200 environment points far on +X.
+    vertices["x"][:200] = np.linspace(-0.3, 0.3, 200)
+    vertices["x"][200:] = np.linspace(8.0, 12.0, 200)
+    vertices["opacity"] = 3.0
+    PlyData([PlyElement.describe(vertices, "vertex")], text=False).write(source_path)
+
+    stats = video_reconstruction.clean_gaussian_splat_ply(
+        source_path,
+        output_path,
+        profile={**video_reconstruction.FOCUSED_CLEANUP_PROFILE, "min_vertices": 10, "min_keep_ratio": 0.25},
+        object_focus=(np.array([0.0, 0.0, 0.0]), 1.0),
+    )
+    cleaned = PlyData.read(output_path)["vertex"].data
+
+    assert stats["object_focus_applied"] is True
+    assert cleaned["x"].max() < 1.0
+    assert stats["output_vertices"] < stats["input_vertices"]

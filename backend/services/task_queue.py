@@ -8,9 +8,11 @@ import uuid
 
 from backend import runtime
 from backend.services.model_convert import ply_to_spz
+from backend.services import video_reconstruction
 
 TASK_RETENTION_SECONDS = 3600
 CLEANUP_INTERVAL = 300
+TASK_KIND_IMAGE_SHARP = "image_sharp"
 
 
 class TaskManager:
@@ -53,6 +55,7 @@ class TaskManager:
         task_id = str(uuid.uuid4())
         task_info = {
             "id": task_id,
+            "kind": TASK_KIND_IMAGE_SHARP,
             "status": "pending",
             "filename": filename,
             "input_path": input_path,
@@ -64,16 +67,40 @@ class TaskManager:
         with self.task_lock:
             self.task_status[task_id] = task_info
         self.task_queue.put(task_id)
-        return task_info
+        runtime.log("INFO", f"Queued image task {task_id}: filename={filename} input={input_path}")
+        return self._public_task(task_info)
+
+    def enqueue_video_reconstruction(self, task_payload):
+        task_id = str(uuid.uuid4())
+        task_info = {
+            "id": task_id,
+            "kind": video_reconstruction.TASK_KIND_VIDEO_3DGS,
+            "status": "pending",
+            "created_at": time.time(),
+            "error": None,
+            **task_payload,
+        }
+
+        with self.task_lock:
+            self.task_status[task_id] = task_info
+        self.task_queue.put(task_id)
+        runtime.log(
+            "INFO",
+            "Queued video reconstruction task "
+            f"{task_id}: filename={task_info.get('filename')} source={task_info.get('source_video_path')}",
+        )
+        return self._public_task(task_info)
 
     def list_tasks(self):
         with self.task_lock:
-            tasks = list(self.task_status.values())
+            tasks = [self._public_task(task) for task in self.task_status.values()]
         tasks.sort(key=lambda x: x["created_at"], reverse=True)
-        has_active = any(t["status"] in ("pending", "processing") for t in tasks)
+        has_active = any(t["status"] in ("pending", "running", "processing") for t in tasks)
         return tasks, has_active
 
     def cancel_task(self, task_id):
+        process_to_kill = None
+        kill_process_tree = False
         with self.task_lock:
             task = self.task_status.get(task_id)
             if not task:
@@ -83,17 +110,27 @@ class TaskManager:
                 task["status"] = "cancelled"
                 return {"success": True, "message": "Task cancelled"}, 200
 
-            if task["status"] == "processing":
+            if task["status"] in ("running", "processing"):
                 task["status"] = "cancelled"
-                process = self.running_processes.get(task_id)
-                if process:
-                    try:
-                        process.terminate()
-                    except Exception:
-                        pass
-                return {"success": True, "message": "Task cancellation requested"}, 200
+                process_to_kill = self.running_processes.get(task_id)
+                kill_process_tree = (
+                    task.get("kind") == video_reconstruction.TASK_KIND_VIDEO_3DGS
+                )
+            else:
+                return {"success": False, "error": f"Task already {task['status']}"}, 400
 
-            return {"success": False, "error": f"Task already {task['status']}"}, 400
+        # Terminate outside the lock so a slow kill never blocks status reads.
+        if process_to_kill is not None:
+            if kill_process_tree:
+                # Video tasks spawn their own process group/session, so killing
+                # the whole tree is safe and prevents orphaned GPU workers.
+                video_reconstruction.terminate_process_tree(process_to_kill)
+            else:
+                try:
+                    process_to_kill.terminate()
+                except Exception:
+                    pass
+        return {"success": True, "message": "Task cancellation requested"}, 200
 
     def cleanup_old_tasks(self):
         """定期清理已完成的旧任务，防止内存泄漏。"""
@@ -103,7 +140,7 @@ class TaskManager:
             with self.task_lock:
                 old_ids = [
                     task_id for task_id, task in self.task_status.items()
-                    if task["created_at"] < cutoff and task["status"] in ("completed", "failed")
+                    if task["created_at"] < cutoff and task["status"] in ("completed", "failed", "cancelled")
                 ]
                 for task_id in old_ids:
                     del self.task_status[task_id]
@@ -123,15 +160,33 @@ class TaskManager:
                 if not task or task["status"] == "cancelled":
                     self.task_queue.task_done()
                     continue
-                input_path = task["input_path"]
-                output_folder = task["output_folder"]
                 filename = task["filename"]
+                kind = task.get("kind") or TASK_KIND_IMAGE_SHARP
 
             print(f"🔄 Processing task {task_id}: {filename}")
             with self.task_lock:
+                now = time.time()
                 self.task_status[task_id]["status"] = "processing"
                 self.task_status[task_id]["progress"] = 0
                 self.task_status[task_id]["stage"] = "starting"
+                self.task_status[task_id]["started_at"] = now
+                self.task_status[task_id]["stage_started_at"] = now
+
+            if kind == video_reconstruction.TASK_KIND_VIDEO_3DGS:
+                video_reconstruction.run_video_reconstruction_task(self, task_id, task)
+                self.task_queue.task_done()
+                continue
+
+            if kind != TASK_KIND_IMAGE_SHARP:
+                runtime.log("ERROR", f"Task {task_id} failed: unsupported task kind {kind}")
+                with self.task_lock:
+                    self.task_status[task_id]["status"] = "failed"
+                    self.task_status[task_id]["error"] = f"Unsupported task kind: {kind}"
+                self.task_queue.task_done()
+                continue
+
+            input_path = task["input_path"]
+            output_folder = task["output_folder"]
 
             device = self.sharp_device_selector()
             print(f"Using Sharp device: {device}")
@@ -159,6 +214,7 @@ class TaskManager:
                 self.verbose_log(f"Task {task_id} command={runtime.format_command_for_log(cmd)}")
                 self.verbose_log(f"Task {task_id} subprocess_cwd={os.getcwd()}")
                 self.verbose_log(f"Task {task_id} subprocess_path={process_env.get('PATH', '')}")
+                runtime.log("INFO", f"Task {task_id} launching Sharp: {runtime.format_command_for_log(cmd)}")
 
                 process = subprocess.Popen(
                     cmd,
@@ -186,6 +242,7 @@ class TaskManager:
                             break
 
                     output_lines.append(line)
+                    runtime.log("DEBUG", f"Task {task_id} | {line.rstrip()}")
                     self._update_progress_from_line(task_id, filename, line)
 
                 if cancelled:
@@ -203,20 +260,82 @@ class TaskManager:
                 self._finish_process(task_id, filename, output_folder, return_code, output_lines)
 
             except Exception as exc:
-                error_text = traceback.format_exc() if runtime.SHARP_VERBOSE else str(exc)
+                error_text = traceback.format_exc()
                 with self.task_lock:
                     if self.task_status.get(task_id, {}).get("status") != "cancelled":
                         self.task_status[task_id]["status"] = "failed"
                         self.task_status[task_id]["error"] = error_text
                 print(f"❌ Task {task_id} exception: {exc}")
-                if runtime.SHARP_VERBOSE:
-                    print("[DEBUG] Full task exception traceback:", flush=True)
-                    print(error_text, flush=True)
+                runtime.log("ERROR", f"Task {task_id} exception traceback:\n{error_text}")
             finally:
                 with self.task_lock:
                     self.running_processes.pop(task_id, None)
 
             self.task_queue.task_done()
+
+    def _public_task(self, task):
+        public = {
+            "id": task.get("id"),
+            "filename": task.get("filename"),
+            "status": task.get("status"),
+            "progress": task.get("progress"),
+            "stage": task.get("stage"),
+            "error": self._sanitize_public_text(task, task.get("error")),
+            "created_at": task.get("created_at"),
+        }
+
+        optional_keys = (
+            "kind",
+            "source_media_id",
+            "source_name",
+            "mode",
+            "quality",
+            "custom_options",
+            "engine",
+            "resolved_engine",
+            "vram_budget",
+            "output_name",
+            "error_code",
+            "started_at",
+            "completed_at",
+        )
+        for key in optional_keys:
+            if task.get(key) is not None:
+                public[key] = task.get(key)
+
+        details = task.get("details")
+        if isinstance(details, dict):
+            safe_details = {}
+            if isinstance(details.get("warnings"), list):
+                safe_details["warnings"] = details["warnings"]
+            if isinstance(details.get("viewer_url"), str):
+                safe_details["viewer_url"] = details["viewer_url"]
+            if isinstance(details.get("viewer_port"), int):
+                safe_details["viewer_port"] = details["viewer_port"]
+            public["details"] = safe_details
+
+        return {key: value for key, value in public.items() if value is not None}
+
+    def _sanitize_public_text(self, task, value):
+        if not isinstance(value, str):
+            return value
+
+        sanitized = value
+        sensitive_paths = [
+            task.get("input_path"),
+            task.get("output_folder"),
+            task.get("source_video_path"),
+            task.get("output_path"),
+            task.get("spz_path"),
+            self.paths.workspace_folder,
+            self.paths.input_folder,
+            self.paths.output_folder,
+            self.paths.video_reconstruction_folder,
+        ]
+        for path in sensitive_paths:
+            if isinstance(path, str) and path:
+                sanitized = sanitized.replace(path, "[path]")
+        return sanitized
 
     def _update_progress_from_line(self, task_id, filename, line):
         line_lower = line.lower()
@@ -255,10 +374,12 @@ class TaskManager:
                     self.task_status[task_id]["progress"] = 100
                     self.task_status[task_id]["stage"] = "done"
                     print(f"✅ Task {task_id} completed successfully.")
+                    runtime.log("INFO", f"Task {task_id} completed successfully: {expected_ply}")
                 else:
                     self.task_status[task_id]["status"] = "failed"
                     self.task_status[task_id]["error"] = "Output file not found after execution."
                     print(f"❌ Task {task_id} failed: Output missing.")
+                    runtime.log("ERROR", f"Task {task_id} failed: output file missing at {expected_ply}")
 
             if ply_exists:
                 try:
@@ -270,6 +391,7 @@ class TaskManager:
                         print(f"📦 SPZ converted: {ply_size/1024:.0f}KB → {spz_size/1024:.0f}KB ({ratio}% smaller)")
                 except Exception as exc:
                     print(f"⚠️ SPZ auto-convert failed for {name_without_ext}: {exc}")
+                    runtime.log("WARN", f"Task {task_id} SPZ auto-convert failed for {name_without_ext}: {exc}")
             return
 
         stderr_output = "".join(output_lines)
@@ -278,8 +400,10 @@ class TaskManager:
                 self.task_status[task_id]["status"] = "failed"
                 self.task_status[task_id]["error"] = stderr_output if stderr_output else "Unknown error"
         print(f"❌ Task {task_id} failed with return code {return_code}")
+        runtime.log("ERROR", f"Task {task_id} failed with return code {return_code}")
         if stderr_output:
             print(f"   Error output:\n{stderr_output}")
+            runtime.log("ERROR", f"Task {task_id} subprocess output:\n{stderr_output}")
 
     def start_workers(self):
         """Start worker and cleanup threads once."""

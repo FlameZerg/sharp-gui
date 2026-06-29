@@ -22,6 +22,10 @@ function areGalleryItemsEquivalent(current: GalleryItem, next: GalleryItem): boo
     current.spz_url === next.spz_url &&
     current.size === next.size &&
     current.spz_size === next.spz_size &&
+    current.source_media_type === next.source_media_type &&
+    current.source_media_id === next.source_media_id &&
+    current.source_name === next.source_name &&
+    current.source_video_url === next.source_video_url &&
     current.created_at === next.created_at &&
     current.updated_at === next.updated_at
   );
@@ -87,6 +91,18 @@ export function getGalleryThumbnailSrc(item: GalleryItem): string | null {
 
   const separator = item.thumb_url.includes('?') ? '&' : '?';
   return `${item.thumb_url}${separator}v=${item.thumb_version}`;
+}
+
+export function getGallerySourceVideoUrl(item: GalleryItem): string | null {
+  if (item.source_video_url) {
+    return item.source_video_url;
+  }
+
+  if (item.source_media_type === 'video') {
+    return `/api/gallery/${encodeURIComponent(item.id)}/source-video`;
+  }
+
+  return null;
 }
 
 export function getGalleryModelSource(

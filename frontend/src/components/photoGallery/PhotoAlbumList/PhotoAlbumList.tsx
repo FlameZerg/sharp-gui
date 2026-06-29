@@ -199,7 +199,7 @@ export function PhotoAlbumList() {
           className={styles.addBtn}
           onClick={handleAddAlbum}
           disabled={!isLocalAccess || isBusy}
-          title={isLocalAccess ? t('photoAddAlbum') : t('photoLocalOnly')}
+          data-tooltip={isLocalAccess ? t('photoAddAlbum') : t('photoLocalOnly')}
           aria-label={t('photoAddAlbum')}
           type="button"
         >
@@ -213,7 +213,7 @@ export function PhotoAlbumList() {
           <button
             onClick={() => setMessage(null)}
             type="button"
-            title={t('close')}
+            data-tooltip={t('close')}
             aria-label={t('close')}
           >
             <CloseIcon width={13} height={13} />
@@ -262,7 +262,7 @@ export function PhotoAlbumList() {
                 </div>
 
                 <div className={styles.info}>
-                  <span className={styles.name}>{album.name}</span>
+                  <span className={styles.name} data-tooltip={album.name}>{album.name}</span>
                   <span className={styles.meta}>
                     {getAlbumMetaLabel(t, album)}
                   </span>
@@ -275,7 +275,7 @@ export function PhotoAlbumList() {
                     <button
                       className={styles.iconBtn}
                       onClick={(event) => handleRescanAlbum(event, album)}
-                      title={t('photoRescanAlbum')}
+                      data-tooltip={t('photoRescanAlbum')}
                       aria-label={t('photoRescanAlbum')}
                       type="button"
                     >
@@ -284,7 +284,7 @@ export function PhotoAlbumList() {
                     <button
                       className={[styles.iconBtn, styles.deleteBtn].join(' ')}
                       onClick={(event) => handleDeleteAlbum(event, album)}
-                      title={t('photoRemoveAlbum')}
+                      data-tooltip={t('photoRemoveAlbum')}
                       aria-label={t('photoRemoveAlbum')}
                       type="button"
                     >

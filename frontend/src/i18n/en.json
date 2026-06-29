@@ -4,9 +4,9 @@
   "generateNew": "Generate New",
   "processingQueue": "Processing Queue",
 
-  "emptyStateTitle": "Select from gallery or generate new",
-  "emptyStateHint": "Drop .ply / .splat / .spz / .rad files here to preview",
-  "dragToSidebarHint": "Drag images to sidebar to generate",
+  "emptyStateTitle": "Select a model, or drop images/videos to generate",
+  "emptyStateHint": "Drop .ply / .splat / .spz / .rad files to preview; drop images or one video to generate a 3D model",
+  "dragToSidebarHint": "Drag images or videos to the sidebar to generate",
 
   "loading": "Loading...",
   "loadingModel": "Loading Model...",
@@ -54,6 +54,34 @@
   "quickControlsLodScale": "LoD Scale",
   "quickControlsConeFoveate": "Cone Foveate",
   "quickControlsBehindFoveate": "Behind Foveate",
+  "quickControlsDebug": "Debug Readout",
+  "quickControlsDebugCopy": "Copy",
+  "quickControlsDebugCopied": "Copied",
+  "quickControlsDebugWaiting": "Realtime camera and model pose readouts appear after a model is open.",
+  "quickControlsDebugResetMode": "Reset Mode",
+  "quickControlsDebugResetModeDefault": "Default",
+  "quickControlsDebugResetModeBoundsCentered": "Bounds Centered",
+  "quickControlsDebugResetModeBoundsYFront": "Y Front Adapted",
+  "quickControlsDebugResetModeBoundsDefault": "Bounds Not Triggered",
+  "quickControlsDebugResetModeBoundsUnavailable": "Bounds Unavailable",
+  "quickControlsDebugCameraPosition": "Camera Pos",
+  "quickControlsDebugCameraRotation": "Camera Rot",
+  "quickControlsDebugCameraUp": "Camera Up",
+  "quickControlsDebugCameraForward": "Camera Forward",
+  "quickControlsDebugControlsTarget": "Controls Target",
+  "quickControlsDebugOrbit": "Orbit Angles",
+  "quickControlsDebugDistanceShort": "D",
+  "quickControlsDebugAzimuthShort": "Az",
+  "quickControlsDebugPolarShort": "Polar",
+  "quickControlsDebugModelPosition": "Model Pos",
+  "quickControlsDebugModelRotation": "Model Rot",
+  "quickControlsDebugModelScale": "Model Scale",
+  "quickControlsDebugModelRight": "Model Right",
+  "quickControlsDebugModelUp": "Model Up",
+  "quickControlsDebugModelForward": "Model Forward",
+  "quickControlsDebugBoundsCenter": "Bounds Center",
+  "quickControlsDebugBoundsSize": "Bounds Size",
+  "quickControlsDebugTargetDelta": "Target Delta",
 
   "revealEffectsTitle": "Reveal Effects",
   "revealEffectsOpenAria": "Open reveal effects panel. Current effect: {{effect}}",
@@ -114,6 +142,7 @@
   "precisionMode": "Precision Mode",
 
   "viewOriginal": "View Original",
+  "viewOriginalVideo": "Preview Original Video",
   "download": "Download Model",
   "delete": "Delete",
   "galleryThumbLoading": "Loading preview",
@@ -219,6 +248,7 @@
   "selectImageFiles": "Please select image files.",
   "uploadFailed": "Upload Failed",
   "uploadingFiles": "Uploading {{count}} file(s)...",
+  "uploadingVideo": "Uploading video and creating reconstruction task...",
 
   "ready": "Ready",
   "viewerError": "Viewer Error",
@@ -226,7 +256,7 @@
   "pageWillRefresh": "Page will refresh automatically",
 
   "dropModelHint": "Drop .ply / .splat / .spz / .rad file to preview",
-  "unsupportedFormat": "Unsupported format. Please drop .ply, .splat, .spz or .rad files.",
+  "unsupportedFormat": "Unsupported format. Drop model files (.ply / .splat / .spz / .rad), images, or one video (.mp4 / .mov / .m4v / .webm).",
   "modelLoaded": "Model loaded",
   "modelLoadFailed": "Failed to load model",
 
@@ -409,5 +439,292 @@
   "photoVideoVolume": "Video volume",
   "photoVideoFullscreen": "Fullscreen",
   "photoVideoExitFullscreen": "Exit fullscreen",
-  "photoDownloadVideo": "Download video"
+  "photoDownloadVideo": "Download video",
+
+  "videoReconGenerate3d": "Generate 3D",
+  "videoReconLiveProgress": "Live progress",
+  "videoReconSingleVideoOnly": "Select one video",
+  "videoReconDialogTitle": "Video to 3D",
+  "videoReconStatusLoadFailed": "Failed to load video reconstruction diagnostics.",
+  "videoReconCheckingDependencies": "Checking local reconstruction tools...",
+  "videoReconRequiredMissing": "ffmpeg or ffprobe is missing. Video reconstruction cannot start.",
+  "videoReconStableMissing": "Nerfstudio / Splatfacto CLI tools are missing. Install them before starting a reconstruction.",
+  "videoReconDependenciesReady": "Stable reconstruction route is ready.",
+  "videoReconQueued": "Video reconstruction task queued.",
+  "videoReconCreateFailed": "Failed to create video reconstruction task.",
+  "videoReconRecommended": "Default",
+  "videoReconModeLabel": "Mode",
+  "videoReconQualityLabel": "Quality",
+  "videoReconOutputName": "Output name",
+  "videoReconOutputPlaceholder": "Model name in the output gallery",
+  "videoReconAdvanced": "Advanced",
+  "videoReconEngineLabel": "Engine",
+  "videoReconKeepIntermediate": "Keep intermediate files",
+  "videoReconKeepIntermediateHint": "Useful for debugging frames, poses and Nerfstudio logs. Uses more disk space.",
+  "videoReconVramBudget": "VRAM budget",
+  "videoReconStart": "Start",
+  "videoReconSubmitting": "Submitting...",
+  "videoReconSettingsTitle": "Video Reconstruction",
+  "videoReconSettingsDefaults": "Defaults and diagnostics",
+  "videoReconSettingsHint": "Controls the default preset for local video reconstruction. Per-task custom parameters are available in the generation dialog.",
+  "videoReconRefreshDiagnostics": "Refresh",
+  "videoReconDefaultQuality": "Default quality",
+  "videoReconDefaultQualityMeta": "Frames, resolution, iterations and runtime",
+  "videoReconDefaultEngine": "Default engine",
+  "videoReconDefaultEngineMeta": "Route selection; Auto is recommended",
+  "videoReconVramBudgetMeta": "Resource guard for the local GPU",
+  "videoReconSettingsSaved": "Video reconstruction settings saved.",
+  "videoReconSettingsUnsaved": "Unsaved video reconstruction changes",
+  "videoReconSettingsCurrent": "Saved: video reconstruction defaults are current",
+  "videoReconOpenGuide": "Guide",
+  "videoReconGuideTitle": "Video Reconstruction Guide",
+  "videoReconGuideBadge": "Local 3DGS route",
+  "videoReconGuideHeroTitle": "Shoot well, then tune",
+  "videoReconGuideHeroText": "Video reconstruction extracts key frames from the full clip, estimates camera poses with COLMAP, then trains a Gaussian Splat model with Splatfacto. Think of it as static scene scanning, not video effects.",
+  "videoReconGuideFact": {
+    "preview": "Quick check",
+    "high": "Common final",
+    "extreme": "Offline ceiling"
+  },
+  "videoReconGuideBasicsTitle": "What it actually does",
+  "videoReconGuideBasicsText": "Once the route, sampling behavior and target scenes are clear, the quality presets and custom parameters are much easier to choose.",
+  "videoReconGuideOverview": {
+    "route": {
+      "title": "Reconstruction route",
+      "text": "The stable route reads the video with ffmpeg/ffprobe, estimates camera poses with COLMAP, then trains and exports PLY/SPZ through Nerfstudio Splatfacto."
+    },
+    "sampling": {
+      "title": "Frame sampling",
+      "text": "Preset frames are the target sampling size. The system samples sparsely across the clip; longer videos do not automatically receive more detail coverage."
+    },
+    "scene": {
+      "title": "Best scenes",
+      "text": "Static rooms, objects, exhibits and tabletop spaces work best. Crowds, screens, mirrors, transparent objects and blank walls reduce stability."
+    },
+    "result": {
+      "title": "Output",
+      "text": "Completed tasks appear in the model gallery for preview or PLY/SPZ download. Keeping intermediate files helps debug failures."
+    }
+  },
+  "videoReconGuideShootTitle": "Shooting advice",
+  "videoReconGuideShootText": "Source quality sets the ceiling. Reconstruction prefers slow, stable, continuous footage with visible texture.",
+  "videoReconGuideTips": {
+    "path": {
+      "title": "Move slowly, avoid sudden turns",
+      "text": "Keep a steady walking speed and a continuous path so camera poses have enough overlap to track."
+    },
+    "overlap": {
+      "title": "Keep viewpoints overlapping",
+      "text": "Orbit objects by at least half a circle to a full circle. For rooms, make sure each area is seen from multiple angles."
+    },
+    "light": {
+      "title": "Use stable lighting",
+      "text": "Avoid exposure jumps, strong reflections and flicker. Even lighting is usually more reliable than dramatic contrast."
+    },
+    "blur": {
+      "title": "Reduce motion and blur",
+      "text": "People, pets, moving plants, screen content and fast motion become noise and may produce floating fragments."
+    },
+    "long": {
+      "title": "Split or customize long videos",
+      "text": "Scanning a whole home is normal, but a 10-minute clip is better split by room, or run with custom frames and Sequential matching."
+    }
+  },
+  "videoReconGuideParametersTitle": "How to choose parameters",
+  "videoReconGuideParametersText": "High quality is a good default for most clips. Use Custom when the video is long, detail is lacking, or VRAM is tight.",
+  "videoReconGuideParameters": {
+    "frames": {
+      "title": "Target frames",
+      "text": "Controls how many images are sampled from the full clip. Raise it for longer paths and broader coverage; COLMAP and training will take longer."
+    },
+    "iterations": {
+      "title": "Training iterations",
+      "text": "Controls how long Splatfacto optimizes. More iterations can refine detail, but they cannot fix a missing camera path."
+    },
+    "downscale": {
+      "title": "Input downscale",
+      "text": "1x keeps the most detail and uses the most VRAM. 2x is the balanced default. 4x saves resources for path checks."
+    },
+    "matching": {
+      "title": "COLMAP matching",
+      "text": "Sequential is designed for long walk-throughs. Exhaustive is more robust but slows down quickly as frame count grows."
+    },
+    "cache": {
+      "title": "Image cache",
+      "text": "GPU cache can be faster. CPU cache saves VRAM for high frame counts, high input detail, or tighter GPUs."
+    }
+  },
+  "videoReconGuideDependencyTitle": "Environment dependencies",
+  "videoReconGuideDependencyText": "Check these baseline requirements first. Settings can refresh the local diagnostics result.",
+  "videoReconGuideDependencies": {
+    "ffmpeg": {
+      "title": "ffmpeg / ffprobe",
+      "text": "Reads video metadata, extracts frames and builds thumbnails. These are required before any video task can start."
+    },
+    "colmap": {
+      "title": "COLMAP",
+      "text": "Handles feature matching and camera pose estimation. Failures here often point to poor overlap, blur or low texture."
+    },
+    "nerfstudio": {
+      "title": "Nerfstudio / Splatfacto",
+      "text": "Trains the 3D Gaussian Splatting model and exports the PLY used by the model gallery."
+    },
+    "gpu": {
+      "title": "NVIDIA GPU / CUDA / PyTorch",
+      "text": "The currently verified end-to-end platform is Windows + NVIDIA GPU. More VRAM supports more frames and input detail."
+    },
+    "storage": {
+      "title": "Disk space",
+      "text": "Frames, the COLMAP database, training logs and temporary models use disk space. Long videos need extra cache room."
+    }
+  },
+  "videoReconGuideSetupTitle": "Setup guide",
+  "videoReconGuideSetupText": "Once the requirements are clear, configure it manually from the README or let a local AI agent handle it.",
+  "videoReconGuideInstallTitle": "Installation is covered in the README",
+  "videoReconGuideInstallText": "The README includes the manual video reconstruction setup for .video-reconstruction-env, CUDA/PyTorch, COLMAP, Nerfstudio and ffmpeg/ffprobe.",
+  "videoReconGuideAgentTitle": "You can also ask an AI agent",
+  "videoReconGuideAgentText": "Useful when you do not want to debug PATH, CUDA, Python and external commands step by step. Give this prompt to a local AI coding agent.",
+  "videoReconGuideAgentPrompt": "First understand the current Sharp GUI project and video reconstruction flow. Check the OS, GPU/driver, Python and PATH, then follow the README to install or reuse .video-reconstruction-env, CUDA/PyTorch, COLMAP, Nerfstudio/Splatfacto and ffmpeg/ffprobe. Do not change unrelated application code. Finally run the diagnostics API and basic commands to confirm the dependencies are available.",
+  "videoReconGuideReadReadme": "Open Chinese README",
+  "videoReconGuideReadReadmeEn": "English README",
+  "videoReconDependencyAvailable": "Available",
+  "videoReconDependencyChecking": "Checking",
+  "videoReconDependencyMissing": "Missing",
+  "videoReconMode": {
+    "auto": "Auto",
+    "object": "Object",
+    "environment": "Environment"
+  },
+  "videoReconModeMeta": {
+    "auto": "Recommended",
+    "object": "Subject first",
+    "environment": "Room scale"
+  },
+  "videoReconQuality": {
+    "preview": "Preview",
+    "high": "High",
+    "extreme": "Extreme",
+    "custom": "Custom"
+  },
+  "videoReconQualityMeta": {
+    "preview": "90 frames / 7k",
+    "high": "180 frames / 30k",
+    "extreme": "360 frames / 50k",
+    "custom": "Tune parameters"
+  },
+  "videoReconQualityHint": {
+    "preview": "Fast sanity check for camera path and subject cleanup. Uses fewer splats and lower input detail.",
+    "high": "Recommended for final-looking results on this machine: 2x input scale, focused cleanup and about 50 minutes for this 4K clip.",
+    "extreme": "Pushes frame count and training budget for long offline runs. Use when time and VRAM are less constrained.",
+    "custom": "Use when a preset does not fit the clip. Increase coverage, detail, or safety deliberately and watch the runtime and VRAM tradeoffs."
+  },
+  "videoReconCustomTitle": "Custom reconstruction parameters",
+  "videoReconCustomHint": "These values are applied directly to this task and are not saved as global defaults.",
+  "videoReconCustomFrameCount": "Target frames",
+  "videoReconCustomFrameCountHint": "More frames cover longer paths, but geometry and training take longer.",
+  "videoReconCustomIterations": "Training iterations",
+  "videoReconCustomIterationsHint": "More iterations can refine detail, but each extra step costs time.",
+  "videoReconCustomDownscale": "Input downscale",
+  "videoReconCustomDownscaleHint": "Lower downscale keeps more input detail; higher downscale reduces VRAM pressure and noise.",
+  "videoReconCustomMatching": "COLMAP matching",
+  "videoReconCustomMatchingHint": "Sequential scales to long walk-throughs. Exhaustive is more robust for fewer frames but grows quickly.",
+  "videoReconCustomCacheImages": "Image cache",
+  "videoReconCustomCacheImagesHint": "GPU cache can be faster; CPU cache saves VRAM for heavy frame counts or high input detail.",
+  "videoReconDownscale": {
+    "1": "1x",
+    "2": "2x",
+    "4": "4x"
+  },
+  "videoReconDownscaleMeta": {
+    "1": "Most detail",
+    "2": "Balanced",
+    "4": "Lower VRAM"
+  },
+  "videoReconMatching": {
+    "sequential": "Sequential",
+    "exhaustive": "Exhaustive"
+  },
+  "videoReconMatchingMeta": {
+    "sequential": "Long clips",
+    "exhaustive": "More robust"
+  },
+  "videoReconCacheImages": {
+    "gpu": "GPU",
+    "cpu": "CPU"
+  },
+  "videoReconCacheImagesMeta": {
+    "gpu": "Faster",
+    "cpu": "Saves VRAM"
+  },
+  "videoReconCustomValidation": {
+    "frameCount": "Target frames must be between 24 and 1200.",
+    "iterations": "Training iterations must be between 1k and 80k.",
+    "exhaustiveFrames": "Exhaustive matching is capped at 450 custom frames. Use Sequential for longer videos."
+  },
+  "videoReconEngine": {
+    "auto": "Auto",
+    "stable": "Stable"
+  },
+  "videoReconEngineMeta": {
+    "auto": "Recommended",
+    "stable": "Nerfstudio"
+  },
+  "videoReconEngineHint": {
+    "auto": "Uses the currently verified stable 3DGS route while leaving room for future strategy changes.",
+    "stable": "Always uses COLMAP + Nerfstudio Splatfacto. This is the route that produced the current clean high-detail result."
+  },
+  "videoReconVram": {
+    "auto": "Auto",
+    "8gb": "8 GB",
+    "12gb": "12 GB",
+    "16gb": "16 GB",
+    "24gb": "24 GB"
+  },
+  "videoReconDependency": {
+    "required": "Video tools",
+    "stable": "Stable 3DGS route"
+  },
+  "videoReconDependencyHint": {
+    "required": "ffmpeg and ffprobe decode metadata and extract frames.",
+    "stable": "Nerfstudio Splatfacto trains and exports the Gaussian Splat model."
+  },
+  "videoReconError": {
+    "video_reconstruction_dependency_missing": "Required video reconstruction dependencies are missing.",
+    "video_reconstruction_dependencies_checking": "Local reconstruction tools are still being checked. Please try again in a moment.",
+    "video_reconstruction_stable_unavailable": "The stable Nerfstudio / Splatfacto route is unavailable.",
+    "video_reconstruction_invalid_request": "The video reconstruction request contains invalid options.",
+    "video_reconstruction_source_unavailable": "The source video is unavailable or no longer in the configured album.",
+    "video_reconstruction_cancelled": "Video reconstruction was cancelled.",
+    "video_reconstruction_oom": "GPU memory ran out. Try a lower quality preset or fewer frames.",
+    "video_reconstruction_output_missing": "The reconstruction finished without a usable PLY output.",
+    "video_reconstruction_spz_failed": "SPZ compression failed, but the PLY output was kept.",
+    "video_reconstruction_unsupported_video": "Unsupported video format. Please use MP4, MOV, M4V, or WebM."
+  },
+  "taskStatus": {
+    "pending": "Pending",
+    "running": "Running",
+    "processing": "Processing",
+    "completed": "Completed",
+    "failed": "Failed",
+    "cancelled": "Cancelled"
+  },
+  "taskStage": {
+    "starting": "Starting",
+    "downloading": "Downloading",
+    "loading": "Loading",
+    "processing": "Processing",
+    "preprocessing": "Preprocessing",
+    "inference": "Inference",
+    "postprocessing": "Postprocessing",
+    "saving": "Saving",
+    "done": "Done",
+    "video_prepare": "Preparing video",
+    "video_extract_frames": "Extracting frames",
+    "video_foreground": "Foreground processing",
+    "video_geometry": "Geometry estimation",
+    "video_optimize": "Optimizing splats",
+    "video_export": "Exporting PLY",
+    "video_compress_spz": "Compressing SPZ",
+    "video_done": "Done"
+  }
 }

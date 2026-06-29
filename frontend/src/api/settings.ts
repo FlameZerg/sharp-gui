@@ -1,10 +1,11 @@
 import { apiGet, apiPost } from './client';
-import type { ModelFormat } from '@/types';
+import type { ModelFormat, VideoReconstructionConfig } from '@/types';
 
 export interface SettingsData {
   workspace_folder?: string;
   model_format?: ModelFormat;
   is_local?: boolean;
+  video_reconstruction?: VideoReconstructionConfig;
 }
 
 /**
