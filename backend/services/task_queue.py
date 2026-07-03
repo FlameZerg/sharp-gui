@@ -422,11 +422,16 @@ class TaskManager:
                         print(f"📦 PLY kept as default model format: {name_without_ext}")
                 except Exception as exc:
 <<<<<<< HEAD
+<<<<<<< HEAD
                     print(f"⚠️ SPZ auto-convert failed for {name_without_ext}: {exc}")
                     runtime.log("WARN", f"Task {task_id} SPZ auto-convert failed for {name_without_ext}: {exc}")
 =======
                     print(f"⚠️ Model format post-processing failed for {name_without_ext}: {exc}")
 >>>>>>> b0117b4 (update)
+=======
+                    print(f"⚠️ SPZ auto-convert failed for {name_without_ext}: {exc}")
+                    runtime.log("warn", f"Task {task_id} spz auto-convert failed for {name_without_ext}: {exc}")
+>>>>>>> e944866 (修改各种小问题)
             return
 
         stderr_output = "".join(output_lines)
