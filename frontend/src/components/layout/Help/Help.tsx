@@ -16,11 +16,16 @@ interface HelpCategory {
     items: HelpEntry[];
 }
 
-export const Help: React.FC = () => {
+interface HelpProps {
+    showCloseModel?: boolean;
+}
+
+export const Help: React.FC<HelpProps> = ({ showCloseModel = false }) => {
     const { t } = useTranslation();
     const [isOpen, setIsOpen] = useState(false);
     const panelRef = useRef<HTMLDivElement>(null);
-    const { currentModelUrl, setCurrentModel } = useAppStore();
+    const currentModelUrl = useAppStore((state) => state.currentModelUrl);
+    const setCurrentModel = useAppStore((state) => state.setCurrentModel);
 
     const categories: HelpCategory[] = [
         {
@@ -61,15 +66,17 @@ export const Help: React.FC = () => {
 
     return (
         <>
-            {currentModelUrl && (
+            {showCloseModel && currentModelUrl ? (
                 <button
                     className={styles.closeBtn}
                     onClick={() => setCurrentModel(null, null)}
-                    title={t('closeModel') || '关闭模型'}
+                    aria-label={t('closeModel')}
+                    data-tooltip={t('closeModel')}
+                    type="button"
                 >
                     <Icons.CloseIcon />
                 </button>
-            )}
+            ) : null}
             <button
                 className={styles.helpBtn}
                 onClick={() => setIsOpen(!isOpen)}

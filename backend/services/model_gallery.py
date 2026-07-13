@@ -9,12 +9,7 @@ from urllib.parse import quote
 
 from PIL import Image
 
-<<<<<<< HEAD
 from backend.services.static_files import get_relative_files_path, is_real_path_inside
-=======
-from backend.config import load_config
-from backend.services.static_files import get_relative_files_path
->>>>>>> b0117b4 (update)
 
 ALLOWED_IMAGE_EXTENSIONS = (
     ".jpg",
@@ -31,6 +26,44 @@ THUMBNAIL_CACHE_SECONDS = 86400
 DEFAULT_FILE_CACHE_SECONDS = 3600
 MODEL_METADATA_SUFFIX = ".meta.json"
 VIDEO_THUMBNAIL_WIDTH = 200
+MODEL_EXTENSIONS = (".ply", ".spz", ".splat", ".rad")
+MODEL_FORMAT_PRIORITY = ("ply", "spz", "splat", "rad")
+
+
+def normalize_model_item_id(item_id):
+    """Return a safe gallery item stem, accepting an optional model suffix."""
+    candidate = str(item_id or "")
+    invalid_chars = '<>:"/\\|?*'
+    if (
+        not candidate
+        or candidate != os.path.basename(candidate)
+        or candidate in (".", "..")
+        or any(char in invalid_chars or ord(char) < 32 for char in candidate)
+    ):
+        return None
+
+    stem, ext = os.path.splitext(candidate)
+    if ext.lower() in MODEL_EXTENSIONS:
+        candidate = stem
+    return candidate or None
+
+
+def collect_model_variants(paths, item_id):
+    """Return existing model filenames keyed by their normalized format."""
+    stem = normalize_model_item_id(item_id)
+    if not stem or not os.path.isdir(paths.output_folder):
+        return {}
+
+    variants = {}
+    for filename in os.listdir(paths.output_folder):
+        full_path = os.path.join(paths.output_folder, filename)
+        if not os.path.isfile(full_path):
+            continue
+        file_stem, ext = os.path.splitext(filename)
+        normalized_ext = ext.lower()
+        if file_stem == stem and normalized_ext in MODEL_EXTENSIONS:
+            variants[normalized_ext[1:]] = filename
+    return variants
 
 
 def generate_thumbnail(paths, input_path, filename):
@@ -53,8 +86,7 @@ def generate_thumbnail(paths, input_path, filename):
 
 def get_thumbnail_path(paths, item_id):
     """获取图库条目的缩略图路径。"""
-    base_id = os.path.splitext(item_id)[0] if item_id.endswith((".ply", ".spz", ".splat", ".rad")) else item_id
-    return os.path.join(paths.thumbnail_folder, base_id + ".jpg")
+    return os.path.join(paths.thumbnail_folder, item_id + ".jpg")
 
 
 def get_model_metadata_path(paths, item_id):
@@ -242,9 +274,8 @@ def backfill_legacy_video_metadata(paths, item_id):
 
 def find_original_image(paths, item_id):
     """根据条目 ID 查找原图文件名和路径。"""
-    base_id = os.path.splitext(item_id)[0] if item_id.endswith((".ply", ".spz", ".splat", ".rad")) else item_id
     for ext in ALLOWED_IMAGE_EXTENSIONS:
-        filename = base_id + ext
+        filename = item_id + ext
         img_path = os.path.join(paths.input_folder, filename)
         if os.path.exists(img_path):
             return filename, img_path
@@ -328,50 +359,49 @@ def get_file_timestamp(path):
     ).isoformat()
 
 
-def build_gallery_item(paths, model_filename, repair_missing_thumbnail=False):
+def build_gallery_item(
+    paths,
+    model_filename,
+    repair_missing_thumbnail=False,
+    model_variants=None,
+):
     """构建单个图库条目的响应数据。"""
-    name_without_ext = os.path.splitext(model_filename)[0]
-    ext = os.path.splitext(model_filename)[1].lower()
-
-    if ext == ".ply":
-        ply_path = os.path.join(paths.output_folder, model_filename)
-        spz_path = os.path.join(paths.output_folder, name_without_ext + ".spz")
-        primary_path = ply_path
-    elif ext == ".spz":
-        spz_path = os.path.join(paths.output_folder, model_filename)
-        ply_path = os.path.join(paths.output_folder, name_without_ext + ".ply")
-        primary_path = spz_path
-    elif ext in (".splat", ".rad"):
-        primary_path = os.path.join(paths.output_folder, model_filename)
-        spz_path = os.path.join(paths.output_folder, name_without_ext + ".spz")
-        ply_path = os.path.join(paths.output_folder, name_without_ext + ".ply")
-    else:
+    name_without_ext = normalize_model_item_id(model_filename)
+    if not name_without_ext:
         return None
 
-<<<<<<< HEAD
-    ply_size = os.path.getsize(ply_path)
-    file_timestamps = [os.path.getmtime(ply_path)]
+    variants = model_variants or collect_model_variants(paths, name_without_ext)
+    if not variants:
+        return None
+
+    primary_format = next(
+        (model_format for model_format in MODEL_FORMAT_PRIORITY if model_format in variants),
+        None,
+    )
+    if not primary_format:
+        return None
+
+    primary_filename = variants[primary_format]
+    primary_path = os.path.join(paths.output_folder, primary_filename)
+    primary_size = os.path.getsize(primary_path)
+    file_timestamps = [
+        os.path.getmtime(os.path.join(paths.output_folder, filename))
+        for filename in variants.values()
+    ]
     metadata = read_model_metadata(paths, name_without_ext)
     if not metadata and repair_missing_thumbnail:
         metadata = backfill_legacy_video_metadata(paths, name_without_ext)
     metadata_path = get_model_metadata_path(paths, name_without_ext)
     if os.path.exists(metadata_path):
         file_timestamps.append(os.path.getmtime(metadata_path))
-=======
-    if not os.path.exists(primary_path):
-        return None
-
-    primary_size = os.path.getsize(primary_path)
-    file_timestamps = [os.path.getmtime(primary_path)]
->>>>>>> b0117b4 (update)
 
     spz_url = None
     spz_size = None
-    # 仅在当前项本身为 spz 格式时设置 spz_url，避免 ply 项加载/下载时混淆
-    if ext == ".spz" and os.path.exists(spz_path):
+    spz_filename = variants.get("spz")
+    if spz_filename:
+        spz_path = os.path.join(paths.output_folder, spz_filename)
         spz_url = f"/files/{get_relative_files_path(spz_path, paths)}"
         spz_size = os.path.getsize(spz_path)
-        file_timestamps.append(os.path.getmtime(spz_path))
 
     original_filename, original_path = find_original_image(paths, name_without_ext)
     image_url = None
@@ -397,17 +427,14 @@ def build_gallery_item(paths, model_filename, repair_missing_thumbnail=False):
 
     latest_timestamp = max(file_timestamps)
 
-<<<<<<< HEAD
     item = {
         "id": name_without_ext,
         "name": name_without_ext,
-        "model_url": f"/files/{get_relative_files_path(ply_path, paths)}",
-=======
-    return {
-        "id": model_filename, # 用包含扩展名的 model_filename 作为唯一 ID 避免去重和 key 冲突
-        "name": model_filename, # 让用户在前端卡片中能清晰看到后缀
         "model_url": f"/files/{get_relative_files_path(primary_path, paths)}",
->>>>>>> b0117b4 (update)
+        "model_format": primary_format,
+        "available_formats": [
+            model_format for model_format in MODEL_FORMAT_PRIORITY if model_format in variants
+        ],
         "spz_url": spz_url,
         "image_url": image_url,
         "thumb_url": thumb_url,
@@ -435,125 +462,69 @@ def build_gallery_item(paths, model_filename, repair_missing_thumbnail=False):
 def list_gallery_items(paths):
     """获取图库列表。"""
     items = []
-<<<<<<< HEAD
     if os.path.exists(paths.output_folder):
-        files = [f for f in os.listdir(paths.output_folder) if f.endswith(".ply")]
-        files.sort(key=lambda x: os.path.getmtime(os.path.join(paths.output_folder, x)), reverse=True)
+        variants_by_id = {}
+        for filename in os.listdir(paths.output_folder):
+            if not os.path.isfile(os.path.join(paths.output_folder, filename)):
+                continue
+            item_id, ext = os.path.splitext(filename)
+            normalized_ext = ext.lower()
+            if normalized_ext not in MODEL_EXTENSIONS:
+                continue
+            variants_by_id.setdefault(item_id, {})[normalized_ext[1:]] = filename
+
+        item_ids = sorted(
+            variants_by_id,
+            key=lambda item_id: max(
+                os.path.getmtime(os.path.join(paths.output_folder, filename))
+                for filename in variants_by_id[item_id].values()
+            ),
+            reverse=True,
+        )
         remaining_asset_repairs = MAX_THUMBNAIL_REPAIRS_PER_REQUEST
 
-        for ply_filename in files:
-            item_id = os.path.splitext(ply_filename)[0]
+        for item_id in item_ids:
             thumb_missing = not os.path.exists(get_thumbnail_path(paths, item_id))
             metadata_missing = not os.path.exists(get_model_metadata_path(paths, item_id))
             repair_assets = (thumb_missing or metadata_missing) and remaining_asset_repairs > 0
             gallery_item = build_gallery_item(
                 paths,
-                ply_filename,
+                item_id,
                 repair_missing_thumbnail=repair_assets,
+                model_variants=variants_by_id[item_id],
             )
             if gallery_item:
                 items.append(gallery_item)
             if repair_assets:
                 remaining_asset_repairs -= 1
-=======
-    if not os.path.exists(paths.output_folder):
-        return items
-
-    # 保留所有独立的 .ply 和 .spz 模型，不进行同名去重合并
-    files = []
-    for f in os.listdir(paths.output_folder):
-        ext_lower = os.path.splitext(f)[1].lower()
-        if ext_lower in (".ply", ".spz", ".splat", ".rad"):
-            files.append(f)
-
-    files = sorted(files, key=lambda x: os.path.getmtime(os.path.join(paths.output_folder, x)), reverse=True)
-    remaining_thumbnail_repairs = MAX_THUMBNAIL_REPAIRS_PER_REQUEST
-
-    for model_filename in files:
-        item_id = os.path.splitext(model_filename)[0]
-        thumb_missing = not os.path.exists(get_thumbnail_path(paths, item_id))
-        repair_thumbnail = thumb_missing and remaining_thumbnail_repairs > 0
-        gallery_item = build_gallery_item(
-            paths,
-            model_filename,
-            repair_missing_thumbnail=repair_thumbnail,
-        )
-        if gallery_item:
-            items.append(gallery_item)
-        if repair_thumbnail:
-            remaining_thumbnail_repairs -= 1
->>>>>>> b0117b4 (update)
     return items
 
 
 def delete_gallery_item(paths, item_id):
-<<<<<<< HEAD
-    """删除图库项目，包括原图、PLY、SPZ 模型和缩略图。"""
-    metadata = read_model_metadata(paths, item_id)
+    """删除图库项目，包括所有模型格式、原图、元数据和缩略图。"""
+    normalized_item_id = normalize_model_item_id(item_id)
+    if not normalized_item_id:
+        raise ValueError("Invalid gallery item ID")
 
-    ply_path = os.path.join(paths.output_folder, item_id + ".ply")
-    if os.path.exists(ply_path):
-        os.remove(ply_path)
+    metadata = read_model_metadata(paths, normalized_item_id)
 
-    spz_path = os.path.join(paths.output_folder, item_id + ".spz")
-    if os.path.exists(spz_path):
-        os.remove(spz_path)
+    for filename in collect_model_variants(paths, normalized_item_id).values():
+        model_path = os.path.join(paths.output_folder, filename)
+        if os.path.exists(model_path):
+            os.remove(model_path)
 
-    thumb_path = os.path.join(paths.thumbnail_folder, item_id + ".jpg")
+    thumb_path = os.path.join(paths.thumbnail_folder, normalized_item_id + ".jpg")
     if os.path.exists(thumb_path):
         os.remove(thumb_path)
 
     for ext in ALLOWED_IMAGE_EXTENSIONS:
-        img_path = os.path.join(paths.input_folder, item_id + ext)
+        img_path = os.path.join(paths.input_folder, normalized_item_id + ext)
         if os.path.exists(img_path):
             os.remove(img_path)
-=======
-    """删除图库项目，支持根据后缀精确删除，只有在所有格式都删除后才清除缩略图和原图。"""
-    base_id = os.path.splitext(item_id)[0] if item_id.endswith((".ply", ".spz", ".splat", ".rad")) else item_id
-    
-    # 1. 精确删除模型
-    if item_id.endswith(".ply"):
-        ply_path = os.path.join(paths.output_folder, item_id)
-        if os.path.exists(ply_path):
-            os.remove(ply_path)
-    elif item_id.endswith(".spz"):
-        spz_path = os.path.join(paths.output_folder, item_id)
-        if os.path.exists(spz_path):
-            os.remove(spz_path)
-    elif item_id.endswith((".splat", ".rad")):
-        file_path = os.path.join(paths.output_folder, item_id)
-        if os.path.exists(file_path):
-            os.remove(file_path)
-    else:
-        # 无后缀情况，视为全部删除
-        for ext in (".ply", ".spz", ".splat", ".rad"):
-            file_path = os.path.join(paths.output_folder, item_id + ext)
-            if os.path.exists(file_path):
-                os.remove(file_path)
-
-    # 2. 判断是否没有其他同名模型存在了，是则清除原图和缩略图
-    other_exts = [".spz", ".ply", ".splat", ".rad"]
-    current_ext = os.path.splitext(item_id)[1].lower() if "." in item_id else ""
-    has_other = False
-    for ext in other_exts:
-        if ext != current_ext:
-            if os.path.exists(os.path.join(paths.output_folder, base_id + ext)):
-                has_other = True
-                break
-    
-    if not has_other:
-        thumb_path = os.path.join(paths.thumbnail_folder, base_id + ".jpg")
-        if os.path.exists(thumb_path):
-            os.remove(thumb_path)
-        for ext in [".jpg", ".jpeg", ".png", ".webp", ".JPG", ".PNG"]:
-            img_path = os.path.join(paths.input_folder, base_id + ext)
-            if os.path.exists(img_path):
-                os.remove(img_path)
->>>>>>> b0117b4 (update)
 
     delete_uploaded_source_video(paths, metadata)
 
-    metadata_path = get_model_metadata_path(paths, item_id)
+    metadata_path = get_model_metadata_path(paths, normalized_item_id)
     if os.path.exists(metadata_path):
         os.remove(metadata_path)
 
@@ -588,20 +559,18 @@ def find_original_image_filename(paths, item_id):
 
 
 def resolve_download_model(paths, item_id, fmt):
-    """返回应下载的模型文件名，支持精确匹配文件名，退回则优先 SPZ，回退 PLY。"""
-    # 如果 item_id 本身就是个带后缀的完整存在的文件，直接返回它
-    full_path = os.path.join(paths.output_folder, item_id)
-    if os.path.exists(full_path):
-        return item_id
-
-    # 否则退回到 base name 判断
-    base_id = os.path.splitext(item_id)[0] if item_id.endswith((".ply", ".spz")) else item_id
-    if fmt == "spz":
-        spz_path = os.path.join(paths.output_folder, base_id + ".spz")
-        if os.path.exists(spz_path):
-            return base_id + ".spz"
-
-    ply_path = os.path.join(paths.output_folder, base_id + ".ply")
-    if not os.path.exists(ply_path):
+    """返回应下载的模型文件名，支持四种格式并安全回退。"""
+    variants = collect_model_variants(paths, item_id)
+    if not variants:
         return None
-    return base_id + ".ply"
+
+    requested_format = str(fmt or "").lower()
+    if requested_format not in MODEL_FORMAT_PRIORITY:
+        requested_format = "spz"
+
+    format_order = [requested_format, "spz", "ply", "splat", "rad"]
+    for model_format in dict.fromkeys(format_order):
+        filename = variants.get(model_format)
+        if filename:
+            return filename
+    return None

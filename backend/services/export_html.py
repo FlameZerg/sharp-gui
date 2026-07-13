@@ -1,8 +1,14 @@
 import base64
+import html
 import os
 
 from backend import runtime
 from backend.services.model_convert import ply_to_splat, ply_to_spz
+from backend.services.model_gallery import (
+    MODEL_FORMAT_PRIORITY,
+    collect_model_variants,
+    normalize_model_item_id,
+)
 
 
 def _pick_existing_path(candidates):
@@ -12,105 +18,57 @@ def _pick_existing_path(candidates):
     raise FileNotFoundError(f"No available asset found in candidates: {candidates}")
 
 
+def _read_model_file(paths, filename):
+    path = os.path.join(paths.output_folder, filename)
+    with open(path, "rb") as file:
+        return file.read()
+
+
+def _resolve_export_payload(paths, model_id, requested_format):
+    """Resolve or convert a model payload and report the format actually embedded."""
+    item_id = normalize_model_item_id(model_id)
+    if not item_id:
+        return None
+
+    variants = collect_model_variants(paths, item_id)
+    if not variants:
+        return None
+
+    if requested_format == "spz" and "spz" not in variants and "ply" in variants:
+        ply_path = os.path.join(paths.output_folder, variants["ply"])
+        spz_filename = f"{item_id}.spz"
+        spz_path = os.path.join(paths.output_folder, spz_filename)
+        ply_to_spz(ply_path, spz_path)
+        variants["spz"] = spz_filename
+
+    if requested_format == "splat" and "splat" not in variants and "ply" in variants:
+        ply_path = os.path.join(paths.output_folder, variants["ply"])
+        return ply_to_splat(ply_path), "splat"
+
+    format_order = [requested_format, "spz", "ply", "splat", "rad"]
+    for model_format in dict.fromkeys(format_order):
+        filename = variants.get(model_format)
+        if filename:
+            return _read_model_file(paths, filename), model_format
+    return None
+
+
 def build_export_html(paths, model_id, fmt):
-    """构建独立 HTML 导出内容和元信息。"""
-    if fmt not in ("spz", "ply", "splat", "rad"):
+    """Build the standalone HTML export and its response metadata."""
+    if fmt not in MODEL_FORMAT_PRIORITY:
         fmt = "spz"
 
-    # 提取 base_id 和传入后缀
-    if model_id.endswith((".ply", ".spz", ".splat", ".rad")):
-        base_id = os.path.splitext(model_id)[0]
-        model_ext = os.path.splitext(model_id)[1].lower()
-    else:
-        base_id = model_id
-        model_ext = None
-
-    ply_path = os.path.join(paths.output_folder, f"{base_id}.ply")
-    spz_path = os.path.join(paths.output_folder, f"{base_id}.spz")
-    splat_path = os.path.join(paths.output_folder, f"{base_id}.splat")
-    rad_path = os.path.join(paths.output_folder, f"{base_id}.rad")
-
-    ply_exists = os.path.exists(ply_path)
-    spz_exists = os.path.exists(spz_path)
-    splat_exists = os.path.exists(splat_path)
-    rad_exists = os.path.exists(rad_path)
-
-    # 预设 ply_size 大小：如果 ply 存在则使用其大小，否则以 spz 大小作为原始模型规格
-    ply_size = os.path.getsize(ply_path) if ply_exists else (os.path.getsize(spz_path) if spz_exists else 0)
-
-    # 1. 确定最终使用的文件路径和对应的格式标识
-    target_path = None
-    scene_format = None
-    is_ply_convert_to_splat = False
-
-    if model_ext == ".splat" and splat_exists:
-        target_path = splat_path
-        scene_format = "Splat"
-    elif model_ext == ".rad" and rad_exists:
-        target_path = rad_path
-        scene_format = "Rad"
-    elif model_ext == ".spz" and spz_exists:
-        target_path = spz_path
-        scene_format = "Spz"
-    elif model_ext == ".ply" and ply_exists:
-        if fmt == "spz":
-            if not spz_exists:
-                spz_path = ply_to_spz(ply_path, spz_path)
-            target_path = spz_path
-            scene_format = "Spz"
-        else:
-            is_ply_convert_to_splat = True
-    else:
-        # 如果未指定后缀，根据当前存在的文件和 fmt 参数自动回退
-        if fmt == "spz":
-            if spz_exists:
-                target_path = spz_path
-                scene_format = "Spz"
-            elif ply_exists:
-                spz_path = ply_to_spz(ply_path, spz_path)
-                target_path = spz_path
-                scene_format = "Spz"
-            elif splat_exists:
-                target_path = splat_path
-                scene_format = "Splat"
-            elif rad_exists:
-                target_path = rad_path
-                scene_format = "Rad"
-        else:
-            if splat_exists:
-                target_path = splat_path
-                scene_format = "Splat"
-            elif ply_exists:
-                is_ply_convert_to_splat = True
-            elif spz_exists:
-                target_path = spz_path
-                scene_format = "Spz"
-            elif rad_exists:
-                target_path = rad_path
-                scene_format = "Rad"
-
-    if not target_path and not is_ply_convert_to_splat:
+    resolved_payload = _resolve_export_payload(paths, model_id, fmt)
+    if not resolved_payload:
         return None, {"error": "Model not found"}, 404
 
-    print(f"📦 Exporting {model_id}...")
-
-    # 2. 读取模型数据并进行 Base64 编码
-    if is_ply_convert_to_splat:
-        splat_data = ply_to_splat(ply_path)
-        model_size = len(splat_data)
-        model_data = base64.b64encode(splat_data).decode("utf-8")
-        scene_format = "Splat"
-        if not ply_size:
-            ply_size = len(splat_data)
-        print(f"   PLY: {ply_size / 1024 / 1024:.1f}MB → Splat: {model_size / 1024 / 1024:.1f}MB")
-    else:
-        with open(target_path, "rb") as f:
-            model_bytes = f.read()
-        model_size = len(model_bytes)
-        model_data = base64.b64encode(model_bytes).decode("utf-8")
-        if not ply_size:
-            ply_size = model_size
-        print(f"   Model Size: {model_size / 1024 / 1024:.1f}MB, Format: {scene_format}")
+    model_bytes, actual_format = resolved_payload
+    model_size = len(model_bytes)
+    model_data = base64.b64encode(model_bytes).decode("ascii")
+    scene_format = actual_format.upper()
+    # Keep server logs ASCII-safe because Windows consoles may still use a
+    # legacy code page such as GBK/CP936.
+    print(f"[export] {model_id} as {scene_format} ({model_size / 1024 / 1024:.1f}MB)...")
 
     three_js_candidates = [
         os.path.join(runtime.BASE_DIR, "frontend", "node_modules", "three", "build", "three.module.js"),
@@ -174,7 +132,6 @@ def build_export_html(paths, model_id, fmt):
         orbit_controls_b64 = base64.b64encode(f.read()).decode("utf-8")
     with open(spark_js_path, "rb") as f:
         spark_js_b64 = base64.b64encode(f.read()).decode("utf-8")
-    # 编码 Pass.js 为 Base64 Data URL 以注入单文件 HTML
     with open(pass_js_path, "rb") as f:
         pass_js_b64 = base64.b64encode(f.read()).decode("utf-8")
 
@@ -188,7 +145,7 @@ def build_export_html(paths, model_id, fmt):
         template = f.read()
 
     html_content = template.replace("{{MODEL_DATA}}", model_data)
-    html_content = html_content.replace("{{MODEL_NAME}}", model_id)
+    html_content = html_content.replace("{{MODEL_NAME}}", html.escape(model_id))
     html_content = html_content.replace("{{SCENE_FORMAT}}", scene_format)
     html_content = html_content.replace("{{THREE_DATA_URL}}", three_data_url)
     html_content = html_content.replace("{{THREE_CORE_DATA_URL}}", three_core_data_url)
@@ -198,13 +155,13 @@ def build_export_html(paths, model_id, fmt):
 
     html_size = len(html_content.encode("utf-8"))
     print(
-        f"   ✅ 导出完成: {ply_size / 1024 / 1024:.1f}MB → {html_size / 1024 / 1024:.1f}MB "
-        f"(原始 HTML 约 {100 * ply_size // html_size}% 大小)"
+        f"[export] complete: model={model_size / 1024 / 1024:.1f}MB, "
+        f"html={html_size / 1024 / 1024:.1f}MB"
     )
 
     return {
         "html": html_content,
-        "format": fmt,
+        "format": actual_format,
         "model_size": model_size,
         "html_size": html_size,
     }, None, 200

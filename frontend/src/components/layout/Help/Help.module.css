@@ -30,6 +30,17 @@
     height: 16px;
 }
 
+.closeBtn {
+    composes: helpBtn;
+    right: calc(var(--viewer-overlay-right) + var(--viewer-overlay-trigger-size) + 8px);
+}
+
+.helpBtn:focus-visible,
+.closeBtn:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 2px;
+}
+
 .helpPanel {
     position: absolute;
     top: calc(var(--viewer-overlay-top) + var(--viewer-overlay-trigger-size) + 8px);
@@ -147,12 +158,14 @@
 
 /* Dark Mode Adaptation */
 @media (prefers-color-scheme: dark) {
-    .helpBtn {
+    .helpBtn,
+    .closeBtn {
         background: rgba(30, 30, 35, 0.65);
         border: 1px solid rgba(255, 255, 255, 0.15);
         color: rgba(255, 255, 255, 0.8);
     }
-    .helpBtn:hover {
+    .helpBtn:hover,
+    .closeBtn:hover {
         background: rgba(50, 50, 55, 0.85);
         color: #fff;
     }
@@ -182,49 +195,5 @@
         background: rgba(255, 255, 255, 0.1);
         border: 1px solid rgba(255, 255, 255, 0.15);
         box-shadow: 0 1px 0 rgba(255, 255, 255, 0.1);
-    }
-}
-
-.closeBtn {
-    position: absolute;
-    top: var(--viewer-overlay-top);
-    right: calc(var(--viewer-overlay-right) + var(--viewer-overlay-trigger-size) + 8px);
-    width: var(--viewer-overlay-trigger-size);
-    height: var(--viewer-overlay-trigger-size);
-    background: rgba(255, 255, 255, 0.6);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.5);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    z-index: 30;
-    color: #555;
-    padding: 0;
-}
-
-.closeBtn:hover {
-    background: rgba(255, 255, 255, 0.85);
-    transform: scale(1.05);
-}
-
-.closeBtn svg {
-    width: 16px;
-    height: 16px;
-}
-
-@media (prefers-color-scheme: dark) {
-    .closeBtn {
-        background: rgba(30, 30, 35, 0.65);
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        color: rgba(255, 255, 255, 0.8);
-    }
-    .closeBtn:hover {
-        background: rgba(50, 50, 55, 0.85);
-        color: #fff;
     }
 }

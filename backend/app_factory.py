@@ -11,6 +11,7 @@ from backend.paths import build_path_context, ensure_runtime_directories, instal
 from backend.routes import register_routes
 from backend.security.hooks import register_security_hooks
 from backend.services.model_gallery import generate_thumbnail
+from backend.services.photo_gallery import migrate_photo_gallery_roots_config
 from backend.services.task_queue import TaskManager
 from backend.services import video_reconstruction
 
@@ -27,13 +28,9 @@ def create_app(start_background_workers=False):
 
     config = load_config()
     _, access_config_changed = normalize_access_control_config(config)
-<<<<<<< HEAD
     roots_migrated = migrate_photo_gallery_roots_config(config)
     _, video_config_changed = normalize_video_reconstruction_config(config)
     if access_config_changed or roots_migrated or video_config_changed:
-=======
-    if access_config_changed:
->>>>>>> b0117b4 (update)
         save_config(config)
 
     paths = build_path_context(config)

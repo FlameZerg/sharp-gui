@@ -6,16 +6,9 @@ import time
 import traceback
 import uuid
 
-import torch
-
 from backend import runtime
-from backend.config import load_config
 from backend.services.model_convert import ply_to_spz
 from backend.services import video_reconstruction
-
-# Default local checkpoint used for frontend 3D generation.
-# Can be overridden at runtime by setting SHARP_CHECKPOINT_PATH.
-DEFAULT_CHECKPOINT_PATH = "/mnt/workspace/store/desktop/.runtime/.xdg/cache/torch/hub/checkpoints/sharp_2572gikvuh.pt"
 
 TASK_RETENTION_SECONDS = 3600
 CLEANUP_INTERVAL = 300
@@ -211,27 +204,11 @@ class TaskManager:
                 device,
             ]
 
-            # Use the hardcoded default checkpoint unless SHARP_CHECKPOINT_PATH is set.
-            checkpoint_path = os.environ.get("SHARP_CHECKPOINT_PATH", DEFAULT_CHECKPOINT_PATH)
-            if checkpoint_path:
-                cmd.extend(["-c", checkpoint_path])
-
             process = None
             try:
                 process_env = os.environ.copy()
                 process_env.setdefault("PYTHONUTF8", "1")
                 process_env.setdefault("PYTHONIOENCODING", "utf-8")
-
-                # Auto best threads: if not already set, use PyTorch's default thread count.
-                # Users can override by exporting OMP_NUM_THREADS / MKL_NUM_THREADS / DNNL_NUM_THREADS.
-                if not process_env.get("OMP_NUM_THREADS"):
-                    try:
-                        default_threads = str(torch.get_num_threads())
-                    except Exception:
-                        default_threads = str(os.cpu_count() or 1)
-                    process_env.setdefault("OMP_NUM_THREADS", default_threads)
-                    process_env.setdefault("MKL_NUM_THREADS", default_threads)
-                    process_env.setdefault("DNNL_NUM_THREADS", default_threads)
                 self.verbose_log(f"Task {task_id} input_path={input_path} exists={os.path.exists(input_path)}")
                 self.verbose_log(f"Task {task_id} output_folder={output_folder} exists={os.path.exists(output_folder)}")
                 self.verbose_log(f"Task {task_id} command={runtime.format_command_for_log(cmd)}")
@@ -406,32 +383,15 @@ class TaskManager:
 
             if ply_exists:
                 try:
-                    config = load_config()
-                    model_format = config.get("model_format", "spz")
-                    if model_format not in ("spz", "ply"):
-                        model_format = "spz"
-                    if model_format == "spz":
+                    spz_result = self.spz_converter(expected_ply)
+                    if spz_result:
                         ply_size = os.path.getsize(expected_ply)
-                        spz_result = self.spz_converter(expected_ply)
-                        if spz_result and os.path.exists(spz_result):
-                            spz_size = os.path.getsize(spz_result)
-                            os.remove(expected_ply)
-                            ratio = 100 - spz_size * 100 // ply_size if ply_size > 0 else 0
-                            print(f"📦 SPZ converted: {ply_size/1024:.0f}KB → {spz_size/1024:.0f}KB ({ratio}% smaller)")
-                    elif model_format == "ply":
-                        print(f"📦 PLY kept as default model format: {name_without_ext}")
+                        spz_size = os.path.getsize(spz_result)
+                        ratio = 100 - spz_size * 100 // ply_size if ply_size > 0 else 0
+                        print(f"📦 SPZ converted: {ply_size/1024:.0f}KB → {spz_size/1024:.0f}KB ({ratio}% smaller)")
                 except Exception as exc:
-<<<<<<< HEAD
-<<<<<<< HEAD
                     print(f"⚠️ SPZ auto-convert failed for {name_without_ext}: {exc}")
                     runtime.log("WARN", f"Task {task_id} SPZ auto-convert failed for {name_without_ext}: {exc}")
-=======
-                    print(f"⚠️ Model format post-processing failed for {name_without_ext}: {exc}")
->>>>>>> b0117b4 (update)
-=======
-                    print(f"⚠️ SPZ auto-convert failed for {name_without_ext}: {exc}")
-                    runtime.log("warn", f"Task {task_id} spz auto-convert failed for {name_without_ext}: {exc}")
->>>>>>> e944866 (修改各种小问题)
             return
 
         stderr_output = "".join(output_lines)

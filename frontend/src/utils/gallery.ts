@@ -19,6 +19,8 @@ function areGalleryItemsEquivalent(current: GalleryItem, next: GalleryItem): boo
     current.thumb_url === next.thumb_url &&
     current.thumb_version === next.thumb_version &&
     current.model_url === next.model_url &&
+    current.model_format === next.model_format &&
+    current.available_formats?.join(',') === next.available_formats?.join(',') &&
     current.spz_url === next.spz_url &&
     current.size === next.size &&
     current.spz_size === next.spz_size &&
@@ -107,20 +109,35 @@ export function getGallerySourceVideoUrl(item: GalleryItem): string | null {
 
 export function getGalleryModelSource(
   item: GalleryItem,
-  _preferredFormat: ModelFormat,
+  preferredFormat: ModelFormat,
 ): { url: string; format: ViewerModelFormat } {
-  // 格式由真实 URL 后缀决定，避免受默认模型格式切换影响
-  const urlLower = item.model_url.toLowerCase();
-  let format: ViewerModelFormat = 'ply';
-  if (urlLower.endsWith('.spz')) {
-    format = 'spz';
-  } else if (urlLower.endsWith('.splat')) {
-    format = 'splat';
-  } else if (urlLower.endsWith('.rad')) {
-    format = 'rad';
+  if (preferredFormat === 'spz' && item.spz_url) {
+    return {
+      url: item.spz_url,
+      format: 'spz',
+    };
   }
+
+  if (item.model_format) {
+    return {
+      url: item.model_url,
+      format: item.model_format,
+    };
+  }
+
+  const normalizedUrl = item.model_url.toLowerCase().split(/[?#]/, 1)[0];
+  if (normalizedUrl.endsWith('.spz')) {
+    return { url: item.model_url, format: 'spz' };
+  }
+  if (normalizedUrl.endsWith('.splat')) {
+    return { url: item.model_url, format: 'splat' };
+  }
+  if (normalizedUrl.endsWith('.rad')) {
+    return { url: item.model_url, format: 'rad' };
+  }
+
   return {
     url: item.model_url,
-    format,
+    format: 'ply',
   };
 }

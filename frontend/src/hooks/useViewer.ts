@@ -977,28 +977,13 @@ export const useViewer = (
           fileType?: SplatFileType;
           paged?: boolean;
         }) => {
-          // 将 Spark 的下载/解码进度同步到全局加载状态
-          // Spark 可能传入标准 ProgressEvent，也可能直接传入 { loaded, total } 对象，
-          // 甚至还有可能按 (loaded, total) 两个参数调用，这里做兼容处理。
-          const handleProgress = (
-            event: ProgressEvent | { loaded: number; total: number } | number,
-            maybeTotal?: number,
-          ) => {
-            let loaded = 0;
-            let total = 0;
-
-            if (typeof event === 'number') {
-              loaded = event;
-              total = maybeTotal ?? 0;
-            } else if (event && typeof event === 'object') {
-              loaded = (event as { loaded?: number }).loaded ?? 0;
-              total = (event as { total?: number }).total ?? 0;
+          const handleProgress = (event: ProgressEvent) => {
+            if (!Number.isFinite(event.loaded) || !Number.isFinite(event.total) || event.total <= 0) {
+              return;
             }
 
-            // 若 total 为 0（例如跨域无头部或分块传输），默认使用 15MB 预估大小以让进度条滚动，且设置最大进度为 99%
-            const finalTotal = total > 0 ? total : 15 * 1024 * 1024;
-            const calculatedProgress = (loaded / finalTotal) * 100;
-            setLoadingProgress(Math.min(99, calculatedProgress));
+            const ratio = Math.min(1, Math.max(0, event.loaded / event.total));
+            setLoadingProgress(Math.min(95, ratio * 95));
           };
 
           // Prefer public 2.0 options and keep LoD toggles runtime-switchable.

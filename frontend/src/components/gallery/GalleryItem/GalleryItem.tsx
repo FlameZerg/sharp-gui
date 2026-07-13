@@ -4,7 +4,12 @@ import { useTranslation } from 'react-i18next';
 
 import { EyeIcon, DownloadIcon, DeleteIcon } from '@/components/common/Icons';
 import { useGalleryThumbnail } from '@/hooks/useGalleryThumbnail';
-import { formatFileSize, getGallerySourceVideoUrl, getGalleryThumbnailSrc } from '@/utils';
+import {
+  formatFileSize,
+  getGalleryModelSource,
+  getGallerySourceVideoUrl,
+  getGalleryThumbnailSrc,
+} from '@/utils';
 import type { GalleryItem as GalleryItemType, ModelFormat } from '@/types';
 
 import styles from './GalleryItem.module.css';
@@ -21,7 +26,7 @@ interface GalleryItemProps {
 
 export const GalleryItem = memo(function GalleryItem({
   item,
-  preferredFormat: _preferredFormat,
+  preferredFormat,
   isActive,
   onSelect,
   onPreview,
@@ -34,10 +39,11 @@ export const GalleryItem = memo(function GalleryItem({
   const sourceVideoUrl = getGallerySourceVideoUrl(item);
   const hasOriginalPreview = Boolean(item.image_url || sourceVideoUrl);
   const thumbnailState = useGalleryThumbnail(thumbnailSrc, Boolean(thumbnailSrc));
-  // 根据实际 model_url 后缀决定展示格式和大小，避免受保存的默认模型格式影响
-  const isModelSpz = item.model_url.toLowerCase().endsWith('.spz');
-  const displaySize = isModelSpz && item.spz_size ? item.spz_size : item.size;
-  const formatLabel = isModelSpz ? 'SPZ' : 'PLY';
+  const modelSource = getGalleryModelSource(item, preferredFormat);
+  const displaySize = modelSource.format === 'spz' && item.spz_size
+    ? item.spz_size
+    : item.size;
+  const formatLabel = (modelSource.format ?? 'ply').toUpperCase();
   const thumbnailStatusText =
     thumbnailState === 'loading'
       ? t('galleryThumbLoading')
