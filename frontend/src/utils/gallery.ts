@@ -110,11 +110,12 @@ export function getGallerySourceVideoUrl(item: GalleryItem): string | null {
 export function getGalleryModelSource(
   item: GalleryItem,
   preferredFormat: ModelFormat,
-): { url: string; format: ViewerModelFormat } {
+): { url: string; format: ViewerModelFormat; size: number | null } {
   if (preferredFormat === 'spz' && item.spz_url) {
     return {
       url: item.spz_url,
       format: 'spz',
+      size: item.spz_size ?? null,
     };
   }
 
@@ -122,22 +123,24 @@ export function getGalleryModelSource(
     return {
       url: item.model_url,
       format: item.model_format,
+      size: item.size ?? null,
     };
   }
 
   const normalizedUrl = item.model_url.toLowerCase().split(/[?#]/, 1)[0];
   if (normalizedUrl.endsWith('.spz')) {
-    return { url: item.model_url, format: 'spz' };
+    return { url: item.model_url, format: 'spz', size: item.size ?? null };
   }
   if (normalizedUrl.endsWith('.splat')) {
-    return { url: item.model_url, format: 'splat' };
+    return { url: item.model_url, format: 'splat', size: item.size ?? null };
   }
   if (normalizedUrl.endsWith('.rad')) {
-    return { url: item.model_url, format: 'rad' };
+    return { url: item.model_url, format: 'rad', size: item.size ?? null };
   }
 
   return {
     url: item.model_url,
     format: 'ply',
+    size: item.size ?? null,
   };
 }

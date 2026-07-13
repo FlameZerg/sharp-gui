@@ -330,7 +330,9 @@ export const useViewer = (
   const {
     currentModelUrl,
     currentModelFormat,
+    currentModelSize,
     setLoading,
+    resetLoadingProgress,
     setLoadingProgress,
     isLimitsOn,
     setCanCompareLod,
@@ -938,8 +940,8 @@ export const useViewer = (
     const abortController = new AbortController();
 
     const load = async () => {
+      resetLoadingProgress();
       setLoading(true, 'Loading Scene...');
-      setLoadingProgress(0);
 
       try {
         const useVideoOrientation = await resolveCurrentModelVideoOrientation(abortController.signal);
@@ -978,11 +980,20 @@ export const useViewer = (
           paged?: boolean;
         }) => {
           const handleProgress = (event: ProgressEvent) => {
-            if (!Number.isFinite(event.loaded) || !Number.isFinite(event.total) || event.total <= 0) {
+            if (cancelled || !Number.isFinite(event.loaded) || event.loaded <= 0) {
               return;
             }
 
-            const ratio = Math.min(1, Math.max(0, event.loaded / event.total));
+            const reportedTotal = Number.isFinite(event.total) && event.total > 0
+              ? event.total
+              : null;
+            const knownSourceSize = url === currentModelUrl ? currentModelSize : null;
+            const total = reportedTotal ?? knownSourceSize;
+            if (!total || total <= 0) {
+              return;
+            }
+
+            const ratio = Math.min(1, Math.max(0, event.loaded / total));
             setLoadingProgress(Math.min(95, ratio * 95));
           };
 
@@ -1065,6 +1076,7 @@ export const useViewer = (
         setUsedRadLastLoad(loadedWithRad);
         applyCurrentLodSettings();
 
+        setLoadingProgress(100);
         setLoading(false);
 
         // Apply limits and reset camera after model loads
@@ -1089,6 +1101,7 @@ export const useViewer = (
   }, [
     currentModelUrl,
     currentModelFormat,
+    currentModelSize,
     currentModelSourceSignature,
     isViewerReady,
     applyCurrentLodSettings,
@@ -1096,6 +1109,7 @@ export const useViewer = (
     refreshDebugBounds,
     setCanCompareLod,
     setLoading,
+    resetLoadingProgress,
     setLoadingProgress,
     setUsedRadLastLoad,
     resetCamera,

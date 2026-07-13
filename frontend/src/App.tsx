@@ -203,7 +203,7 @@ function App() {
   const handlePreviewModelFile = useCallback((file: File, format: DroppedModelFormat) => {
     console.log('📦 Loading dropped model:', file.name, 'format:', format);
     const blobUrl = URL.createObjectURL(file);
-    setCurrentModel(file.name, blobUrl, format);
+    setCurrentModel(file.name, blobUrl, format, file.size);
   }, [setCurrentModel]);
 
   const showGenerationPermissionError = useCallback(() => {

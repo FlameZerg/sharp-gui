@@ -40,9 +40,7 @@ export const GalleryItem = memo(function GalleryItem({
   const hasOriginalPreview = Boolean(item.image_url || sourceVideoUrl);
   const thumbnailState = useGalleryThumbnail(thumbnailSrc, Boolean(thumbnailSrc));
   const modelSource = getGalleryModelSource(item, preferredFormat);
-  const displaySize = modelSource.format === 'spz' && item.spz_size
-    ? item.spz_size
-    : item.size;
+  const displaySize = modelSource.size ?? item.size;
   const formatLabel = (modelSource.format ?? 'ply').toUpperCase();
   const thumbnailStatusText =
     thumbnailState === 'loading'
